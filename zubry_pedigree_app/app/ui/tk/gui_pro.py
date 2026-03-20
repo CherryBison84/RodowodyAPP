@@ -29,6 +29,12 @@ from app.analytics.line_membership import (
 )
 from app.analytics.population_genetics import TEST_ID, compute_population_genetics_stats
 from app.data.validator import validate_loaded_dataset
+from app.ui.tk.breeding_helpers import suggest_pairs_with_constraints
+from app.ui.tk.report_helpers import (
+    build_individual_report_figures,
+    build_population_report_figures,
+    write_text_pages_to_pdf,
+)
 
 
 def _clear_frame(frame: ttk.Frame) -> None:
@@ -204,6 +210,7 @@ def run_tk_pro() -> None:
     tab_pedigree = ttk.Frame(notebook, padding=14)
     tab_analysis = ttk.Frame(notebook, padding=14)
     tab_population = ttk.Frame(notebook, padding=14)
+    tab_breeding = ttk.Frame(notebook, padding=14)
     tab_reports = ttk.Frame(notebook, padding=14)
     tab_settings = ttk.Frame(notebook, padding=14)
 
@@ -212,6 +219,7 @@ def run_tk_pro() -> None:
     notebook.add(tab_pedigree, text="Rodowód")
     notebook.add(tab_analysis, text="Analizy")
     notebook.add(tab_population, text="Populacja")
+    notebook.add(tab_breeding, text="Plan hodowlany")
     notebook.add(tab_reports, text="Raporty")
     notebook.add(tab_settings, text="Ustawienia")
 
@@ -222,15 +230,6 @@ def run_tk_pro() -> None:
     # -------------------------
     # Reports tab
     # -------------------------
-    ttk.Label(tab_reports, text="Raporty", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
-    ttk.Label(
-        tab_reports,
-        text="Generuj raport tekstowy (TXT) dla wybranego osobnika i/lub dla całej populacji.",
-        foreground=colors.MUTED,
-        wraplength=1000,
-        justify="left",
-    ).pack(anchor="w", pady=(6, 0))
-
     rep_top = ttk.Frame(tab_reports)
     rep_top.pack(side=tk.TOP, fill=tk.X, pady=(14, 0))
 
@@ -304,6 +303,10 @@ def run_tk_pro() -> None:
 
     rep_btns = ttk.Frame(tab_reports)
     rep_btns.pack(side=tk.TOP, fill=tk.X, pady=(10, 0))
+
+    # Ustawienia domyślne dla raportów (konfigurowane w zakładce Ustawienia).
+    rep_default_include_plots_var = tk.BooleanVar(value=True)
+    rep_auto_preview_pdf_var = tk.BooleanVar(value=True)
 
     rep_output_text = tk.Text(tab_reports, height=18, wrap="word")
     rep_output_text.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(12, 0))
@@ -514,7 +517,7 @@ def run_tk_pro() -> None:
         rep_output_text.configure(state="disabled")
         _set_rep_status("Raport wygenerowany.")
 
-    def on_save_report_txt() -> None:
+    def on_save_report_docx() -> None:
         try:
             text_content = rep_output_text.get("1.0", tk.END).strip()
         except Exception:
@@ -523,20 +526,41 @@ def run_tk_pro() -> None:
             messagebox.showinfo("Info", "Najpierw wygeneruj raport.")
             return
 
+        include_plots = messagebox.askyesno(
+            "Raport DOCX",
+            "Czy do raportu dołączyć wygenerowane wykresy?",
+            default=("yes" if bool(rep_default_include_plots_var.get()) else "no"),
+        )
+
         filename = filedialog.asksaveasfilename(
-            title="Zapisz raport (TXT)",
-            defaultextension=".txt",
-            initialfile="wisent_pedigree_report.txt",
-            filetypes=[("TXT", "*.txt"), ("All files", "*.*")],
+            title="Zapisz raport (DOCX)",
+            defaultextension=".docx",
+            initialfile="wisent_pedigree_report.docx",
+            filetypes=[("DOCX", "*.docx"), ("All files", "*.*")],
         )
         if not filename:
             return
 
         try:
-            Path(filename).write_text(text_content, encoding="utf-8")
+            from docx import Document  # type: ignore[import-not-found]
+
+            doc = Document()
+            doc.add_heading("WisentPedigree Pro+ — Raport", level=1)
+            doc.add_paragraph("")
+            for ln in text_content.splitlines():
+                doc.add_paragraph(ln)
+            doc.add_paragraph("")
+            if include_plots:
+                doc.add_paragraph(
+                    "Wybrano opcję dołączenia wykresów. "
+                    "Pełne osadzanie wykresów jest dostępne w eksporcie PDF."
+                )
+            else:
+                doc.add_paragraph("Wykresy nie zostały dołączone (wg wyboru użytkownika).")
+            doc.save(filename)
             _set_rep_status(f"Zapisano: {Path(filename).name}")
         except Exception as e:
-            messagebox.showerror("Błąd", f"Nie udało się zapisać pliku: {e}")
+            messagebox.showerror("Błąd", f"Nie udało się zapisać DOCX: {e}")
 
     def on_save_report_pdf() -> None:
         try:
@@ -564,213 +588,11 @@ def run_tk_pro() -> None:
         if not filename:
             return
 
-        def _write_text_pages(pdf: PdfPages, *, text: str) -> None:
-            # Proste paginowanie tekstu: każda strona ma stałą liczbę linii.
-            # (Bez dodatkowych bibliotek do łamania tekstu.)
-            lines = text.splitlines()
-            max_lines = 48
-            for start in range(0, len(lines), max_lines):
-                fig_t = plt.Figure(figsize=(8.27, 11.69), dpi=100)  # A4 (w przybliżeniu)
-                ax_t = fig_t.add_subplot(1, 1, 1)
-                ax_t.axis("off")
-                y = 0.98
-                dy = 0.02
-                for i, line in enumerate(lines[start : start + max_lines]):
-                    ax_t.text(0.02, y - i * dy, line, fontsize=9, va="top")
-                fig_t.tight_layout()
-                pdf.savefig(fig_t)
-                plt.close(fig_t)
-
-        def _build_individual_figures(*, people: dict[str, object]) -> list[plt.Figure]:
-            figs: list[plt.Figure] = []
-
-            person_id = str(rep_person_id_var.get()).strip()
-            if not person_id:
-                return figs
-            if person_id not in people:
-                return figs
-
-            # Inbred F
-            if bool(rep_ind_unbounded_var.get()):
-                f_res = wright_inbreeding_F(person_id=person_id, people=people, max_generations_back=None)
-                depth_txt = "bez limitu (do founderów)"
-                graph_depth_fallback = int(str(rep_ind_depth_var.get()).strip() or "4")
-                max_pedigree_nodes = 350
-            else:
-                depth = int(str(rep_ind_depth_var.get()).strip())
-                depth = max(0, depth)
-                f_res = wright_inbreeding_F(person_id=person_id, people=people, max_generations_back=depth)
-                depth_txt = f"limit = {depth}"
-                graph_depth_fallback = depth
-                max_pedigree_nodes = 350
-
-            # --- Pedigree (ancestors) plot ---
-            try:
-                if bool(rep_ind_unbounded_var.get()):
-                    levels_unc = get_ancestor_levels_unbounded(person_id=person_id, people=people)  # type: ignore[arg-type]
-                    if len(levels_unc) > max_pedigree_nodes:
-                        # Zbyt duży graf na PDF - używamy bounded dla wydajności.
-                        levels, edges = get_ancestor_levels_and_edges(  # type: ignore[arg-type]
-                            person_id=person_id,
-                            depth=graph_depth_fallback,
-                            people=people,  # type: ignore[arg-type]
-                        )
-                        note_txt = f"(graf przodków: limit do {graph_depth_fallback} dla wydajności; N={len(levels_unc)})"
-                    else:
-                        levels = levels_unc
-                        people_all_tmp = ensure_people_for_nodes(levels=levels, people=people)  # type: ignore[arg-type]
-                        edges = []
-                        for child_id in levels.keys():
-                            p = people_all_tmp.get(child_id)
-                            if not p:
-                                continue
-                            if getattr(p, "father_id", None) and p.father_id in levels:
-                                edges.append((p.father_id, child_id))
-                            if getattr(p, "mother_id", None) and p.mother_id in levels:
-                                edges.append((p.mother_id, child_id))
-                        note_txt = f"(graf przodków: bez limitu; N={len(levels)})"
-                else:
-                    levels, edges = get_ancestor_levels_and_edges(  # type: ignore[arg-type]
-                        person_id=person_id,
-                        depth=int(str(rep_ind_depth_var.get()).strip()),
-                        people=people,  # type: ignore[arg-type]
-                    )
-                    note_txt = f"(graf przodków: {depth_txt})"
-
-                if levels:
-                    people_all = ensure_people_for_nodes(levels=levels, people=people)  # type: ignore[arg-type]
-                    fig_g = plot_ancestor_pedigree(
-                        person_id=person_id,
-                        levels=levels,
-                        edges=edges,
-                        people=people_all,  # type: ignore[arg-type]
-                        readable_mode=True,
-                        enable_click_highlight=False,
-                    )
-                    fig_g.suptitle(f"Rodowód przodków (ID {person_id}) {note_txt}", fontsize=11, y=0.98)
-                    figs.append(fig_g)
-            except Exception:
-                # PDF nadal ma wyświetlić pozostałe wykresy.
-                pass
-
-            # --- Diagnostic: F vs max pokolenia ---
-            try:
-                max_trace_depth = min(20, int(f_res.used_generations) if f_res.used_generations else 0)
-                depths = list(range(0, max_trace_depth + 1))
-                Fs = [
-                    wright_inbreeding_F(
-                        person_id=person_id,
-                        people=people,  # type: ignore[arg-type]
-                        max_generations_back=int(d),
-                    ).F
-                    for d in depths
-                ]
-                fig, ax = plt.subplots(figsize=(8.2, 4.1), dpi=100)
-                ax.plot(depths, Fs, marker="o", linewidth=2, color=colors.EDGE_PLOT)
-                ax.set_title(f"Inbred (Wright F) — diagnostyka (ID {person_id})")
-                ax.set_xlabel("max pokoleń")
-                ax.set_ylabel("F")
-                ax.grid(True, alpha=0.25)
-                figs.append(fig)
-            except Exception:
-                pass
-
-            # --- Completeness: ANC a_g + PCL ---
-            try:
-                levels = get_ancestor_levels_unbounded(person_id=person_id, people=people)  # type: ignore[arg-type]
-                by_gen: dict[int, int] = {}
-                for _aid, lvl in levels.items():
-                    try:
-                        g = int(lvl)
-                    except Exception:
-                        continue
-                    if g <= 0:
-                        continue
-                    by_gen[g] = by_gen.get(g, 0) + 1
-
-                fig2 = plt.Figure(figsize=(8.2, 4.1), dpi=100)
-                ax_a = fig2.add_subplot(1, 2, 1)
-                ax_pcl = fig2.add_subplot(1, 2, 2)
-
-                if by_gen:
-                    gens = sorted(by_gen.keys())
-                    a_vals = [by_gen[g] for g in gens]
-                    pcl_vals = [float(by_gen[g]) / float(2**g) for g in gens]
-                    ax_a.bar([str(g) for g in gens], a_vals, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
-                    ax_a.set_title("Ankiety przodków (a_g)")
-                    ax_a.set_xlabel("pokolenie (g)")
-                    ax_a.set_ylabel("a_g")
-                    ax_a.tick_params(axis="x", labelsize=8)
-
-                    ax_pcl.plot(gens, pcl_vals, marker="o", linewidth=2, color=colors.BUTTON_BG)
-                    ax_pcl.axhline(1.0, color=colors.ACCENT, linewidth=1, alpha=0.6)
-                    ax_pcl.set_title("Kompletność per pokolenie (PCL)")
-                    ax_pcl.set_xlabel("pokolenie (g)")
-                    ax_pcl.set_ylabel("PCL = a_g / 2^g")
-                    ax_pcl.set_ylim(0, 1.05)
-                    ax_pcl.grid(True, alpha=0.25)
-                else:
-                    ax_a.text(0.5, 0.5, "Brak danych ANC", ha="center", va="center")
-                    ax_a.axis("off")
-                    ax_pcl.axis("off")
-
-                fig2.tight_layout()
-                figs.append(fig2)
-            except Exception:
-                pass
-
-            return figs
-
-        def _build_population_figures(*, people: dict[str, object], df_std: object) -> list[plt.Figure]:
-            figs: list[plt.Figure] = []
-            try:
-                max_generations_back = None if bool(rep_pop_unbounded_var.get()) else int(str(rep_pop_depth_var.get()).strip())
-                max_generations_back = None if bool(rep_pop_unbounded_var.get()) else max(0, max_generations_back)
-            except Exception:
-                max_generations_back = 4
-
-            try:
-                stats = compute_population_genetics_stats(
-                    df_std=df_std,  # type: ignore[arg-type]
-                    people=people,  # type: ignore[arg-type]
-                    max_generations_back=max_generations_back,
-                    calc_f=True,
-                    calc_completeness=True,
-                    calc_founders=True,
-                    calc_lines=True,
-                )
-
-                # --- Histogram/boxplot F ---
-                if stats.f_values:
-                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8.2, 4.1), dpi=100)
-                    ax1.hist(stats.f_values, bins=30, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
-                    ax1.set_title("Rozkład F (Wright) w populacji")
-                    ax1.set_xlabel("F")
-                    ax1.set_ylabel("liczba osobników")
-
-                    ax2.boxplot(stats.f_values, vert=True, patch_artist=True)
-                    ax2.set_title("Boxplot F (Wright)")
-                    ax2.set_ylabel("F")
-                    ax2.grid(True, alpha=0.2)
-                    figs.append(fig)
-
-                # --- Founder contributions (top p_i) ---
-                if stats.founder_contributions:
-                    items = sorted(stats.founder_contributions.items(), key=lambda kv: kv[1], reverse=True)[:10]
-                    labels = [str(kv[0]) for kv in items]
-                    vals = [float(kv[1]) for kv in items]
-                    fig_b = plt.subplots(figsize=(8.2, 4.1), dpi=100)[0]
-                    axb = fig_b.gca()
-                    axb.bar(labels, vals, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
-                    axb.set_title("Top p_i — wkład genetyczny założycieli")
-                    axb.set_xlabel("ID założyciela")
-                    axb.set_ylabel("p_i (znorm.)")
-                    axb.tick_params(axis="x", labelsize=8, rotation=35)
-                    figs.append(fig_b)
-            except Exception:
-                pass
-
-            return figs
+        include_plots = messagebox.askyesno(
+            "Raport PDF",
+            "Czy do raportu dołączyć wygenerowane wykresy?",
+            default=("yes" if bool(rep_default_include_plots_var.get()) else "no"),
+        )
 
         people = state.get("people")
         df_std = state.get("df_std")
@@ -780,62 +602,406 @@ def run_tk_pro() -> None:
 
         try:
             with PdfPages(filename) as pdf:
-                _write_text_pages(pdf, text=text_content)
+                write_text_pages_to_pdf(pdf, text=text_content)
 
-                if rep_include_ind_var.get():
-                    figs_ind = _build_individual_figures(people=people)  # type: ignore[arg-type]
+                if include_plots and rep_include_ind_var.get():
+                    figs_ind = build_individual_report_figures(
+                        person_id=str(rep_person_id_var.get()).strip(),
+                        people=people,  # type: ignore[arg-type]
+                        ind_unbounded=bool(rep_ind_unbounded_var.get()),
+                        ind_depth=int(str(rep_ind_depth_var.get()).strip() or "4"),
+                        colors=colors,
+                    )
                     for f in figs_ind:
                         pdf.savefig(f)
                         plt.close(f)
 
-                if rep_include_pop_var.get():
-                    figs_pop = _build_population_figures(people=people, df_std=df_std)  # type: ignore[arg-type]
+                if include_plots and rep_include_pop_var.get():
+                    figs_pop = build_population_report_figures(
+                        people=people,  # type: ignore[arg-type]
+                        df_std=df_std,
+                        pop_unbounded=bool(rep_pop_unbounded_var.get()),
+                        pop_depth=int(str(rep_pop_depth_var.get()).strip() or "4"),
+                        colors=colors,
+                    )
                     for f in figs_pop:
                         pdf.savefig(f)
                         plt.close(f)
 
             _set_rep_status(f"Zapisano: {Path(filename).name}")
             # Auto-podgląd zapisanego PDF-a w domyślnej aplikacji.
-            try:
-                import subprocess
-                import sys
-                import os
+            if bool(rep_auto_preview_pdf_var.get()):
+                try:
+                    import subprocess
+                    import sys
+                    import os
 
-                if Path(filename).exists():
-                    if sys.platform == "darwin":
-                        subprocess.Popen(["open", filename])
-                    elif sys.platform.startswith("win"):
-                        os.startfile(filename)  # type: ignore[name-defined]
-                    else:
-                        subprocess.Popen(["xdg-open", filename])
-            except Exception:
-                # Nie psujemy zapisu, jeśli nie da się otworzyć podglądu.
-                pass
+                    if Path(filename).exists():
+                        if sys.platform == "darwin":
+                            subprocess.Popen(["open", filename])
+                        elif sys.platform.startswith("win"):
+                            os.startfile(filename)  # type: ignore[name-defined]
+                        else:
+                            subprocess.Popen(["xdg-open", filename])
+                except Exception:
+                    # Nie psujemy zapisu, jeśli nie da się otworzyć podglądu.
+                    pass
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie udało się zapisać PDF: {e}")
 
     rep_generate_btn = ttk.Button(rep_btns, text="Generuj raport", command=on_generate_report)
     rep_generate_btn.pack(side=tk.LEFT)
-    rep_save_btn = ttk.Button(rep_btns, text="Zapisz raport (TXT)", command=on_save_report_txt)
+    rep_save_btn = ttk.Button(rep_btns, text="Zapisz raport (DOCX)", command=on_save_report_docx)
     rep_save_btn.pack(side=tk.LEFT, padx=(12, 0))
     rep_save_pdf_btn = ttk.Button(rep_btns, text="Zapisz raport (PDF)", command=on_save_report_pdf)
     rep_save_pdf_btn.pack(side=tk.LEFT, padx=(12, 0))
 
     # -------------------------
+    # Breeding plan tab
+    # -------------------------
+    ttk.Label(tab_breeding, text="Plan hodowlany", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
+    ttk.Label(
+        tab_breeding,
+        text="Dobór par (samica + samiec) z rankingiem minimalnego ryzyka inbredu potomka (Wright F). "
+        "Filtrowanie: linia LB/LC oraz wiek.",
+        foreground=colors.MUTED,
+        wraplength=1000,
+        justify="left",
+    ).pack(anchor="w", pady=(6, 0))
+
+    plan_main = ttk.Frame(tab_breeding)
+    plan_main.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(14, 0))
+
+    plan_left = ttk.Frame(plan_main)
+    plan_left.pack(side=tk.LEFT, fill=tk.Y, expand=False, pady=(0, 0), padx=(0, 14))
+
+    plan_right = ttk.Frame(plan_main)
+    plan_right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+    # Risk calculation settings
+    plan_risk_unbounded_var = tk.BooleanVar(value=False)
+    plan_risk_depth_var = tk.StringVar(value="4")
+
+    plan_risk_cb = ttk.Checkbutton(
+        plan_left,
+        text="Ryzyko bez limitu (do founderów)",
+        variable=plan_risk_unbounded_var,
+        state="disabled",
+    )
+    plan_risk_cb.pack(anchor="w", pady=(0, 6))
+
+    plan_risk_depth_row = ttk.Frame(plan_left)
+    plan_risk_depth_row.pack(anchor="w", pady=(0, 10), fill=tk.X)
+    ttk.Label(plan_risk_depth_row, text="Max pokoleń (gdy limit):", foreground=colors.MUTED).pack(side=tk.LEFT)
+    plan_risk_depth_entry = ttk.Entry(plan_risk_depth_row, textvariable=plan_risk_depth_var, width=8, state="disabled")
+    plan_risk_depth_entry.pack(side=tk.LEFT, padx=(8, 0))
+
+    def _sync_plan_risk_depth_state() -> None:
+        depth_state = "disabled" if bool(plan_risk_unbounded_var.get()) else "normal"
+        plan_risk_depth_entry.configure(state=depth_state)
+
+    _sync_plan_risk_depth_state()
+    plan_risk_unbounded_var.trace_add("write", lambda *_args: _sync_plan_risk_depth_state())
+
+    # Single pair calculation inputs
+    plan_pair_frame = ttk.LabelFrame(plan_left, text="Policz ryzyko dla pary", padding=10)
+    plan_pair_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 14))
+
+    ttk.Label(plan_pair_frame, text="Samica (F) — ID: ", foreground=colors.MUTED).grid(row=0, column=0, sticky="w")
+    plan_dam_id_var = tk.StringVar(value="")
+    plan_dam_id_entry = ttk.Entry(plan_pair_frame, textvariable=plan_dam_id_var, width=16, state="disabled")
+    plan_dam_id_entry.grid(row=0, column=1, sticky="w", padx=(8, 0))
+
+    ttk.Label(plan_pair_frame, text="Samiec (M) — ID: ", foreground=colors.MUTED).grid(row=1, column=0, sticky="w", pady=(6, 0))
+    plan_sire_id_var = tk.StringVar(value="")
+    plan_sire_id_entry = ttk.Entry(plan_pair_frame, textvariable=plan_sire_id_var, width=16, state="disabled")
+    plan_sire_id_entry.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
+
+    plan_calc_pair_result_var = tk.StringVar(value="Ryzyko F( potomek ) = -")
+    ttk.Label(plan_pair_frame, textvariable=plan_calc_pair_result_var, foreground=colors.TEXT).grid(
+        row=2, column=0, columnspan=2, sticky="w", pady=(10, 0)
+    )
+
+    def _set_plan_status(msg: str) -> None:
+        status_var.set(msg)
+        try:
+            root.update_idletasks()
+        except Exception:
+            pass
+
+    def _norm_line(v: object) -> str:
+        if v is None:
+            return "NA"
+        if isinstance(v, float) and v != v:
+            return "NA"
+        s = str(v).strip().upper()
+        return s if s in {"LB", "LC"} else "NA"
+
+    def on_calc_plan_pair() -> None:
+        people = state.get("people")
+        df_std = state.get("df_std")
+        if not people or df_std is None:
+            messagebox.showinfo("Info", "Najpierw wczytaj bazę.")
+            return
+
+        dam_id = str(plan_dam_id_var.get()).strip()
+        sire_id = str(plan_sire_id_var.get()).strip()
+        if not dam_id or not sire_id:
+            messagebox.showerror("Błąd", "Podaj ID samicy i samca.")
+            return
+        if dam_id not in people or sire_id not in people:
+            messagebox.showerror("Błąd", "Wybrane ID nie istnieje w wczytanych danych.")
+            return
+
+        try:
+            max_back = None if bool(plan_risk_unbounded_var.get()) else int(str(plan_risk_depth_var.get()).strip())
+        except Exception:
+            messagebox.showerror("Błąd", "Max pokoleń musi być liczbą całkowitą.")
+            return
+        if max_back is not None and max_back < 0:
+            messagebox.showerror("Błąd", "Max pokoleń nie może być ujemne.")
+            return
+
+        pairs = [(sire_id, dam_id)]
+        try:
+            F_off = batch_offspring_inbreeding_F_from_parent_pairs(
+                pairs,
+                people,
+                max_generations_back=max_back,
+            )[0]
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie mogę policzyć F potomka: {e}")
+            return
+
+        dam_line = _norm_line(getattr(people.get(dam_id), "line", None))
+        sire_line = _norm_line(getattr(people.get(sire_id), "line", None))
+        plan_calc_pair_result_var.set(f"Ryzyko F( potomek ) = {F_off:.6f} (dam line={dam_line}, sire line={sire_line})")
+        _set_plan_status("Gotowe: policzono ryzyko pary.")
+
+    plan_calc_pair_btn = ttk.Button(plan_pair_frame, text="Policz ryzyko", command=on_calc_plan_pair, state="disabled")
+    plan_calc_pair_btn.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+
+    # Ranking / suggestion
+    plan_rank_frame = ttk.LabelFrame(plan_left, text="Podpowiedz pary (TOP-N)", padding=10)
+    plan_rank_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 14))
+
+    ttk.Label(plan_rank_frame, text="Linia (dla obu rodziców):", foreground=colors.MUTED).pack(anchor="w")
+    plan_line_filter_var = tk.StringVar(value="Bez filtra")
+    plan_line_filter_combo = ttk.Combobox(
+        plan_rank_frame,
+        textvariable=plan_line_filter_var,
+        state="disabled",
+        values=["Bez filtra", "LB", "LC", "LB+LC", "NA"],
+        width=16,
+    )
+    plan_line_filter_combo.pack(anchor="w", pady=(6, 0))
+
+    ttk.Label(plan_rank_frame, text="Wiek (lat) — min:", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
+    plan_min_age_var = tk.StringVar(value="0")
+    plan_min_age_entry = ttk.Entry(plan_rank_frame, textvariable=plan_min_age_var, width=8, state="disabled")
+    plan_min_age_entry.pack(anchor="w", pady=(2, 0))
+
+    ttk.Label(plan_rank_frame, text="Wiek (lat) — max:", foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
+    plan_max_age_var = tk.StringVar(value="80")
+    plan_max_age_entry = ttk.Entry(plan_rank_frame, textvariable=plan_max_age_var, width=8, state="disabled")
+    plan_max_age_entry.pack(anchor="w", pady=(2, 0))
+
+    ttk.Label(plan_rank_frame, text="Limit kandydatów (dla wydajności):", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
+    plan_candidate_limit_var = tk.StringVar(value="25")
+    plan_candidate_limit_entry = ttk.Entry(plan_rank_frame, textvariable=plan_candidate_limit_var, width=8, state="disabled")
+    plan_candidate_limit_entry.pack(anchor="w", pady=(2, 0))
+
+    ttk.Label(plan_rank_frame, text="TOP N par:", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
+    plan_top_n_var = tk.StringVar(value="20")
+    plan_top_n_entry = ttk.Entry(plan_rank_frame, textvariable=plan_top_n_var, width=8, state="disabled")
+    plan_top_n_entry.pack(anchor="w", pady=(2, 0))
+
+    # Goals / diversity constraints
+    plan_diversity_frame = ttk.LabelFrame(plan_rank_frame, text="Cele różnorodności", padding=10)
+    plan_diversity_frame.pack(anchor="w", fill=tk.X, pady=(12, 0))
+
+    plan_goal_mean_enabled_var = tk.BooleanVar(value=False)
+    plan_goal_mean_enabled_cb = ttk.Checkbutton(
+        plan_diversity_frame,
+        text="Cel: średnie F potomka <=",
+        variable=plan_goal_mean_enabled_var,
+        state="disabled",
+    )
+    plan_goal_mean_enabled_cb.pack(anchor="w")
+    plan_goal_mean_F_var = tk.StringVar(value="0.05")
+    plan_goal_mean_F_entry = ttk.Entry(plan_diversity_frame, textvariable=plan_goal_mean_F_var, width=8, state="disabled")
+    plan_goal_mean_F_entry.pack(anchor="w", pady=(2, 0), padx=(18, 0))
+
+    plan_goal_max_enabled_var = tk.BooleanVar(value=False)
+    plan_goal_max_enabled_cb = ttk.Checkbutton(
+        plan_diversity_frame,
+        text="Cel: tylko pary z F potomka <=",
+        variable=plan_goal_max_enabled_var,
+        state="disabled",
+    )
+    plan_goal_max_enabled_cb.pack(anchor="w", pady=(8, 0))
+    plan_goal_max_F_var = tk.StringVar(value="0.10")
+    plan_goal_max_F_entry = ttk.Entry(plan_diversity_frame, textvariable=plan_goal_max_F_var, width=8, state="disabled")
+    plan_goal_max_F_entry.pack(anchor="w", pady=(2, 0), padx=(18, 0))
+
+    ttk.Label(plan_diversity_frame, text="Limit użyć samicy (max):", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
+    plan_max_uses_dam_var = tk.StringVar(value="3")
+    plan_max_uses_dam_entry = ttk.Entry(plan_diversity_frame, textvariable=plan_max_uses_dam_var, width=8, state="disabled")
+    plan_max_uses_dam_entry.pack(anchor="w", pady=(2, 0), padx=(18, 0))
+
+    ttk.Label(plan_diversity_frame, text="Limit użyć samca (max):", foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
+    plan_max_uses_sire_var = tk.StringVar(value="3")
+    plan_max_uses_sire_entry = ttk.Entry(plan_diversity_frame, textvariable=plan_max_uses_sire_var, width=8, state="disabled")
+    plan_max_uses_sire_entry.pack(anchor="w", pady=(2, 0), padx=(18, 0))
+
+    plan_suggest_result_var = tk.StringVar(value="")
+    ttk.Label(plan_rank_frame, textvariable=plan_suggest_result_var, foreground=colors.TEXT).pack(anchor="w", pady=(10, 0))
+
+    def _clear_plan_tree() -> None:
+        for item in plan_tree.get_children():
+            plan_tree.delete(item)
+
+    def on_suggest_pairs() -> None:
+        people = state.get("people")
+        df_std = state.get("df_std")
+        if not people or df_std is None:
+            messagebox.showinfo("Info", "Najpierw wczytaj bazę.")
+            return
+
+        try:
+            top_n = int(str(plan_top_n_var.get()).strip())
+        except Exception:
+            top_n = 20
+        if top_n <= 0:
+            top_n = 20
+
+        try:
+            max_back = None if bool(plan_risk_unbounded_var.get()) else int(str(plan_risk_depth_var.get()).strip())
+        except Exception:
+            messagebox.showerror("Błąd", "Max pokoleń musi być liczbą całkowitą.")
+            return
+        if max_back is not None and max_back < 0:
+            messagebox.showerror("Błąd", "Max pokoleń nie może być ujemne.")
+            return
+
+        plan_suggest_result_var.set("Liczenie…")
+        _set_plan_status("Liczenie rankingów par…")
+        try:
+            # Diversity constraints
+            try:
+                max_dam_uses = int(str(plan_max_uses_dam_var.get()).strip())
+            except Exception:
+                max_dam_uses = 3
+            try:
+                max_sire_uses = int(str(plan_max_uses_sire_var.get()).strip())
+            except Exception:
+                max_sire_uses = 3
+            max_dam_uses = max(1, max_dam_uses)
+            max_sire_uses = max(1, max_sire_uses)
+
+            goal_mean_enabled = bool(plan_goal_mean_enabled_var.get())
+            goal_max_enabled = bool(plan_goal_max_enabled_var.get())
+            try:
+                goal_mean_F = float(str(plan_goal_mean_F_var.get()).strip())
+            except Exception:
+                goal_mean_F = 0.05
+            try:
+                goal_max_F = float(str(plan_goal_max_F_var.get()).strip())
+            except Exception:
+                goal_max_F = 0.10
+
+            try:
+                amin = int(str(plan_min_age_var.get()).strip())
+                amax = int(str(plan_max_age_var.get()).strip())
+            except Exception:
+                amin, amax = 0, 80
+            try:
+                cand_limit = int(str(plan_candidate_limit_var.get()).strip())
+            except Exception:
+                cand_limit = 25
+
+            pair_result = suggest_pairs_with_constraints(
+                df_std=df_std,  # type: ignore[arg-type]
+                people=people,  # type: ignore[arg-type]
+                min_age=amin,
+                max_age=amax,
+                line_mode=str(plan_line_filter_var.get()),
+                candidate_limit=cand_limit,
+                top_n=top_n,
+                max_generations_back=max_back,
+                max_dam_uses=max_dam_uses,
+                max_sire_uses=max_sire_uses,
+                goal_max_enabled=goal_max_enabled,
+                goal_max_F=goal_max_F,
+            )
+
+            accepted = pair_result.suggestions
+
+            _clear_plan_tree()
+            for row in accepted:
+                plan_tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        row.dam_id,
+                        row.dam_line,
+                        row.dam_age,
+                        row.sire_id,
+                        row.sire_line,
+                        row.sire_age,
+                        f"{row.offspring_F:.6f}",
+                    ),
+                )
+
+            if accepted:
+                mean_F = pair_result.mean_F
+                max_F = pair_result.max_F
+                warn_mean = goal_mean_enabled and mean_F > goal_mean_F
+                warn_txt = " UWAGA: średnie F przekracza cel." if warn_mean else ""
+                plan_suggest_result_var.set(
+                    f"Gotowe: TOP {len(accepted)}/{top_n} par. Śr. F={mean_F:.6f}, max F={max_F:.6f}.{warn_txt}"
+                )
+            else:
+                plan_suggest_result_var.set("Brak par spełniających ograniczenia (TOP=0).")
+            _set_plan_status("Gotowe: podpowiedź par.")
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się policzyć rankingów par: {e}")
+            plan_suggest_result_var.set("")
+            _set_plan_status("Błąd: ranking par.")
+
+    plan_suggest_btn = ttk.Button(plan_rank_frame, text="Podpowiedz pary", command=on_suggest_pairs, state="disabled")
+    plan_suggest_btn.pack(anchor="w", pady=(12, 0))
+
+    # Results tree
+    plan_tree_columns = ("dam_id", "dam_line", "dam_age", "sire_id", "sire_line", "sire_age", "off_F")
+    plan_tree = ttk.Treeview(
+        plan_right,
+        columns=plan_tree_columns,
+        show="headings",
+        height=18,
+        style="Treeview",
+    )
+    plan_tree.heading("dam_id", text="Samica (ID)")
+    plan_tree.heading("dam_line", text="Samica (LB/LC)")
+    plan_tree.heading("dam_age", text="Samica (wiek)")
+    plan_tree.heading("sire_id", text="Samiec (ID)")
+    plan_tree.heading("sire_line", text="Samiec (LB/LC)")
+    plan_tree.heading("sire_age", text="Samiec (wiek)")
+    plan_tree.heading("off_F", text="Ryzyko: F potomka")
+
+    for col in plan_tree_columns:
+        plan_tree.column(col, width=120, anchor="w")
+
+    plan_tree_vsb = ttk.Scrollbar(plan_right, orient="vertical", command=plan_tree.yview)
+    plan_tree.configure(yscrollcommand=plan_tree_vsb.set)
+    plan_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    plan_tree_vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+    # -------------------------
     # Settings (domyślne zachowanie UI)
     # -------------------------
-    ttk.Label(tab_settings, text="Ustawienia", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
-
-    settings_desc = (
-        "Ustawienia sterują domyślnymi wartościami w zakładkach "
-        "(bez wpływu na dane wczytane do bazy)."
-    )
-    ttk.Label(tab_settings, text=settings_desc, foreground=colors.MUTED, wraplength=900, justify="left").pack(
-        anchor="w", pady=(6, 0)
-    )
-
     settings_divider = ttk.Separator(tab_settings, orient="horizontal")
-    settings_divider.pack(fill=tk.X, pady=(14, 10))
+    settings_divider.pack(fill=tk.X, pady=(2, 10))
 
     # Rodowód (graf przodków)
     ttk.Label(tab_settings, text="Rodowód (graf przodków)", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
@@ -930,6 +1096,98 @@ def run_tk_pro() -> None:
 
     _sync_settings_pop_depth_state()
     settings_pop_unbounded_var.trace_add("write", lambda *_args: _sync_settings_pop_depth_state())
+
+    settings_divider4 = ttk.Separator(tab_settings, orient="horizontal")
+    settings_divider4.pack(fill=tk.X, pady=(14, 10))
+
+    # Raporty
+    ttk.Label(tab_settings, text="Raporty", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    ttk.Checkbutton(
+        tab_settings,
+        text="Domyślnie: dołączaj wykresy w eksporcie raportu (DOCX/PDF)",
+        variable=rep_default_include_plots_var,
+    ).pack(anchor="w", pady=(6, 0))
+    ttk.Checkbutton(
+        tab_settings,
+        text="Domyślnie: automatyczny podgląd pliku PDF po zapisie",
+        variable=rep_auto_preview_pdf_var,
+    ).pack(anchor="w", pady=(6, 0))
+
+    settings_divider5 = ttk.Separator(tab_settings, orient="horizontal")
+    settings_divider5.pack(fill=tk.X, pady=(14, 10))
+
+    # Plan hodowlany
+    ttk.Label(tab_settings, text="Plan hodowlany", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+
+    settings_plan_unbounded_var = tk.BooleanVar(value=False)
+    settings_plan_depth_var = tk.StringVar(value="4")
+    settings_plan_min_age_var = tk.StringVar(value="0")
+    settings_plan_max_age_var = tk.StringVar(value="80")
+    settings_plan_candidate_limit_var = tk.StringVar(value="25")
+    settings_plan_top_n_var = tk.StringVar(value="20")
+    settings_plan_max_dam_uses_var = tk.StringVar(value="3")
+    settings_plan_max_sire_uses_var = tk.StringVar(value="3")
+    settings_plan_goal_mean_enabled_var = tk.BooleanVar(value=False)
+    settings_plan_goal_mean_f_var = tk.StringVar(value="0.05")
+    settings_plan_goal_max_enabled_var = tk.BooleanVar(value=False)
+    settings_plan_goal_max_f_var = tk.StringVar(value="0.10")
+
+    ttk.Checkbutton(
+        tab_settings,
+        text="Domyślnie: ryzyko bez limitu (do founderów)",
+        variable=settings_plan_unbounded_var,
+    ).pack(anchor="w", pady=(6, 0))
+
+    plan_depth_settings_row = ttk.Frame(tab_settings)
+    plan_depth_settings_row.pack(anchor="w", pady=(6, 0))
+    ttk.Label(plan_depth_settings_row, text="Domyślny max pokoleń (Plan hodowlany):").pack(side=tk.LEFT)
+    settings_plan_depth_entry = ttk.Entry(plan_depth_settings_row, textvariable=settings_plan_depth_var, width=8)
+    settings_plan_depth_entry.pack(side=tk.LEFT, padx=(8, 0))
+
+    def _sync_settings_plan_depth_state() -> None:
+        st = "disabled" if bool(settings_plan_unbounded_var.get()) else "normal"
+        settings_plan_depth_entry.configure(state=st)
+
+    _sync_settings_plan_depth_state()
+    settings_plan_unbounded_var.trace_add("write", lambda *_args: _sync_settings_plan_depth_state())
+
+    plan_age_settings_row = ttk.Frame(tab_settings)
+    plan_age_settings_row.pack(anchor="w", pady=(6, 0))
+    ttk.Label(plan_age_settings_row, text="Wiek min/max (Plan):").pack(side=tk.LEFT)
+    ttk.Entry(plan_age_settings_row, textvariable=settings_plan_min_age_var, width=6).pack(side=tk.LEFT, padx=(8, 4))
+    ttk.Entry(plan_age_settings_row, textvariable=settings_plan_max_age_var, width=6).pack(side=tk.LEFT, padx=(0, 0))
+
+    plan_limits_settings_row = ttk.Frame(tab_settings)
+    plan_limits_settings_row.pack(anchor="w", pady=(6, 0))
+    ttk.Label(plan_limits_settings_row, text="Limit kandydatów / TOP N:").pack(side=tk.LEFT)
+    ttk.Entry(plan_limits_settings_row, textvariable=settings_plan_candidate_limit_var, width=6).pack(side=tk.LEFT, padx=(8, 4))
+    ttk.Entry(plan_limits_settings_row, textvariable=settings_plan_top_n_var, width=6).pack(side=tk.LEFT, padx=(0, 0))
+
+    plan_uses_settings_row = ttk.Frame(tab_settings)
+    plan_uses_settings_row.pack(anchor="w", pady=(6, 0))
+    ttk.Label(plan_uses_settings_row, text="Max użyć (samica / samiec):").pack(side=tk.LEFT)
+    ttk.Entry(plan_uses_settings_row, textvariable=settings_plan_max_dam_uses_var, width=6).pack(side=tk.LEFT, padx=(8, 4))
+    ttk.Entry(plan_uses_settings_row, textvariable=settings_plan_max_sire_uses_var, width=6).pack(side=tk.LEFT, padx=(0, 0))
+
+    ttk.Checkbutton(
+        tab_settings,
+        text="Cel: włącz próg średniego F",
+        variable=settings_plan_goal_mean_enabled_var,
+    ).pack(anchor="w", pady=(6, 0))
+    goal_mean_row = ttk.Frame(tab_settings)
+    goal_mean_row.pack(anchor="w", pady=(2, 0))
+    ttk.Label(goal_mean_row, text="Domyślne średnie F <= ").pack(side=tk.LEFT)
+    ttk.Entry(goal_mean_row, textvariable=settings_plan_goal_mean_f_var, width=8).pack(side=tk.LEFT, padx=(8, 0))
+
+    ttk.Checkbutton(
+        tab_settings,
+        text="Cel: włącz próg maksymalnego F",
+        variable=settings_plan_goal_max_enabled_var,
+    ).pack(anchor="w", pady=(6, 0))
+    goal_max_row = ttk.Frame(tab_settings)
+    goal_max_row.pack(anchor="w", pady=(2, 0))
+    ttk.Label(goal_max_row, text="Domyślne max F <= ").pack(side=tk.LEFT)
+    ttk.Entry(goal_max_row, textvariable=settings_plan_goal_max_f_var, width=8).pack(side=tk.LEFT, padx=(8, 0))
 
     # -------------------------
     # Shared app state
@@ -3212,6 +3470,33 @@ def run_tk_pro() -> None:
         pop_comp_cb.configure(state=st)
         pop_founders_cb.configure(state=st)
         pop_lines_cb.configure(state=st)
+
+        # Plan hodowlany (dobór par)
+        plan_risk_cb.configure(state=st)
+        plan_dam_id_entry.configure(state=st)
+        plan_sire_id_entry.configure(state=st)
+        plan_calc_pair_btn.configure(state=st)
+        plan_min_age_entry.configure(state=st)
+        plan_max_age_entry.configure(state=st)
+        plan_candidate_limit_entry.configure(state=st)
+        plan_top_n_entry.configure(state=st)
+        plan_suggest_btn.configure(state=st)
+        plan_goal_mean_enabled_cb.configure(state=st)
+        plan_goal_mean_F_entry.configure(state=st)
+        plan_goal_max_enabled_cb.configure(state=st)
+        plan_goal_max_F_entry.configure(state=st)
+        plan_max_uses_dam_entry.configure(state=st)
+        plan_max_uses_sire_entry.configure(state=st)
+
+        # Combobox: dla enabled używamy "readonly", dla disabled: "disabled"
+        plan_line_filter_combo.configure(state="readonly" if enabled else "disabled")
+
+        plan_depth_state = "disabled" if bool(plan_risk_unbounded_var.get()) else st
+        plan_risk_depth_entry.configure(state=plan_depth_state)
+
+        if enabled:
+            # Tk potrafi nie zaktualizować stanu wejść po trace; wymuszamy sync (tylko gdy włączone).
+            _sync_plan_risk_depth_state()
         if enabled:
             # Ustaw wartości domyślne z zakładki "Ustawienia".
             readable_anc_var.set(bool(settings_anc_readable_var.get()))
@@ -3230,6 +3515,20 @@ def run_tk_pro() -> None:
             mating_female_limit_var.set("200")
             mating_current_year_note_var.set("")
             mating_pair_stats_var.set("")
+
+            # Domyślne parametry Planu hodowlanego.
+            plan_risk_unbounded_var.set(bool(settings_plan_unbounded_var.get()))
+            plan_risk_depth_var.set(str(settings_plan_depth_var.get()).strip() or "4")
+            plan_min_age_var.set(str(settings_plan_min_age_var.get()).strip() or "0")
+            plan_max_age_var.set(str(settings_plan_max_age_var.get()).strip() or "80")
+            plan_candidate_limit_var.set(str(settings_plan_candidate_limit_var.get()).strip() or "25")
+            plan_top_n_var.set(str(settings_plan_top_n_var.get()).strip() or "20")
+            plan_max_uses_dam_var.set(str(settings_plan_max_dam_uses_var.get()).strip() or "3")
+            plan_max_uses_sire_var.set(str(settings_plan_max_sire_uses_var.get()).strip() or "3")
+            plan_goal_mean_enabled_var.set(bool(settings_plan_goal_mean_enabled_var.get()))
+            plan_goal_mean_F_var.set(str(settings_plan_goal_mean_f_var.get()).strip() or "0.05")
+            plan_goal_max_enabled_var.set(bool(settings_plan_goal_max_enabled_var.get()))
+            plan_goal_max_F_var.set(str(settings_plan_goal_max_f_var.get()).strip() or "0.10")
 
         _sync_pop_all_btn()
 

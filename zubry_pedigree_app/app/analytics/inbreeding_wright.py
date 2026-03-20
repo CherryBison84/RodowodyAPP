@@ -25,6 +25,94 @@ def _get_parents(people: Dict[str, Person], person_id: str) -> tuple[Optional[st
     return p.father_id, p.mother_id
 
 
+def _sanitize_depth(max_generations_back: int | None) -> int | None:
+    if max_generations_back is None:
+        return None
+    depth = int(max_generations_back)
+    return max(0, depth)
+
+
+def _resolve_person_depth(*, person_id: str, people: Dict[str, Person], max_generations_back: int | None) -> int:
+    depth_or_none = _sanitize_depth(max_generations_back)
+    if depth_or_none is not None:
+        return depth_or_none
+    base_depth = _max_generations_to_founders(person_id=person_id, people=people)
+    # Skala "remaining" odwzorowuje łączną długość ścieżek do wspólnych przodków.
+    return int(2 * base_depth + 2)
+
+
+def _resolve_offspring_depth(
+    *,
+    father_id: str,
+    mother_id: str,
+    people: Dict[str, Person],
+    max_generations_back: int | None,
+) -> int:
+    depth_or_none = _sanitize_depth(max_generations_back)
+    if depth_or_none is not None:
+        return depth_or_none
+    base_depth_f = _max_generations_to_founders(person_id=father_id, people=people)
+    base_depth_m = _max_generations_to_founders(person_id=mother_id, people=people)
+    return int(2 * max(int(base_depth_f), int(base_depth_m)) + 2)
+
+
+def _resolve_batch_offspring_depth(
+    *,
+    parent_pairs: list[tuple[str, str]],
+    people: Dict[str, Person],
+    max_generations_back: int | None,
+) -> int:
+    depth_or_none = _sanitize_depth(max_generations_back)
+    if depth_or_none is not None:
+        return depth_or_none
+
+    unique_ids: set[str] = set()
+    for sire, dam in parent_pairs:
+        unique_ids.add(sire)
+        unique_ids.add(dam)
+
+    base_depth = 0
+    for pid in unique_ids:
+        base_depth = max(base_depth, _max_generations_to_founders(person_id=pid, people=people))
+    # Potomek dokłada jedno przejście od "proband" do rodziców.
+    return int(2 * (base_depth + 1) + 2)
+
+
+def _build_phi_f(people: Dict[str, Person]):
+    @lru_cache(maxsize=None)
+    def phi(a: str, b: str, remaining: int) -> float:
+        if remaining < 0:
+            return 0.0
+
+        if a == b:
+            return (1.0 + F(a, remaining)) / 2.0
+
+        if remaining == 0:
+            return 0.0
+
+        sire_a, dam_a = _get_parents(people, a)
+        if sire_a is None and dam_a is None:
+            sire_b, dam_b = _get_parents(people, b)
+            t1 = phi(a, sire_b, remaining - 1) if sire_b is not None else 0.0
+            t2 = phi(a, dam_b, remaining - 1) if dam_b is not None else 0.0
+            return 0.5 * (t1 + t2)
+
+        t1 = phi(sire_a, b, remaining - 1) if sire_a is not None else 0.0
+        t2 = phi(dam_a, b, remaining - 1) if dam_a is not None else 0.0
+        return 0.5 * (t1 + t2)
+
+    @lru_cache(maxsize=None)
+    def F(x: str, remaining: int) -> float:
+        if remaining < 1:
+            return 0.0
+        sire_x, dam_x = _get_parents(people, x)
+        if sire_x is None or dam_x is None:
+            return 0.0
+        return phi(sire_x, dam_x, remaining - 1)
+
+    return phi, F
+
+
 def wright_inbreeding_F(
     person_id: str,
     people: Dict[str, Person],
@@ -44,64 +132,12 @@ def wright_inbreeding_F(
     Traktowanie brakujących rodziców:
     - brak ojca/matki = osobnik jak founder => wkład IBD do Phi z innymi wynosi 0
     """
-    if max_generations_back is None:
-        # Wright F(i)=Phi(sire(i), dam(i)).
-        # W naszym rekurencyjnym liczeniu parametry "remaining" odpowiadają łącznej
-        # głębokości ścieżek prowadzących do wspólnych przodków (n1+n2),
-        # więc do wartości "pokoleń do founderów" dodajemy skalowanie.
-        base_depth = _max_generations_to_founders(person_id=person_id, people=people)
-        depth = int(2 * base_depth + 2)
-    else:
-        depth = int(max_generations_back)
-        if depth < 0:
-            depth = 0
-
-    @lru_cache(maxsize=None)
-    def phi(a: str, b: str, remaining: int) -> float:
-        """
-        Coancestry (Phi) z ograniczeniem liczby pokoleń wstecz.
-
-        Kluczowa poprawka względem wersji początkowej:
-        - nie rekurujemy zawsze tylko po rodzicach jednego argumentu,
-          bo to zaniża wynik, gdy drugi osobnik jest "founderem",
-          ale pierwszy jest jego potomkiem.
-        """
-        if remaining < 0:
-            return 0.0
-
-        if a == b:
-            # Phi(a,a) = (1 + F(a)) / 2
-            return (1.0 + F(a, remaining)) / 2.0
-
-        if remaining == 0:
-            # Różne osoby bez możliwości zejścia w rodowodzie.
-            return 0.0
-
-        sire_a, dam_a = _get_parents(people, a)
-
-        # Jeśli `a` nie ma zarejestrowanych rodziców (oba None), rekurujemy po `b`,
-        # żeby złapać przypadki, gdy `a` jest descendantem `b` przy founderowym `b`.
-        if sire_a is None and dam_a is None:
-            sire_b, dam_b = _get_parents(people, b)
-            t1 = phi(a, sire_b, remaining - 1) if sire_b is not None else 0.0
-            t2 = phi(a, dam_b, remaining - 1) if dam_b is not None else 0.0
-            return 0.5 * (t1 + t2)
-
-        t1 = phi(sire_a, b, remaining - 1) if sire_a is not None else 0.0
-        t2 = phi(dam_a, b, remaining - 1) if dam_a is not None else 0.0
-        return 0.5 * (t1 + t2)
-
-    @lru_cache(maxsize=None)
-    def F(x: str, remaining: int) -> float:
-        if remaining < 1:
-            # Brak możliwości zejścia do rodziców.
-            return 0.0
-
-        sire_x, dam_x = _get_parents(people, x)
-        if sire_x is None or dam_x is None:
-            return 0.0
-
-        return phi(sire_x, dam_x, remaining - 1)
+    depth = _resolve_person_depth(
+        person_id=person_id,
+        people=people,
+        max_generations_back=max_generations_back,
+    )
+    _phi, F = _build_phi_f(people)
 
     father_id, mother_id = _get_parents(people, person_id)
     father_name: Optional[str] = None
@@ -124,6 +160,39 @@ def wright_inbreeding_F(
         father_name=father_name,
         mother_name=mother_name,
     )
+
+
+def wright_offspring_inbreeding_F_from_parents(
+    father_id: str,
+    mother_id: str,
+    people: Dict[str, Person],
+    *,
+    max_generations_back: int | None,
+) -> float:
+    """
+    Liczy inbred potomka o rodzicach (father_id, mother_id) jako:
+        F_offspring = Phi(father_id, mother_id)
+
+    Implementacja jest spójna z wewnętrzną logiką rekurencji używaną w `wright_inbreeding_F`.
+    """
+    if not father_id or not mother_id:
+        return 0.0
+    if father_id == mother_id:
+        # W przypadku self-cross: F_off = Phi(x, x) = (1 + F(x)) / 2.
+        # Obliczamy F(x) jak w standardowej procedurze (w zależności od limitu).
+        return (1.0 + wright_inbreeding_F(person_id=father_id, people=people, max_generations_back=max_generations_back).F) / 2.0
+
+    depth = _resolve_offspring_depth(
+        father_id=father_id,
+        mother_id=mother_id,
+        people=people,
+        max_generations_back=max_generations_back,
+    )
+    phi, _F = _build_phi_f(people)
+    F_off = phi(father_id, mother_id, depth)
+    if abs(F_off) < 1e-15:
+        return 0.0
+    return float(F_off)
 
 
 def _max_generations_to_founders(*, person_id: str, people: Dict[str, Person], max_visits: int = 500_000) -> int:
@@ -187,65 +256,18 @@ def batch_offspring_inbreeding_F_from_parent_pairs(
     if not parent_pairs:
         return []
 
-    # Wyznaczamy głębokość rekurencji analogicznie do `wright_inbreeding_F`.
-    if max_generations_back is None:
-        # base_depth: maks. głębokość do founderów w liniach rodziców.
-        unique_ids: set[str] = set()
-        for sire, dam in parent_pairs:
-            unique_ids.add(sire)
-            unique_ids.add(dam)
-
-        base_depth = 0
-        for pid in unique_ids:
-            base_depth = max(base_depth, _max_generations_to_founders(person_id=pid, people=people))
-        # Dla potomka istnieje dodatkowe "pokolenie" (od potomka do wskazanych rodziców),
-        # więc korygujemy base_depth o +1, analogicznie do scenariusza "offspring placeholder".
-        depth = int(2 * (base_depth + 1) + 2)
-    else:
-        depth = int(max_generations_back)
-        if depth < 0:
-            depth = 0
+    depth = _resolve_batch_offspring_depth(
+        parent_pairs=parent_pairs,
+        people=people,
+        max_generations_back=max_generations_back,
+    )
 
     # W `wright_inbreeding_F` finalnie jest `F(person_id, depth)`,
     # a w `F()` jest wywołanie `phi(..., remaining - 1)`.
     # Dla potomka będącego "rodzicem-sztucznym" oznacza to, że phi ma remaining = depth - 1.
     remaining_for_phi = int(depth - 1)
 
-    @lru_cache(maxsize=None)
-    def phi(a: str, b: str, remaining: int) -> float:
-        if remaining < 0:
-            return 0.0
-
-        if a == b:
-            # Phi(a,a) = (1 + F(a)) / 2
-            return (1.0 + F(a, remaining)) / 2.0
-
-        if remaining == 0:
-            return 0.0
-
-        sire_a, dam_a = _get_parents(people, a)
-
-        if sire_a is None and dam_a is None:
-            # founder-stop dla `a`: "zejdź" po `b`, żeby znaleźć wspólnego przodka.
-            sire_b, dam_b = _get_parents(people, b)
-            t1 = phi(a, sire_b, remaining - 1) if sire_b is not None else 0.0
-            t2 = phi(a, dam_b, remaining - 1) if dam_b is not None else 0.0
-            return 0.5 * (t1 + t2)
-
-        t1 = phi(sire_a, b, remaining - 1) if sire_a is not None else 0.0
-        t2 = phi(dam_a, b, remaining - 1) if dam_a is not None else 0.0
-        return 0.5 * (t1 + t2)
-
-    @lru_cache(maxsize=None)
-    def F(x: str, remaining: int) -> float:
-        if remaining < 1:
-            return 0.0
-
-        sire_x, dam_x = _get_parents(people, x)
-        if sire_x is None or dam_x is None:
-            return 0.0
-
-        return phi(sire_x, dam_x, remaining - 1)
+    phi, _F = _build_phi_f(people)
 
     out: list[float] = []
     for sire, dam in parent_pairs:

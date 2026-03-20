@@ -27,6 +27,47 @@ def _clean_column_name(col: object) -> object:
     return col.replace("\n", " ").strip()
 
 
+def _optional_str(v: object) -> Optional[str]:
+    if v is None:
+        return None
+    if isinstance(v, float) and np.isnan(v):
+        return None
+    s = str(v).strip()
+    return s if s else None
+
+
+def _norm_sex(v: object) -> Optional[str]:
+    s = _optional_str(v)
+    if s is None:
+        return None
+    s_up = s.upper()
+    return s_up if s_up in {"M", "F"} else None
+
+
+def _norm_line(v: object) -> Optional[str]:
+    s = _optional_str(v)
+    if s is None:
+        return None
+    s_up = s.upper()
+    return s_up if s_up in {"LB", "LC"} else None
+
+
+def _drop_test_id_rows(df: pd.DataFrame, *, id_col: str, test_id: str) -> pd.DataFrame:
+    try:
+        return df[df[id_col].astype(str) != str(test_id)].reset_index(drop=True)
+    except Exception:
+        return df[df[id_col] != test_id].reset_index(drop=True)
+
+
+def _read_dataframe_from_ext(source: Path | BinaryIO, *, ext: str) -> pd.DataFrame:
+    ext = ext.lower()
+    if ext == ".csv":
+        return pd.read_csv(source)
+    if ext in {".xlsx", ".xls"}:
+        return pd.read_excel(source, sheet_name=0)
+    raise ValueError(f"Nieobsługiwany typ pliku: {ext}")
+
+
 def _parse_id(value: object) -> Optional[str]:
     """
     Excel często zapisuje ID jako float (np. 123.0) albo jako string (np. 693a).
@@ -109,13 +150,7 @@ def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 def load_dataset_from_path(path: str | Path) -> tuple[pd.DataFrame, DatasetInfo]:
     path = Path(path)
-    ext = path.suffix.lower()
-    if ext == ".csv":
-        df = pd.read_csv(path)
-    elif ext in {".xlsx", ".xls"}:
-        df = pd.read_excel(path, sheet_name=0)
-    else:
-        raise ValueError(f"Nieobsługiwany typ pliku: {ext}")
+    df = _read_dataframe_from_ext(path, ext=path.suffix)
 
     df_std = standardize_bison_report_dataframe(df)
     return df_std, DatasetInfo(rows=len(df_std), columns=len(df_std.columns))
@@ -123,13 +158,7 @@ def load_dataset_from_path(path: str | Path) -> tuple[pd.DataFrame, DatasetInfo]
 
 def load_dataset_from_bytes(data: bytes, filename: str) -> tuple[pd.DataFrame, DatasetInfo]:
     bio: BinaryIO = BytesIO(data)
-    ext = Path(filename).suffix.lower()
-    if ext == ".csv":
-        df = pd.read_csv(bio)
-    elif ext in {".xlsx", ".xls"}:
-        df = pd.read_excel(bio, sheet_name=0)
-    else:
-        raise ValueError(f"Nieobsługiwany typ pliku: {ext}")
+    df = _read_dataframe_from_ext(bio, ext=Path(filename).suffix)
 
     df_std = standardize_bison_report_dataframe(df)
     return df_std, DatasetInfo(rows=len(df_std), columns=len(df_std.columns))
@@ -142,12 +171,7 @@ def load_raw_dataframe_from_bytes(data: bytes, filename: str) -> pd.DataFrame:
     do domyślnych nazw kolumn w aplikacji.
     """
     bio: BinaryIO = BytesIO(data)
-    ext = Path(filename).suffix.lower()
-    if ext == ".csv":
-        return pd.read_csv(bio)
-    if ext in {".xlsx", ".xls"}:
-        return pd.read_excel(bio, sheet_name=0)
-    raise ValueError(f"Nieobsługiwany typ pliku: {ext}")
+    return _read_dataframe_from_ext(bio, ext=Path(filename).suffix)
 
 
 def download_bytes_from_url(url: str, *, timeout_s: float = 120.0) -> bytes:
@@ -247,34 +271,6 @@ def standardize_bison_report_dataframe_with_column_mapping(
 
     mapping_clean: dict[str, Optional[str]] = {k: _clean_mapping_val(v) for k, v in column_mapping.items()}
 
-    def _optional_str(v: object) -> Optional[str]:
-        if v is None:
-            return None
-        if isinstance(v, float) and np.isnan(v):
-            return None
-        s = str(v).strip()
-        return s if s else None
-
-    def _norm_sex(v: object) -> Optional[str]:
-        if v is None:
-            return None
-        if isinstance(v, float) and np.isnan(v):
-            return None
-        s = str(v).strip().upper()
-        if s in {"M", "F"}:
-            return s
-        return None
-
-    def _norm_line(v: object) -> Optional[str]:
-        if v is None:
-            return None
-        if isinstance(v, float) and np.isnan(v):
-            return None
-        s = str(v).strip().upper()
-        if s in {"LB", "LC"}:
-            return s
-        return None
-
     def _get_series(expected_key: str, *, required: bool) -> pd.Series:
         raw_col = mapping_clean.get(expected_key)
         if not raw_col:
@@ -328,11 +324,7 @@ def standardize_bison_report_dataframe_with_column_mapping(
 
     # Odfiltruj rekordy bez ID oraz rekord testowy.
     out = out[out["id"].notna()].reset_index(drop=True)
-    try:
-        out = out[out["id"].astype(str) != str(test_id)].reset_index(drop=True)
-    except Exception:
-        # fallback - jeśli coś pójdzie nie tak w typach
-        out = out[out["id"] != test_id].reset_index(drop=True)
+    out = _drop_test_id_rows(out, id_col="id", test_id=test_id)
 
     return out
 

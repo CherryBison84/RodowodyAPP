@@ -72,6 +72,112 @@ def _line_text_and_color(line: Optional[str]) -> Tuple[str, str]:
     return "NA", "#9aa3a2"
 
 
+def _draw_pedigree_edges(
+    *,
+    G: nx.DiGraph,
+    pos: Dict[str, Tuple[float, float]],
+    ax,
+    readable_mode: bool,
+    max_level: int,
+    edge_width: float,
+    edge_alpha: float,
+) -> None:
+    if readable_mode:
+        nx.draw_networkx_edges(
+            G,
+            pos,
+            ax=ax,
+            arrows=True,
+            arrowstyle="-|>",
+            arrowsize=12,
+            width=edge_width,
+            edge_color="#6b5b4d",
+            alpha=edge_alpha,
+            connectionstyle="arc3,rad=0.07" if max_level >= 3 else "arc3,rad=0.05",
+        )
+        return
+
+    nx.draw_networkx_edges(
+        G,
+        pos,
+        ax=ax,
+        arrows=True,
+        arrowstyle="-|>",
+        arrowsize=10,
+        width=edge_width,
+        edge_color="#4f443a",
+        alpha=edge_alpha,
+        connectionstyle="arc3,rad=0.05",
+    )
+
+
+def _draw_line_badges(
+    *,
+    ax,
+    pos: Dict[str, Tuple[float, float]],
+    line_text_map: Dict[str, str],
+    line_color_map: Dict[str, str],
+    label_font_size: int,
+    node_size: int,
+) -> None:
+    max_abs_x = max((abs(float(x)) for x, _ in pos.values()), default=1.0)
+    dx_badge = min(0.18, max(0.06, 0.05 * max_abs_x))
+    dy_badge = 0.05
+    badge_font_size = max(5, label_font_size - 2)
+    badge_size = max(45.0, float(node_size) * 0.05)
+
+    for nid, (x, y) in pos.items():
+        line_txt = line_text_map.get(nid)
+        line_color = line_color_map.get(nid)
+        if not line_txt or line_txt == "NA" or not line_color:
+            continue
+
+        bx = float(x) + dx_badge
+        by = float(y) + dy_badge
+
+        ax.scatter(
+            [bx],
+            [by],
+            s=badge_size,
+            marker="s",
+            c=[line_color],
+            edgecolors="#333333",
+            linewidths=0.6,
+            zorder=5,
+        )
+        ax.text(
+            bx,
+            by,
+            line_txt,
+            ha="center",
+            va="center",
+            fontsize=badge_font_size,
+            fontweight="bold",
+            color="white",
+            zorder=6,
+        )
+
+
+def _add_combined_legend(ax) -> None:
+    handles = [
+        Line2D([0], [0], marker="o", linestyle="None", markersize=10, markerfacecolor=_node_color("M"), markeredgecolor="#333333"),
+        Line2D([0], [0], marker="o", linestyle="None", markersize=10, markerfacecolor=_node_color("F"), markeredgecolor="#333333"),
+        Line2D([0], [0], marker="s", linestyle="None", markersize=10, markerfacecolor="#d64545", markeredgecolor="#333333"),
+        Line2D([0], [0], marker="s", linestyle="None", markersize=10, markerfacecolor="#2e8b57", markeredgecolor="#333333"),
+    ]
+    ax.legend(
+        handles,
+        ["M (ojciec)", "F (matka)", "LB", "LC"],
+        loc="upper right",
+        frameon=True,
+        fontsize=8,
+        borderpad=0.25,
+        labelspacing=0.25,
+        handletextpad=0.5,
+        ncol=2,
+    )
+
+
 def plot_ancestor_pedigree(
     person_id: str,
     levels: Dict[str, int],
@@ -218,41 +324,25 @@ def plot_ancestor_pedigree(
     ax.axis("off")
 
     total_nodes = len(levels)
-    edge_alpha = 0.55 if total_nodes <= 200 else 0.22
+    # Gdy użytkownik klika w węzły, podświetlimy też ścieżkę do przodków,
+    # więc bazowe krawędzie przyciemnimy, aby highlight był bardziej widoczny.
+    base_edge_alpha = 0.55 if total_nodes <= 200 else 0.22
+    edge_alpha = float(base_edge_alpha) * (0.45 if enable_click_highlight else 1.0)
     edge_width = 1.1 if total_nodes <= 200 else 0.75
+    if total_nodes > 320:
+        # Przy bardzo gęstych wykresach grubsze linie potęgują “spaghetti”.
+        edge_alpha = min(edge_alpha, 0.18)
+        edge_width = 0.55
 
-    # Rysujemy krawędzie.
-    if readable_mode:
-        # W trybie czytelnym chcesz większą czytelność, więc zostawiamy strzałki,
-        # ale bez nadmiarowej geometrii połączeń.
-        arrows = True
-        arrowstyle = "-|>"
-        arrowsize = 12
-        nx.draw_networkx_edges(
-            G,
-            pos,
-            ax=ax,
-            arrows=arrows,
-            arrowstyle=arrowstyle,
-            arrowsize=arrowsize,
-            width=edge_width,
-            edge_color="#6b5b4d",
-            alpha=edge_alpha,
-            connectionstyle="arc3,rad=0.07" if max_level >= 3 else "arc3,rad=0.05",
-        )
-    else:
-        nx.draw_networkx_edges(
-            G,
-            pos,
-            ax=ax,
-            arrows=True,
-            arrowstyle="-|>",
-            arrowsize=10,
-            width=edge_width,
-            edge_color="#4f443a",
-            alpha=edge_alpha,
-            connectionstyle="arc3,rad=0.05",
-        )
+    _draw_pedigree_edges(
+        G=G,
+        pos=pos,
+        ax=ax,
+        readable_mode=readable_mode,
+        max_level=max_level,
+        edge_width=edge_width,
+        edge_alpha=edge_alpha,
+    )
 
     node_ids = list(G.nodes())
     node_colors = [_node_color(people.get(nid).sex if nid in people else None) for nid in node_ids]
@@ -302,16 +392,26 @@ def plot_ancestor_pedigree(
                 labels[nid] = f"{nid}\n{year_str}"
                 label_line_counts[nid] = 2
             elif lvl in (0, 1):
-                # W pierwszych pokoleniach dodatkowo krótka nazwa.
-                if name:
-                    name = str(name)
-                    if len(name) > 18:
-                        name = name[:18] + "…"
-                    labels[nid] = f"{nid}\n{name}\n{year_str}"
-                    label_line_counts[nid] = 3
+                if dense_mode and lvl >= 1:
+                    # W trybie gęstym (dużo węzłów) ograniczamy opis do samego ID,
+                    # żeby uniknąć nakładania się etykiet na wyższych piętrach.
+                    labels[nid] = f"{nid}"
+                    label_line_counts[nid] = 1
+                elif dense_mode and lvl == 0:
+                    # Top (lvl=0) jest mały — pokazujemy tylko ID (bez roku), nadal czytelnie.
+                    labels[nid] = f"{nid}"
+                    label_line_counts[nid] = 1
                 else:
-                    labels[nid] = f"{nid}\n{year_str}"
-                    label_line_counts[nid] = 2
+                # W pierwszych pokoleniach dodatkowo krótka nazwa.
+                    if name:
+                        name = str(name)
+                        if len(name) > 18:
+                            name = name[:18] + "…"
+                        labels[nid] = f"{nid}\n{name}\n{year_str}"
+                        label_line_counts[nid] = 3
+                    else:
+                        labels[nid] = f"{nid}\n{year_str}"
+                        label_line_counts[nid] = 2
             else:
                 # Dla głębszych pokoleń: skrót (ID + rok).
                 if dense_mode:
@@ -336,105 +436,27 @@ def plot_ancestor_pedigree(
         font_color = "#0b2f22" if readable_mode else "white"
         nx.draw_networkx_labels(G, pos, ax=ax, labels=labels, font_size=label_font_size, font_color=font_color)
 
-        # Oznaczamy LB/LC jako małe badge na węźle, zamiast pisać tekst pod rokiem.
-        # To usuwa problem nachodzenia “LB/LC” na datę urodzenia.
-        max_abs_x = max((abs(float(x)) for x, _ in pos.values()), default=1.0)
-        dx_badge = min(0.18, max(0.06, 0.05 * max_abs_x))
-        dy_badge = 0.05  # w obrębie koła (bez ingerencji w dolną linię z rokiem)
-        badge_font_size = max(5, label_font_size - 2)
-        badge_size = max(45.0, float(node_size) * 0.05)
-
-        for nid, (x, y) in pos.items():
-            line_txt = line_text_map.get(nid)
-            line_color = line_color_map.get(nid)
-            if not line_txt or line_txt == "NA" or not line_color:
-                continue
-
-            bx = float(x) + dx_badge
-            by = float(y) + dy_badge
-
-            ax.scatter(
-                [bx],
-                [by],
-                s=badge_size,
-                marker="s",
-                c=[line_color],
-                edgecolors="#333333",
-                linewidths=0.6,
-                zorder=5,
-            )
-            ax.text(
-                bx,
-                by,
-                line_txt,
-                ha="center",
-                va="center",
-                fontsize=badge_font_size,
-                fontweight="bold",
-                color="white",
-                zorder=6,
-            )
+        _draw_line_badges(
+            ax=ax,
+            pos=pos,
+            line_text_map=line_text_map,
+            line_color_map=line_color_map,
+            label_font_size=label_font_size,
+            node_size=node_size,
+        )
 
     # Delikatne linie poziome pomagają “odczytać piętra” hierarchii.
     # (Oś jest wyłączona, ale linie rysujemy mimo wszystko.)
     for lvl in range(0, max_level + 1):
         ax.axhline(-float(lvl), color="#ede7d8", linewidth=0.8, alpha=0.55, zorder=0)
 
-    # --- Jedna legenda: płeć (M/F) + linie (LB/LC) ---
-    sex_line_handles = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            linestyle="None",
-            markersize=10,
-            markerfacecolor=_node_color("M"),
-            markeredgecolor="#333333",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            linestyle="None",
-            markersize=10,
-            markerfacecolor=_node_color("F"),
-            markeredgecolor="#333333",
-        ),
-        # Badge linii LB/LC: kwadrat z obwódką (analogicznie jak na wykresie).
-        Line2D(
-            [0],
-            [0],
-            marker="s",
-            linestyle="None",
-            markersize=10,
-            markerfacecolor="#d64545",
-            markeredgecolor="#333333",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="s",
-            linestyle="None",
-            markersize=10,
-            markerfacecolor="#2e8b57",
-            markeredgecolor="#333333",
-        ),
-    ]
-    ax.legend(
-        sex_line_handles,
-        ["M (ojciec)", "F (matka)", "LB", "LC"],
-        loc="upper right",
-        frameon=True,
-        fontsize=8,
-        borderpad=0.25,
-        labelspacing=0.25,
-        handletextpad=0.5,
-        ncol=2,
-    )
+    _add_combined_legend(ax)
 
     # --- Interakcja: klik w węzeł -> podświetlenie ---
     if enable_click_highlight and len(levels) > 0:
         selected_marker: dict[str, object] = {"artist": None}
+        highlight_edge_artists: dict[str, object] = {"artist": None}
+        highlight_node_artists: dict[str, object] = {"artist": None}
         selected_edge = "#111111"
         selected_size = float(node_size) * 1.45
 
@@ -466,6 +488,18 @@ def plot_ancestor_pedigree(
                 except Exception:
                     pass
 
+            # Czyścimy poprzednie podświetlenie ścieżki (krawędzie + węzły).
+            if highlight_edge_artists["artist"] is not None:
+                try:
+                    highlight_edge_artists["artist"].remove()
+                except Exception:
+                    pass
+            if highlight_node_artists["artist"] is not None:
+                try:
+                    highlight_node_artists["artist"].remove()
+                except Exception:
+                    pass
+
             sx, sy = pos[nid]
             selected_marker["artist"] = ax.scatter(
                 [sx],
@@ -474,7 +508,58 @@ def plot_ancestor_pedigree(
                 facecolors="none",
                 edgecolors=selected_edge,
                 linewidths=2.0,
+                zorder=10,
             )
+
+            # --- Podświetlenie ścieżki przodków do wskazanego węzła ---
+            # `in_neighbors` = child -> parents, więc BFS idzie "w górę" po rodzicach.
+            try:
+                from collections import deque
+
+                visited: set[str] = {nid}
+                q = deque([nid])
+                while q:
+                    cur = q.popleft()
+                    for par in in_neighbors.get(cur, []):
+                        if par not in visited:
+                            visited.add(par)
+                            q.append(par)
+
+                highlight_edges = [(a, b) for (a, b) in edges if a in visited and b in visited]
+                visited_list = list(visited)
+
+                # Highlight krawędzi
+                if highlight_edges:
+                    edge_coll = nx.draw_networkx_edges(
+                        G,
+                        pos,
+                        ax=ax,
+                        edgelist=highlight_edges,
+                        arrows=False,
+                        width=float(edge_width) * 2.0,
+                        edge_color="#111111",
+                        alpha=0.95,
+                        arrowsize=10,
+                    )
+                    highlight_edge_artists["artist"] = edge_coll
+
+                # Highlight węzłów (tylko obrys, bez wypełnienia; nie zasłania etykiet)
+                if visited_list:
+                    xs = [pos[v][0] for v in visited_list]
+                    ys = [pos[v][1] for v in visited_list]
+                    node_coll = ax.scatter(
+                        xs,
+                        ys,
+                        s=float(node_size) * 1.25,
+                        facecolors="none",
+                        edgecolors="#111111",
+                        linewidths=1.8,
+                        zorder=9,
+                    )
+                    highlight_node_artists["artist"] = node_coll
+            except Exception:
+                # Podświetlenie ścieżki ma charakter “UX”, nie krytyczny.
+                pass
 
             ax.set_title(f"Zaznaczono osobnika: {nid}")
             fig.canvas.draw_idle()
