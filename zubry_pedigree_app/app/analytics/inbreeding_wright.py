@@ -170,3 +170,89 @@ def _max_generations_to_founders(*, person_id: str, people: Dict[str, Person], m
 
     return int(max_depth)
 
+
+def batch_offspring_inbreeding_F_from_parent_pairs(
+    parent_pairs: list[tuple[str, str]],
+    people: Dict[str, Person],
+    *,
+    max_generations_back: int | None,
+) -> list[float]:
+    """
+    Liczy `F_offspring = Phi(sire, dam)` dla wielu par rodziców (sire, dam).
+
+    Funkcja buduje wspólny cache dla rekurencji `phi()`/`F()` w obrębie jednego wywołania,
+    dzięki czemu ranking wielu par jest dużo szybszy niż wielokrotne wołanie
+    `wright_inbreeding_F()` w osobnych wywołaniach.
+    """
+    if not parent_pairs:
+        return []
+
+    # Wyznaczamy głębokość rekurencji analogicznie do `wright_inbreeding_F`.
+    if max_generations_back is None:
+        # base_depth: maks. głębokość do founderów w liniach rodziców.
+        unique_ids: set[str] = set()
+        for sire, dam in parent_pairs:
+            unique_ids.add(sire)
+            unique_ids.add(dam)
+
+        base_depth = 0
+        for pid in unique_ids:
+            base_depth = max(base_depth, _max_generations_to_founders(person_id=pid, people=people))
+        # Dla potomka istnieje dodatkowe "pokolenie" (od potomka do wskazanych rodziców),
+        # więc korygujemy base_depth o +1, analogicznie do scenariusza "offspring placeholder".
+        depth = int(2 * (base_depth + 1) + 2)
+    else:
+        depth = int(max_generations_back)
+        if depth < 0:
+            depth = 0
+
+    # W `wright_inbreeding_F` finalnie jest `F(person_id, depth)`,
+    # a w `F()` jest wywołanie `phi(..., remaining - 1)`.
+    # Dla potomka będącego "rodzicem-sztucznym" oznacza to, że phi ma remaining = depth - 1.
+    remaining_for_phi = int(depth - 1)
+
+    @lru_cache(maxsize=None)
+    def phi(a: str, b: str, remaining: int) -> float:
+        if remaining < 0:
+            return 0.0
+
+        if a == b:
+            # Phi(a,a) = (1 + F(a)) / 2
+            return (1.0 + F(a, remaining)) / 2.0
+
+        if remaining == 0:
+            return 0.0
+
+        sire_a, dam_a = _get_parents(people, a)
+
+        if sire_a is None and dam_a is None:
+            # founder-stop dla `a`: "zejdź" po `b`, żeby znaleźć wspólnego przodka.
+            sire_b, dam_b = _get_parents(people, b)
+            t1 = phi(a, sire_b, remaining - 1) if sire_b is not None else 0.0
+            t2 = phi(a, dam_b, remaining - 1) if dam_b is not None else 0.0
+            return 0.5 * (t1 + t2)
+
+        t1 = phi(sire_a, b, remaining - 1) if sire_a is not None else 0.0
+        t2 = phi(dam_a, b, remaining - 1) if dam_a is not None else 0.0
+        return 0.5 * (t1 + t2)
+
+    @lru_cache(maxsize=None)
+    def F(x: str, remaining: int) -> float:
+        if remaining < 1:
+            return 0.0
+
+        sire_x, dam_x = _get_parents(people, x)
+        if sire_x is None or dam_x is None:
+            return 0.0
+
+        return phi(sire_x, dam_x, remaining - 1)
+
+    out: list[float] = []
+    for sire, dam in parent_pairs:
+        if not sire or not dam:
+            out.append(0.0)
+            continue
+        out.append(float(phi(sire, dam, remaining_for_phi)))
+
+    return out
+

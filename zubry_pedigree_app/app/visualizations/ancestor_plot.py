@@ -108,15 +108,71 @@ def plot_ancestor_pedigree(
             G.add_edge(parent, child)
 
     # Warstwowanie: y = -generation.
+    # Zamiast sortowania po ID, robimy prostą redukcję crossingów:
+    # przestawiamy kolejność węzłów w każdej warstwie tak, aby węzły były
+    # ułożone “bliżej” barycentru ich sąsiadów z sąsiedniej warstwy.
     by_level: Dict[int, List[str]] = {}
     for nid, lvl in levels.items():
         by_level.setdefault(lvl, []).append(nid)
     for lvl in by_level:
         by_level[lvl].sort()
 
-    pos: Dict[str, Tuple[float, float]] = {}
     max_level = max(by_level.keys())
     total_nodes = len(levels)
+
+    in_neighbors: Dict[str, List[str]] = {}
+    out_neighbors: Dict[str, List[str]] = {}
+    for parent, child in edges:
+        if parent not in levels or child not in levels:
+            continue
+        out_neighbors.setdefault(parent, []).append(child)
+        in_neighbors.setdefault(child, []).append(parent)
+
+    def _reorder_levels(iterations: int = 4) -> None:
+        # In-place: modyfikuje `by_level`.
+        for _ in range(iterations):
+            # Forward: porządkujemy warstwę lvl na podstawie rodziców w lvl-1.
+            for lvl in range(1, max_level + 1):
+                prev_nodes = by_level.get(lvl - 1, [])
+                idx_prev = {nid: i for i, nid in enumerate(prev_nodes)}
+
+                cur_nodes = by_level.get(lvl, [])
+                if not cur_nodes:
+                    continue
+
+                def score(nid: str) -> float:
+                    parents = [p for p in in_neighbors.get(nid, []) if levels.get(p) == (lvl - 1)]
+                    if not parents:
+                        # Brak rodziców w tej warstwie -> zostaw kolejność (score = inf).
+                        return float("inf")
+                    return float(sum(idx_prev.get(p, 0) for p in parents)) / float(len(parents))
+
+                cur_nodes_sorted = sorted(cur_nodes, key=lambda nid: (score(nid), str(nid)))
+                by_level[lvl] = cur_nodes_sorted
+
+            # Backward: porządkujemy warstwę lvl na podstawie dzieci w lvl+1.
+            for lvl in range(max_level - 1, -1, -1):
+                next_nodes = by_level.get(lvl + 1, [])
+                idx_next = {nid: i for i, nid in enumerate(next_nodes)}
+
+                cur_nodes = by_level.get(lvl, [])
+                if not cur_nodes:
+                    continue
+
+                def score(nid: str) -> float:
+                    children = [c for c in out_neighbors.get(nid, []) if levels.get(c) == (lvl + 1)]
+                    if not children:
+                        return float("inf")
+                    return float(sum(idx_next.get(c, 0) for c in children)) / float(len(children))
+
+                cur_nodes_sorted = sorted(cur_nodes, key=lambda nid: (score(nid), str(nid)))
+                by_level[lvl] = cur_nodes_sorted
+
+    # Heurystyka działa najlepiej na małych/średnich grafach (typu ancestor depth 4-8),
+    # ale nawet dla większych zmniejsza “losowość” układu.
+    _reorder_levels(iterations=4)
+
+    pos: Dict[str, Tuple[float, float]] = {}
     for lvl in range(0, max_level + 1):
         nodes = by_level.get(lvl, [])
         if not nodes:
@@ -138,7 +194,9 @@ def plot_ancestor_pedigree(
             est = len(str(nid)) + len(name_part) + len(year_str)
             max_chars = max(max_chars, est)
 
-        x_span = float(min(3.0, 1.2 + max_chars / 90.0))
+        # Przy wielu węzłach na jednej warstwie limit x_span=3.0 powodował zbyt
+        # małe rozstawienie etykiet. Zwiększamy span proporcjonalnie do liczby węzłów.
+        x_span = float(1.2 + max_chars / 90.0 + 0.25 * float(len(nodes)))
 
         if len(nodes) == 1:
             xs = [0.0]
@@ -150,10 +208,13 @@ def plot_ancestor_pedigree(
             pos[nid] = (float(xs[i]), y)
 
     max_nodes_in_level = max((len(v) for v in by_level.values()), default=1)
-    fig_width = min(22.0, 10.0 + 0.25 * float(max_nodes_in_level))
-    fig_height = 6.0
+    # Przy wielu węzłach na poziomie etykiety zaczynają się nakładać.
+    # Zwiększamy szerokość proporcjonalnie do gęstości.
+    fig_width = min(34.0, 10.0 + 0.6 * float(max_nodes_in_level))
+    # Więcej miejsca pionowego, żeby “piętra” hierarchii były wyraźne.
+    fig_height = max(6.0, 4.8 + 0.55 * float(max_level))
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
-    ax.set_title(f"Przodkowie: {person_id}")
+    ax.set_title(f"Osobnik numer: {person_id}")
     ax.axis("off")
 
     total_nodes = len(levels)
@@ -177,6 +238,7 @@ def plot_ancestor_pedigree(
             width=edge_width,
             edge_color="#6b5b4d",
             alpha=edge_alpha,
+            connectionstyle="arc3,rad=0.07" if max_level >= 3 else "arc3,rad=0.05",
         )
     else:
         nx.draw_networkx_edges(
@@ -213,6 +275,7 @@ def plot_ancestor_pedigree(
     label_line_counts: Dict[str, int] = {}
     line_text_map: Dict[str, str] = {}
     line_color_map: Dict[str, str] = {}
+    dense_mode = bool(readable_mode and total_nodes > full_labels_limit)
     for nid in G.nodes():
         lvl = levels.get(nid)
         person = people.get(nid)
@@ -251,40 +314,71 @@ def plot_ancestor_pedigree(
                     label_line_counts[nid] = 2
             else:
                 # Dla głębszych pokoleń: skrót (ID + rok).
-                labels[nid] = f"{nid}\n{year_str}"
-                label_line_counts[nid] = 2
+                if dense_mode:
+                    # Gdy graf jest gęsty, rok powoduje nakładanie się etykiet.
+                    # Zostawiamy tylko ID (1 linia).
+                    labels[nid] = f"{nid}"
+                    label_line_counts[nid] = 1
+                else:
+                    labels[nid] = f"{nid}\n{year_str}"
+                    label_line_counts[nid] = 2
 
         # Zapis do późniejszego nakładania LB/LC.
         line_text_map[nid] = line_text
         line_color_map[nid] = line_color
 
     if labels:
-        label_font_size = 8 if readable_mode else 7
+        # Dynamiczne zmniejszanie fontu przy gęstości.
+        if readable_mode:
+            label_font_size = 8 if max_nodes_in_level <= 6 else (7 if max_nodes_in_level <= 10 else 6)
+        else:
+            label_font_size = 7 if max_nodes_in_level <= 8 else 6
         font_color = "#0b2f22" if readable_mode else "white"
         nx.draw_networkx_labels(G, pos, ax=ax, labels=labels, font_size=label_font_size, font_color=font_color)
 
-        # Nakładamy osobno LB/LC pod rokiem, żeby kolor działał bez `\color` w mathtext.
-        #
-        # `va='center'` oznacza, że label jest wycentrowany, więc przesuwamy tekst w dół
-        # zależnie od liczby linii w labelu (2 vs 3).
-        line_dy = 0.09
-        # Większe przesunięcie w dół, żeby etykiety LB/LC nie nachodziły na rok urodzenia.
-        extra_below_year = 1.15
+        # Oznaczamy LB/LC jako małe badge na węźle, zamiast pisać tekst pod rokiem.
+        # To usuwa problem nachodzenia “LB/LC” na datę urodzenia.
+        max_abs_x = max((abs(float(x)) for x, _ in pos.values()), default=1.0)
+        dx_badge = min(0.18, max(0.06, 0.05 * max_abs_x))
+        dy_badge = 0.05  # w obrębie koła (bez ingerencji w dolną linię z rokiem)
+        badge_font_size = max(5, label_font_size - 2)
+        badge_size = max(45.0, float(node_size) * 0.05)
+
         for nid, (x, y) in pos.items():
-            if nid not in line_text_map:
+            line_txt = line_text_map.get(nid)
+            line_color = line_color_map.get(nid)
+            if not line_txt or line_txt == "NA" or not line_color:
                 continue
-            n_lines = label_line_counts.get(nid, 2)
-            y_line = float(y) - ((n_lines - 1) / 2.0) * line_dy - extra_below_year * line_dy
+
+            bx = float(x) + dx_badge
+            by = float(y) + dy_badge
+
+            ax.scatter(
+                [bx],
+                [by],
+                s=badge_size,
+                marker="s",
+                c=[line_color],
+                edgecolors="#333333",
+                linewidths=0.6,
+                zorder=5,
+            )
             ax.text(
-                float(x),
-                y_line,
-                line_text_map[nid],
+                bx,
+                by,
+                line_txt,
                 ha="center",
                 va="center",
-                fontsize=label_font_size,
+                fontsize=badge_font_size,
                 fontweight="bold",
-                color=line_color_map.get(nid, "#9aa3a2"),
+                color="white",
+                zorder=6,
             )
+
+    # Delikatne linie poziome pomagają “odczytać piętra” hierarchii.
+    # (Oś jest wyłączona, ale linie rysujemy mimo wszystko.)
+    for lvl in range(0, max_level + 1):
+        ax.axhline(-float(lvl), color="#ede7d8", linewidth=0.8, alpha=0.55, zorder=0)
 
     # --- Jedna legenda: płeć (M/F) + linie (LB/LC) ---
     sex_line_handles = [
@@ -306,17 +400,36 @@ def plot_ancestor_pedigree(
             markerfacecolor=_node_color("F"),
             markeredgecolor="#333333",
         ),
-        Line2D([0], [0], marker="s", linestyle="None", markersize=10, markerfacecolor="#d64545", markeredgecolor="#d64545"),
-        Line2D([0], [0], marker="s", linestyle="None", markersize=10, markerfacecolor="#2e8b57", markeredgecolor="#2e8b57"),
+        # Badge linii LB/LC: kwadrat z obwódką (analogicznie jak na wykresie).
+        Line2D(
+            [0],
+            [0],
+            marker="s",
+            linestyle="None",
+            markersize=10,
+            markerfacecolor="#d64545",
+            markeredgecolor="#333333",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="s",
+            linestyle="None",
+            markersize=10,
+            markerfacecolor="#2e8b57",
+            markeredgecolor="#333333",
+        ),
     ]
     ax.legend(
         sex_line_handles,
-        ["Ojciec (M)", "Matka (F)", "LB", "LC"],
+        ["M (ojciec)", "F (matka)", "LB", "LC"],
         loc="upper right",
         frameon=True,
         fontsize=8,
-        borderpad=0.3,
-        labelspacing=0.3,
+        borderpad=0.25,
+        labelspacing=0.25,
+        handletextpad=0.5,
+        ncol=2,
     )
 
     # --- Interakcja: klik w węzeł -> podświetlenie ---
@@ -363,7 +476,7 @@ def plot_ancestor_pedigree(
                 linewidths=2.0,
             )
 
-            ax.set_title(f"Przodkowie: {person_id} | klik: {nid}")
+            ax.set_title(f"Zaznaczono osobnika: {nid}")
             fig.canvas.draw_idle()
 
             if on_node_click is not None:
