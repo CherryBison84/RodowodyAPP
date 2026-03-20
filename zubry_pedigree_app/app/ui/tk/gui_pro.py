@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import tkinter as tk
-from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -35,6 +34,7 @@ from app.ui.tk.report_helpers import (
     build_population_report_figures,
     write_text_pages_to_pdf,
 )
+from app.ui.tk.theme import setup_theme
 
 
 def _clear_frame(frame: ttk.Frame) -> None:
@@ -63,94 +63,12 @@ def _save_figure_as_jpeg(fig, *, default_basename: str = "wykres") -> None:
         messagebox.showerror("Błąd", f"Nie mogę zapisać wykresu: {e}")
 
 
-@dataclass(frozen=True)
-class Theme:
-    APP_BG: str = "#ffffff"
-    PANEL_BG: str = "#f4fbf5"
-    PANEL_BG2: str = "#eaf7ec"
-    TEXT: str = "#0f3b2a"
-    MUTED: str = "#2c6a4e"
-    ACCENT: str = "#caa86e"
-    BUTTON_BG: str = "#dff4e3"
-    BUTTON_BG2: str = "#c8ead4"
-    ENTRY_BG: str = "#ffffff"
-    EDGE_PLOT: str = "#2c6a4e"
-    TREE_BG: str = "#f4fbf5"
-
-
-def _setup_theme(root: tk.Tk) -> Theme:
-    colors = Theme()
-    root.configure(bg=colors.APP_BG)
-
-    style = ttk.Style(root)
-    try:
-        style.theme_use("clam")
-    except Exception:
-        pass
-
-    style.configure("TFrame", background=colors.PANEL_BG)
-    style.configure("TLabel", background=colors.PANEL_BG, foreground=colors.TEXT)
-    style.configure("TNotebook", background=colors.PANEL_BG)
-    style.configure(
-        "TNotebook.Tab",
-        background=colors.BUTTON_BG2,
-        foreground=colors.MUTED,
-        padding=(10, 6),
-        font=("TkDefaultFont", 11, "bold"),
-    )
-
-    style.configure("TButton", background=colors.BUTTON_BG, foreground=colors.TEXT, padding=(10, 6))
-    style.map("TButton", background=[("active", colors.BUTTON_BG2)])
-
-    style.configure(
-        "TEntry",
-        fieldbackground=colors.ENTRY_BG,
-        background=colors.ENTRY_BG,
-        foreground=colors.TEXT,
-        bordercolor=colors.ACCENT,
-    )
-    style.configure("TCheckbutton", background=colors.PANEL_BG, foreground=colors.TEXT)
-    style.configure("TRadiobutton", background=colors.PANEL_BG, foreground=colors.TEXT)
-
-    # ttk.LabelFrame (np. "Mapowanie kolumn", "Pobieranie z internetu")
-    style.configure("TLabelframe", background=colors.PANEL_BG)
-    style.configure("TLabelframe.Label", background=colors.PANEL_BG, foreground=colors.MUTED)
-
-    # ttk.Combobox (w mapowaniu kolumn)
-    style.configure(
-        "TCombobox",
-        fieldbackground=colors.ENTRY_BG,
-        background=colors.ENTRY_BG,
-        foreground=colors.TEXT,
-    )
-    style.map("TCombobox", fieldbackground=[("readonly", colors.ENTRY_BG)])
-
-    style.configure(
-        "Treeview",
-        background=colors.TREE_BG,
-        fieldbackground=colors.TREE_BG,
-        foreground=colors.TEXT,
-        rowheight=22,
-        borderwidth=0,
-    )
-    style.configure(
-        "Treeview.Heading",
-        background=colors.BUTTON_BG2,
-        foreground=colors.ACCENT,
-        borderwidth=0,
-        relief="flat",
-        padding=(6, 4),
-    )
-    style.map("Treeview", background=[("selected", colors.BUTTON_BG)], foreground=[("selected", colors.TEXT)])
-    return colors
-
-
 def run_tk_pro() -> None:
     root = tk.Tk()
     root.title("WisentPedigree Pro+")
     root.geometry("1280x860")
 
-    colors = _setup_theme(root)
+    colors = setup_theme(root)
 
     # -------------------------
     # Logo + header
@@ -182,7 +100,7 @@ def run_tk_pro() -> None:
     ttk.Label(header, text="WisentPedigree Pro+", font=("TkDefaultFont", 18, "bold")).pack(side=tk.LEFT)
     subtitle = ttk.Label(
         header,
-        text="Rodowody żubrów • Inbreeding • Wizualizacja • Walidacja bazy • Raporty (TXT/PDF) • EBPB",
+        text="Wczytywanie bazy i mapowanie kolumn • Analizy osobnika i populacji • Interaktywny rodowód • Plan hodowlany • Walidacja bazy • Raporty DOCX/PDF",
         foreground=colors.MUTED,
     )
     subtitle.pack(side=tk.LEFT, padx=(16, 0))
@@ -191,16 +109,26 @@ def run_tk_pro() -> None:
     # Main: Notebook tabs
     # -------------------------
     status_var = tk.StringVar(value="Gotowe.")
-    status_bar = tk.Label(
-        root,
+    status_bar = tk.Frame(root, bd=1, relief=tk.SUNKEN, bg=colors.APP_BG)
+    status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+    status_left = tk.Label(
+        status_bar,
         textvariable=status_var,
-        bd=1,
-        relief=tk.SUNKEN,
         anchor="w",
         bg=colors.APP_BG,
         fg=colors.TEXT,
+        padx=6,
     )
-    status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+    status_left.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    status_right = tk.Label(
+        status_bar,
+        text="Autor: Magdalena Perlińska-Teresiak • 2026",
+        anchor="e",
+        bg=colors.APP_BG,
+        fg=colors.MUTED,
+        padx=8,
+    )
+    status_right.pack(side=tk.RIGHT)
 
     notebook = ttk.Notebook(root)
     notebook.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -307,6 +235,7 @@ def run_tk_pro() -> None:
     # Ustawienia domyślne dla raportów (konfigurowane w zakładce Ustawienia).
     rep_default_include_plots_var = tk.BooleanVar(value=True)
     rep_auto_preview_pdf_var = tk.BooleanVar(value=True)
+    rep_include_plots_export_var = tk.BooleanVar(value=bool(rep_default_include_plots_var.get()))
 
     rep_output_text = tk.Text(tab_reports, height=18, wrap="word")
     rep_output_text.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(12, 0))
@@ -526,11 +455,7 @@ def run_tk_pro() -> None:
             messagebox.showinfo("Info", "Najpierw wygeneruj raport.")
             return
 
-        include_plots = messagebox.askyesno(
-            "Raport DOCX",
-            "Czy do raportu dołączyć wygenerowane wykresy?",
-            default=("yes" if bool(rep_default_include_plots_var.get()) else "no"),
-        )
+        include_plots = bool(rep_include_plots_export_var.get())
 
         filename = filedialog.asksaveasfilename(
             title="Zapisz raport (DOCX)",
@@ -588,11 +513,7 @@ def run_tk_pro() -> None:
         if not filename:
             return
 
-        include_plots = messagebox.askyesno(
-            "Raport PDF",
-            "Czy do raportu dołączyć wygenerowane wykresy?",
-            default=("yes" if bool(rep_default_include_plots_var.get()) else "no"),
-        )
+        include_plots = bool(rep_include_plots_export_var.get())
 
         people = state.get("people")
         df_std = state.get("df_std")
@@ -651,6 +572,12 @@ def run_tk_pro() -> None:
 
     rep_generate_btn = ttk.Button(rep_btns, text="Generuj raport", command=on_generate_report)
     rep_generate_btn.pack(side=tk.LEFT)
+    rep_include_plots_export_cb = ttk.Checkbutton(
+        rep_btns,
+        text="Dołącz wykresy do eksportu",
+        variable=rep_include_plots_export_var,
+    )
+    rep_include_plots_export_cb.pack(side=tk.LEFT, padx=(12, 0))
     rep_save_btn = ttk.Button(rep_btns, text="Zapisz raport (DOCX)", command=on_save_report_docx)
     rep_save_btn.pack(side=tk.LEFT, padx=(12, 0))
     rep_save_pdf_btn = ttk.Button(rep_btns, text="Zapisz raport (PDF)", command=on_save_report_pdf)
@@ -659,18 +586,17 @@ def run_tk_pro() -> None:
     # -------------------------
     # Breeding plan tab
     # -------------------------
-    ttk.Label(tab_breeding, text="Plan hodowlany", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
     ttk.Label(
         tab_breeding,
-        text="Dobór par (samica + samiec) z rankingiem minimalnego ryzyka inbredu potomka (Wright F). "
-        "Filtrowanie: linia LB/LC oraz wiek.",
+        text="Ta sekcja jest w przygotowaniu i wymaga dodatkowego przemyślenia logiki hodowlanej.\n"
+        "W kolejnej iteracji dodamy finalny workflow doboru par i cele zarządzania różnorodnością.",
         foreground=colors.MUTED,
         wraplength=1000,
         justify="left",
     ).pack(anchor="w", pady=(6, 0))
 
     plan_main = ttk.Frame(tab_breeding)
-    plan_main.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(14, 0))
+    # Placeholder mode: ukrywamy właściwe kontrolki, ale zachowujemy kod i callbacki.
 
     plan_left = ttk.Frame(plan_main)
     plan_left.pack(side=tk.LEFT, fill=tk.Y, expand=False, pady=(0, 0), padx=(0, 14))
@@ -2596,7 +2522,6 @@ def run_tk_pro() -> None:
     loading_frame = ttk.Frame(tab_loading)
     loading_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-    ttk.Label(loading_frame, text="Wczytywanie bazy", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
     ttk.Label(
         loading_frame,
         text=(
@@ -3529,6 +3454,7 @@ def run_tk_pro() -> None:
             plan_goal_mean_F_var.set(str(settings_plan_goal_mean_f_var.get()).strip() or "0.05")
             plan_goal_max_enabled_var.set(bool(settings_plan_goal_max_enabled_var.get()))
             plan_goal_max_F_var.set(str(settings_plan_goal_max_f_var.get()).strip() or "0.10")
+            rep_include_plots_export_var.set(bool(rep_default_include_plots_var.get()))
 
         _sync_pop_all_btn()
 
@@ -4427,6 +4353,73 @@ def run_tk_pro() -> None:
         ).pack(anchor="w", pady=(6, 0))
 
     inb_btn.configure(command=on_calc_inbreeding)
+
+    # -------------------------
+    # Main menu (top bar)
+    # -------------------------
+    def _go_to_tab(tab_widget: ttk.Frame) -> None:
+        try:
+            notebook.select(tab_widget)
+        except Exception:
+            pass
+
+    def _show_about_app() -> None:
+        about_text = (
+            "WisentPedigree Pro+\n\n"
+            "Aplikacja do analizy rodowodów żubrów i wsparcia zarządzania stadem.\n\n"
+            "Najważniejsze funkcjonalności:\n"
+            "- Wczytywanie bazy (plik/URL) i mapowanie kolumn,\n"
+            "- Walidacja bazy i kontrola spójności danych,\n"
+            "- Analizy osobnika (Wright F, kompletność rodowodu, linie),\n"
+            "- Analizy populacyjne i wizualizacje,\n"
+            "- Interaktywny graf rodowodowy,\n"
+            "- Plan hodowlany (dobór par i ryzyko inbredu potomstwa),\n"
+            "- Raporty DOCX/PDF (opcjonalnie z wykresami).\n\n"
+            "Autor: Magdalena Perlinska-Teresiak\n"
+            "Rok: 2026"
+        )
+        messagebox.showinfo("O aplikacji", about_text)
+
+    menubar = tk.Menu(root)
+
+    menu_file = tk.Menu(menubar, tearoff=0)
+    menu_file.add_command(label="Wczytywanie bazy", command=lambda: _go_to_tab(tab_loading))
+    menu_file.add_command(label="Wczytaj domyslna baze", command=on_load_default)
+    menu_file.add_command(label="Wybierz plik...", command=on_choose_file)
+    menu_file.add_separator()
+    menu_file.add_command(label="Zakoncz", command=root.quit)
+    menubar.add_cascade(label="Plik", menu=menu_file)
+
+    menu_data = tk.Menu(menubar, tearoff=0)
+    menu_data.add_command(label="Osobniki", command=lambda: _go_to_tab(tab_persons))
+    menu_data.add_command(label="Rodowod", command=lambda: _go_to_tab(tab_pedigree))
+    menu_data.add_command(label="Walidacja bazy", command=lambda: _go_to_tab(tab_loading))
+    menu_data.add_command(label="Populacja", command=lambda: _go_to_tab(tab_population))
+    menubar.add_cascade(label="Dane", menu=menu_data)
+
+    menu_analysis = tk.Menu(menubar, tearoff=0)
+    menu_analysis.add_command(label="Analizy osobnika", command=lambda: _go_to_tab(tab_analysis))
+    menu_analysis.add_command(label="Plan hodowlany", command=lambda: _go_to_tab(tab_breeding))
+    menu_analysis.add_command(label="Analizy populacji", command=lambda: _go_to_tab(tab_population))
+    menubar.add_cascade(label="Analiza", menu=menu_analysis)
+
+    menu_viz = tk.Menu(menubar, tearoff=0)
+    menu_viz.add_command(label="Graf rodowodowy", command=lambda: _go_to_tab(tab_pedigree))
+    menu_viz.add_command(label="Wykresy analityczne", command=lambda: _go_to_tab(tab_analysis))
+    menu_viz.add_command(label="Wykresy populacyjne", command=lambda: _go_to_tab(tab_population))
+    menubar.add_cascade(label="Wizualizacja", menu=menu_viz)
+
+    menu_export = tk.Menu(menubar, tearoff=0)
+    menu_export.add_command(label="Raporty", command=lambda: _go_to_tab(tab_reports))
+    menu_export.add_command(label="Ustawienia eksportu", command=lambda: _go_to_tab(tab_settings))
+    menubar.add_cascade(label="Eksport", menu=menu_export)
+
+    menu_help = tk.Menu(menubar, tearoff=0)
+    menu_help.add_command(label="O aplikacji", command=_show_about_app)
+    menu_help.add_command(label="Ustawienia", command=lambda: _go_to_tab(tab_settings))
+    menubar.add_cascade(label="Pomoc", menu=menu_help)
+
+    root.config(menu=menubar)
 
     # Disable controls until dataset is loaded.
     set_controls_enabled(False)
