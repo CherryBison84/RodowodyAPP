@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 _mpl_dir = Path(__file__).resolve().parents[3] / ".mplconfig"
 try:
@@ -82,6 +82,9 @@ def plot_ancestor_pedigree(
     readable_mode: bool = True,
     full_labels_limit: int = 220,
     readable_label_depth: int = 2,
+    enable_click_highlight: bool = False,
+    # event_doubleclick=True oznacza podwójne kliknięcie na węzeł.
+    on_node_click: Optional[Callable[[str, bool], None]] = None,
 ) -> plt.Figure:
     """
     Generuje prosty, warstwowy wykres przodków (parent -> child).
@@ -113,20 +116,41 @@ def plot_ancestor_pedigree(
 
     pos: Dict[str, Tuple[float, float]] = {}
     max_level = max(by_level.keys())
+    total_nodes = len(levels)
     for lvl in range(0, max_level + 1):
         nodes = by_level.get(lvl, [])
         if not nodes:
             continue
+
+        # Estymacja rozstawu w poziomie (bez dokładnego liczenia szerokości fontu).
+        max_chars = 0
+        for nid in nodes:
+            person = people.get(nid)
+            name = getattr(person, "name", None) if person else None
+            year_str = _birth_year_label(person)
+            name_part = ""
+            if not readable_mode or total_nodes <= full_labels_limit:
+                name_part = str(name) if name else ""
+            else:
+                # W trybie czytelnym nazwy pokazujemy tylko w płytszych pokoleniach.
+                if lvl in (0, 1) and name:
+                    name_part = str(name)
+            est = len(str(nid)) + len(name_part) + len(year_str)
+            max_chars = max(max_chars, est)
+
+        x_span = float(min(3.0, 1.2 + max_chars / 90.0))
+
         if len(nodes) == 1:
             xs = [0.0]
         else:
-            xs = np.linspace(-1.0, 1.0, num=len(nodes))
+            xs = np.linspace(-x_span, x_span, num=len(nodes))
+
         y = -float(lvl)
         for i, nid in enumerate(nodes):
             pos[nid] = (float(xs[i]), y)
 
     max_nodes_in_level = max((len(v) for v in by_level.values()), default=1)
-    fig_width = min(18.0, 10.0 + 0.12 * float(max_nodes_in_level))
+    fig_width = min(22.0, 10.0 + 0.25 * float(max_nodes_in_level))
     fig_height = 6.0
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     ax.set_title(f"Przodkowie: {person_id}")
@@ -142,7 +166,7 @@ def plot_ancestor_pedigree(
         # ale bez nadmiarowej geometrii połączeń.
         arrows = True
         arrowstyle = "-|>"
-        arrowsize = 10
+        arrowsize = 12
         nx.draw_networkx_edges(
             G,
             pos,
@@ -168,14 +192,16 @@ def plot_ancestor_pedigree(
             connectionstyle="arc3,rad=0.05",
         )
 
-    node_colors = [_node_color(people.get(nid).sex if nid in people else None) for nid in G.nodes()]
+    node_ids = list(G.nodes())
+    node_colors = [_node_color(people.get(nid).sex if nid in people else None) for nid in node_ids]
     # node_size jest polem (area) w punktach, więc daje wyraźnie większe kółka.
-    base_node_size = 1850 if readable_mode else 1400
+    base_node_size = 2600 if readable_mode else 1900
     node_size = int(max(260, base_node_size / np.sqrt(max(1.0, total_nodes / 160.0))))
-    nx.draw_networkx_nodes(
+    node_artist = nx.draw_networkx_nodes(
         G,
         pos,
         ax=ax,
+        nodelist=node_ids,
         node_color=node_colors,
         node_size=node_size,
         linewidths=0.8,
@@ -242,7 +268,8 @@ def plot_ancestor_pedigree(
         # `va='center'` oznacza, że label jest wycentrowany, więc przesuwamy tekst w dół
         # zależnie od liczby linii w labelu (2 vs 3).
         line_dy = 0.09
-        extra_below_year = 0.8
+        # Większe przesunięcie w dół, żeby etykiety LB/LC nie nachodziły na rok urodzenia.
+        extra_below_year = 1.15
         for nid, (x, y) in pos.items():
             if nid not in line_text_map:
                 continue
@@ -259,9 +286,8 @@ def plot_ancestor_pedigree(
                 color=line_color_map.get(nid, "#9aa3a2"),
             )
 
-    # --- Legenda kolorów ---
-    # Legenda 1: kolory węzłów (M/F/brak danych).
-    node_legend_handles = [
+    # --- Jedna legenda: płeć (M/F) + linie (LB/LC) ---
+    sex_line_handles = [
         Line2D(
             [0],
             [0],
@@ -280,19 +306,12 @@ def plot_ancestor_pedigree(
             markerfacecolor=_node_color("F"),
             markeredgecolor="#333333",
         ),
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            linestyle="None",
-            markersize=10,
-            markerfacecolor=_node_color(None),
-            markeredgecolor="#333333",
-        ),
+        Line2D([0], [0], marker="s", linestyle="None", markersize=10, markerfacecolor="#d64545", markeredgecolor="#d64545"),
+        Line2D([0], [0], marker="s", linestyle="None", markersize=10, markerfacecolor="#2e8b57", markeredgecolor="#2e8b57"),
     ]
-    node_legend = ax.legend(
-        node_legend_handles,
-        ["Ojciec (M)", "Matka (F)", "brak danych"],
+    ax.legend(
+        sex_line_handles,
+        ["Ojciec (M)", "Matka (F)", "LB", "LC"],
         loc="upper right",
         frameon=True,
         fontsize=8,
@@ -300,21 +319,61 @@ def plot_ancestor_pedigree(
         labelspacing=0.3,
     )
 
-    # Legenda 2: dokładnie LB/LC (kolor tekstu pod rokiem).
-    line_legend_handles = [
-        Line2D([0], [0], marker="s", linestyle="None", markersize=10, markerfacecolor="#d64545", markeredgecolor="#d64545"),
-        Line2D([0], [0], marker="s", linestyle="None", markersize=10, markerfacecolor="#2e8b57", markeredgecolor="#2e8b57"),
-        Line2D([0], [0], marker="s", linestyle="None", markersize=10, markerfacecolor="#9aa3a2", markeredgecolor="#9aa3a2"),
-    ]
-    line_legend = ax.legend(
-        line_legend_handles,
-        ["LB", "LC", "NA"],
-        loc="lower right",
-        frameon=True,
-        fontsize=8,
-        borderpad=0.3,
-        labelspacing=0.3,
-    )
-    ax.add_artist(node_legend)
+    # --- Interakcja: klik w węzeł -> podświetlenie ---
+    if enable_click_highlight and len(levels) > 0:
+        selected_marker: dict[str, object] = {"artist": None}
+        selected_edge = "#111111"
+        selected_size = float(node_size) * 1.45
+
+        def _find_nearest_node(x: float, y: float) -> str | None:
+            best_id: str | None = None
+            best_d2 = float("inf")
+            for nid in node_ids:
+                px, py = pos[nid]
+                dx = float(px) - float(x)
+                dy = float(py) - float(y)
+                d2 = dx * dx + dy * dy
+                if d2 < best_d2:
+                    best_d2 = d2
+                    best_id = nid
+            return best_id
+
+        def _on_click(event) -> None:
+            if event.inaxes is None:
+                return
+            if event.xdata is None or event.ydata is None:
+                return
+            nid = _find_nearest_node(float(event.xdata), float(event.ydata))
+            if nid is None:
+                return
+
+            if selected_marker["artist"] is not None:
+                try:
+                    selected_marker["artist"].remove()
+                except Exception:
+                    pass
+
+            sx, sy = pos[nid]
+            selected_marker["artist"] = ax.scatter(
+                [sx],
+                [sy],
+                s=selected_size,
+                facecolors="none",
+                edgecolors=selected_edge,
+                linewidths=2.0,
+            )
+
+            ax.set_title(f"Przodkowie: {person_id} | klik: {nid}")
+            fig.canvas.draw_idle()
+
+            if on_node_click is not None:
+                try:
+                    dbl = bool(getattr(event, "dblclick", False))
+                    on_node_click(nid, dbl)
+                except Exception:
+                    pass
+
+        fig.canvas.mpl_connect("button_press_event", _on_click)
+
     return fig
 

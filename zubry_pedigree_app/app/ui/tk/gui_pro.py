@@ -6,7 +6,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from app.analytics.inbreeding_wright import wright_inbreeding_F
-from app.data.dataset_loader import load_dataset_from_path, load_default_bison_report
+from app.data.dataset_loader import (
+    load_dataset_from_path,
+    load_default_bison_report,
+    standardize_bison_report_dataframe_with_column_mapping,
+    load_dataset_from_url,
+    load_raw_dataframe_from_url,
+)
 from app.pedigree.ancestor_pedigree import (
     ensure_people_for_nodes,
     get_ancestor_levels_and_edges,
@@ -24,6 +30,27 @@ from app.analytics.population_genetics import TEST_ID, compute_population_geneti
 def _clear_frame(frame: ttk.Frame) -> None:
     for w in frame.winfo_children():
         w.destroy()
+
+
+def _save_figure_as_jpeg(fig, *, default_basename: str = "wykres") -> None:
+    """
+    Zapisuje dostarczony obiekt Matplotlib (Figure) do pliku JPEG.
+    """
+    try:
+        filename = filedialog.asksaveasfilename(
+            title="Zapis wykresu (jpeg)",
+            defaultextension=".jpg",
+            initialfile=f"{default_basename}.jpg",
+            filetypes=[("JPEG", "*.jpg *.jpeg"), ("All files", "*.*")],
+        )
+    except Exception:
+        filename = ""
+    if not filename:
+        return
+    try:
+        fig.savefig(filename, format="jpeg", dpi=200, bbox_inches="tight")
+    except Exception as e:
+        messagebox.showerror("Błąd", f"Nie mogę zapisać wykresu: {e}")
 
 
 @dataclass(frozen=True)
@@ -73,6 +100,20 @@ def _setup_theme(root: tk.Tk) -> Theme:
         bordercolor=colors.ACCENT,
     )
     style.configure("TCheckbutton", background=colors.PANEL_BG, foreground=colors.TEXT)
+    style.configure("TRadiobutton", background=colors.PANEL_BG, foreground=colors.TEXT)
+
+    # ttk.LabelFrame (np. "Mapowanie kolumn", "Pobieranie z internetu")
+    style.configure("TLabelframe", background=colors.PANEL_BG)
+    style.configure("TLabelframe.Label", background=colors.PANEL_BG, foreground=colors.MUTED)
+
+    # ttk.Combobox (w mapowaniu kolumn)
+    style.configure(
+        "TCombobox",
+        fieldbackground=colors.ENTRY_BG,
+        background=colors.ENTRY_BG,
+        foreground=colors.TEXT,
+    )
+    style.map("TCombobox", fieldbackground=[("readonly", colors.ENTRY_BG)])
 
     style.configure(
         "Treeview",
@@ -150,6 +191,7 @@ def run_tk_pro() -> None:
     notebook = ttk.Notebook(root)
     notebook.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
+    tab_loading = ttk.Frame(notebook, padding=14)
     tab_persons = ttk.Frame(notebook, padding=14)
     tab_pedigree = ttk.Frame(notebook, padding=14)
     tab_analysis = ttk.Frame(notebook, padding=14)
@@ -157,6 +199,7 @@ def run_tk_pro() -> None:
     tab_reports = ttk.Frame(notebook, padding=14)
     tab_settings = ttk.Frame(notebook, padding=14)
 
+    notebook.add(tab_loading, text="Wczytywanie bazy")
     notebook.add(tab_persons, text="Osobniki")
     notebook.add(tab_pedigree, text="Rodowód")
     notebook.add(tab_analysis, text="Analizy")
@@ -168,13 +211,416 @@ def run_tk_pro() -> None:
         ttk.Label(tab, text=title, font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
         ttk.Label(tab, text="Sekcja w przygotowaniu.", foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
 
-    _placeholder(tab_reports, "Raporty")
-    _placeholder(tab_settings, "Ustawienia")
+    # -------------------------
+    # Reports tab
+    # -------------------------
+    ttk.Label(tab_reports, text="Raporty", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
+    ttk.Label(
+        tab_reports,
+        text="Generuj raport tekstowy (TXT) dla wybranego osobnika i/lub dla całej populacji.",
+        foreground=colors.MUTED,
+        wraplength=1000,
+        justify="left",
+    ).pack(anchor="w", pady=(6, 0))
+
+    rep_top = ttk.Frame(tab_reports)
+    rep_top.pack(side=tk.TOP, fill=tk.X, pady=(14, 0))
+
+    rep_person_id_var = tk.StringVar(value="")
+    ttk.Label(rep_top, text="ID (Number):", foreground=colors.MUTED).grid(row=0, column=0, sticky="w", padx=(0, 10))
+    rep_person_id_entry = ttk.Entry(rep_top, textvariable=rep_person_id_var, width=16)
+    rep_person_id_entry.grid(row=0, column=1, sticky="w", padx=(0, 18))
+
+    rep_ind_unbounded_var = tk.BooleanVar(value=True)
+    rep_ind_unbounded_cb = ttk.Checkbutton(
+        rep_top,
+        text="Osobnik: bez limitu (do founderów)",
+        variable=rep_ind_unbounded_var,
+    )
+    rep_ind_unbounded_cb.grid(row=0, column=2, sticky="w")
+
+    rep_ind_depth_var = tk.StringVar(value="4")
+    rep_ind_depth_row = ttk.Frame(rep_top)
+    rep_ind_depth_row.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
+    ttk.Label(rep_ind_depth_row, text="Osobnik: max pokoleń (gdy limit):").pack(side=tk.LEFT)
+    rep_ind_depth_entry = ttk.Entry(rep_ind_depth_row, textvariable=rep_ind_depth_var, width=10)
+    rep_ind_depth_entry.pack(side=tk.LEFT, padx=(8, 0))
+
+    rep_pop_unbounded_var = tk.BooleanVar(value=False)
+    rep_pop_unbounded_cb = ttk.Checkbutton(
+        rep_top,
+        text="Populacja: bez limitu",
+        variable=rep_pop_unbounded_var,
+    )
+    rep_pop_unbounded_cb.grid(row=2, column=2, sticky="w", pady=(10, 0))
+
+    rep_pop_depth_var = tk.StringVar(value="4")
+    rep_pop_depth_row = ttk.Frame(rep_top)
+    rep_pop_depth_row.grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
+    ttk.Label(rep_pop_depth_row, text="Populacja: max pokoleń (gdy limit):").pack(side=tk.LEFT)
+    rep_pop_depth_entry = ttk.Entry(rep_pop_depth_row, textvariable=rep_pop_depth_var, width=10)
+    rep_pop_depth_entry.pack(side=tk.LEFT, padx=(8, 0))
+
+    rep_include_ind_var = tk.BooleanVar(value=True)
+    rep_include_pop_var = tk.BooleanVar(value=True)
+    rep_include_frame = ttk.LabelFrame(rep_top, text="Co uwzględnić w raporcie")
+    rep_include_frame.grid(row=1, column=3, rowspan=3, sticky="nsew", padx=(24, 0), pady=(0, 0))
+    rep_include_ind_cb = ttk.Checkbutton(
+        rep_include_frame,
+        text="Osobnik",
+        variable=rep_include_ind_var,
+    )
+    rep_include_ind_cb.pack(anchor="w", padx=10, pady=(10, 0))
+    rep_include_pop_cb = ttk.Checkbutton(
+        rep_include_frame,
+        text="Populacja",
+        variable=rep_include_pop_var,
+    )
+    rep_include_pop_cb.pack(anchor="w", padx=10, pady=(6, 10))
+
+    def _sync_report_depth_state() -> None:
+        rep_ind_depth_entry.configure(state="disabled" if bool(rep_ind_unbounded_var.get()) else "normal")
+        rep_pop_depth_entry.configure(state="disabled" if bool(rep_pop_unbounded_var.get()) else "normal")
+
+    _sync_report_depth_state()
+    rep_ind_unbounded_var.trace_add("write", lambda *_args: _sync_report_depth_state())
+    rep_pop_unbounded_var.trace_add("write", lambda *_args: _sync_report_depth_state())
+
+    rep_btns = ttk.Frame(tab_reports)
+    rep_btns.pack(side=tk.TOP, fill=tk.X, pady=(10, 0))
+
+    rep_output_text = tk.Text(tab_reports, height=18, wrap="word")
+    rep_output_text.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(12, 0))
+    rep_output_text.configure(state="disabled", bg=colors.ENTRY_BG, fg=colors.TEXT, insertbackground=colors.TEXT)
+
+    rep_report_preview_var = tk.StringVar(value="")
+
+    def _set_rep_status(msg: str) -> None:
+        rep_report_preview_var.set(msg)
+
+    ttk.Label(tab_reports, textvariable=rep_report_preview_var, foreground=colors.MUTED).pack(anchor="w", pady=(0, 6))
+
+    def _fmt_line_membership(mem: object, *, label: str = "") -> str:
+        if mem is None:
+            return f"{label}NA"
+        sire_id = getattr(mem, "sire_founder_id", None)
+        sire_name = getattr(mem, "sire_founder_name", None)
+        dam_id = getattr(mem, "dam_founder_id", None)
+        dam_name = getattr(mem, "dam_founder_name", None)
+        sire_steps = getattr(mem, "sire_steps", 0)
+        dam_steps = getattr(mem, "dam_steps", 0)
+        sire = f"{sire_id} ({sire_name})" if sire_id else "NA"
+        dam = f"{dam_id} ({dam_name})" if dam_id else "NA"
+        return f"{label}Sireline: {sire} [steps={sire_steps}]\n{label}Damline: {dam} [steps={dam_steps}]"
+
+    def on_generate_report() -> None:
+        df_std = state.get("df_std")
+        people = state.get("people")
+        if not people or df_std is None:
+            messagebox.showinfo("Info", "Najpierw wczytaj bazę.")
+            return
+
+        if not (rep_include_ind_var.get() or rep_include_pop_var.get()):
+            messagebox.showinfo("Info", "Wybierz przynajmniej jedną sekcję raportu: Osobnik lub Populacja.")
+            return
+
+        lines: list[str] = []
+        lines.append("WisentPedigree Pro+ — Raport")
+        lines.append(f"Plik: {state.get('raw_filename') or 'wczytana baza'}")
+        lines.append("")
+
+        # -------------------------
+        # Individual report
+        # -------------------------
+        if rep_include_ind_var.get():
+            person_id = str(rep_person_id_var.get()).strip()
+            if not person_id:
+                messagebox.showerror("Błąd", "Podaj ID (Number) dla raportu osobnika.")
+                return
+            if person_id not in people:
+                messagebox.showerror("Błąd", "Wybrane ID nie istnieje w wczytanych danych.")
+                return
+
+            if bool(rep_ind_unbounded_var.get()):
+                f_res = wright_inbreeding_F(person_id=person_id, people=people, max_generations_back=None)
+                depth_txt = "bez limitu (do founderów)"
+                max_back = None
+            else:
+                try:
+                    depth = int(str(rep_ind_depth_var.get()).strip())
+                except Exception:
+                    messagebox.showerror("Błąd", "Max pokoleń dla osobnika musi być liczbą całkowitą.")
+                    return
+                depth = max(0, depth)
+                f_res = wright_inbreeding_F(person_id=person_id, people=people, max_generations_back=depth)
+                depth_txt = f"limit = {depth}"
+                max_back = depth
+
+            lines.append(f"1) Raport osobnika — ID {person_id}")
+            lines.append(f"- Inbred (Wright F): {f_res.F:.6f} ({depth_txt})")
+            lines.append(f"- Ojciec: {f_res.father_id} — {f_res.father_name}")
+            lines.append(f"- Matka : {f_res.mother_id} — {f_res.mother_name}")
+
+            # Completeness (MG/EG/PCI) — analogicznie jak w UI "Inbred (F)".
+            MG = 0
+            EG = 0.0
+            PCI = 0.0
+            by_gen: dict[int, int] = {}
+            try:
+                levels = get_ancestor_levels_unbounded(person_id=person_id, people=people)
+                for _aid, lvl in levels.items():
+                    try:
+                        g = int(lvl)
+                    except Exception:
+                        continue
+                    if g <= 0:
+                        continue
+                    by_gen[g] = by_gen.get(g, 0) + 1
+
+                if by_gen:
+                    MG = int(max(by_gen.keys()))
+                    pci_sum = 0.0
+                    for g in range(1, MG + 1):
+                        a_g = int(by_gen.get(g, 0))
+                        pcl_g = float(a_g) / float(2**g)
+                        EG += pcl_g
+                        pci_sum += pcl_g
+                    PCI = pci_sum / float(MG) if MG > 0 else 0.0
+            except Exception:
+                pass
+
+            lines.append(f"- Kompletność rodowodu (ANC, bez limitu): MG={MG}, EG={EG:.4f}, PCI={PCI:.4f}")
+
+            subj_mem = get_line_membership(person_id, people)
+            father_mem = get_line_membership(f_res.father_id, people) if f_res.father_id and f_res.father_id in people else None
+            mother_mem = get_line_membership(f_res.mother_id, people) if f_res.mother_id and f_res.mother_id in people else None
+            def _norm_line(v: object) -> str:
+                if v is None:
+                    return "NA"
+                if isinstance(v, float) and v != v:
+                    return "NA"
+                s = str(v).strip().upper()
+                return s if s in {"LB", "LC"} else "NA"
+
+            own_line = _norm_line(getattr(people.get(person_id), "line", None))
+            father_line = _norm_line(getattr(people.get(f_res.father_id) if f_res.father_id else None, "line", None))
+            mother_line = _norm_line(getattr(people.get(f_res.mother_id) if f_res.mother_id else None, "line", None))
+            lines.append("- Linie (sire/dam):")
+            lines.append(f"- Linie LB/LC: oceniany={own_line}  ojciec={father_line}  matka={mother_line}")
+            lines.append(_fmt_line_membership(subj_mem, label="  "))
+            lines.append(_fmt_line_membership(father_mem, label="  Ojciec: ") if father_mem else "  Ojciec: NA")
+            lines.append(_fmt_line_membership(mother_mem, label="  Matka: ") if mother_mem else "  Matka: NA")
+            lines.append("")
+
+            lines.append("Metodyka (skrócona):")
+            lines.append("- F(i) = Phi(sire(i), dam(i)); Phi liczymy rekurencyjnie po rodowodzie.")
+            lines.append("- Brak rodzica traktowany jest jak founder-stop (wkład do Phi dla tej ścieżki = 0).")
+            lines.append("")
+
+        # -------------------------
+        # Population report
+        # -------------------------
+        if rep_include_pop_var.get():
+            try:
+                max_generations_back = None if bool(rep_pop_unbounded_var.get()) else int(str(rep_pop_depth_var.get()).strip())
+            except Exception:
+                messagebox.showerror("Błąd", "Max pokoleń dla populacji musi być liczbą całkowitą.")
+                return
+            if max_generations_back is not None:
+                max_generations_back = max(0, max_generations_back)
+
+            lines.append("2) Raport populacji (genetyka i kompletność)")
+            try:
+                stats = compute_population_genetics_stats(
+                    df_std=df_std,  # type: ignore[arg-type]
+                    people=people,  # type: ignore[arg-type]
+                    max_generations_back=max_generations_back,
+                    calc_f=True,
+                    calc_completeness=True,
+                    calc_founders=True,
+                    calc_lines=True,
+                )
+
+                lines.append(f"- Liczba osobników (po odfiltrowaniu ID testowego): n={stats.n}")
+                lines.append(f"- Założyciele (brak ojca lub matki): {stats.n_founders_any_missing_parent}")
+                lines.append("")
+                lines.append("- Inbred (Wright F) — statystyki:")
+                lines.append(f"  mean={stats.inbreeding.mean_F:.6f}  median={stats.inbreeding.median_F:.6f}")
+                lines.append(f"  min={stats.inbreeding.min_F:.6f}  max={stats.inbreeding.max_F:.6f}")
+                lines.append(f"  zeros (F=0): {stats.inbreeding.zeros}/{stats.inbreeding.n}")
+                lines.append("")
+                lines.append("- Kompletność rodowodu:")
+                lines.append(f"  mean EG={stats.completeness.mean_EG:.4f}")
+                lines.append(f"  mean PCI={stats.completeness.mean_PCI:.4f}")
+                lines.append("")
+                lines.append("- Założyciele (founder contributions):")
+                lines.append(f"  f_e={stats.founders.f_e:.4f}")
+                lines.append(f"  f_a={stats.founders.f_a:.4f}")
+                if stats.founders.f_a > 0:
+                    lines.append(f"  Bottleneck f_e/f_a={stats.founders.f_e / stats.founders.f_a:.3f}")
+                lines.append(f"  Dryf (aproksymacja, f_ge=f_e): 1.000")
+                lines.append("")
+                lines.append("- Linie (kolumna line):")
+                lines.append(f"  LB={stats.line_counts.get('LB', 0)}  LC={stats.line_counts.get('LC', 0)}  NA={stats.line_counts.get('NA', 0)}")
+            except Exception as e:
+                lines.append(f"- Błąd liczenia metryk populacyjnych: {e}")
+            lines.append("")
+
+        content = "\n".join(lines).strip() + "\n"
+        rep_output_text.configure(state="normal")
+        rep_output_text.delete("1.0", tk.END)
+        rep_output_text.insert("1.0", content)
+        rep_output_text.configure(state="disabled")
+        _set_rep_status("Raport wygenerowany.")
+
+    def on_save_report_txt() -> None:
+        try:
+            text_content = rep_output_text.get("1.0", tk.END).strip()
+        except Exception:
+            text_content = ""
+        if not text_content:
+            messagebox.showinfo("Info", "Najpierw wygeneruj raport.")
+            return
+
+        filename = filedialog.asksaveasfilename(
+            title="Zapisz raport (TXT)",
+            defaultextension=".txt",
+            initialfile="wisent_pedigree_report.txt",
+            filetypes=[("TXT", "*.txt"), ("All files", "*.*")],
+        )
+        if not filename:
+            return
+
+        try:
+            Path(filename).write_text(text_content, encoding="utf-8")
+            _set_rep_status(f"Zapisano: {Path(filename).name}")
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się zapisać pliku: {e}")
+
+    rep_generate_btn = ttk.Button(rep_btns, text="Generuj raport", command=on_generate_report)
+    rep_generate_btn.pack(side=tk.LEFT)
+    rep_save_btn = ttk.Button(rep_btns, text="Zapisz raport (TXT)", command=on_save_report_txt)
+    rep_save_btn.pack(side=tk.LEFT, padx=(12, 0))
+
+    # -------------------------
+    # Settings (domyślne zachowanie UI)
+    # -------------------------
+    ttk.Label(tab_settings, text="Ustawienia", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
+
+    settings_desc = (
+        "Ustawienia sterują domyślnymi wartościami w zakładkach "
+        "(bez wpływu na dane wczytane do bazy)."
+    )
+    ttk.Label(tab_settings, text=settings_desc, foreground=colors.MUTED, wraplength=900, justify="left").pack(
+        anchor="w", pady=(6, 0)
+    )
+
+    settings_divider = ttk.Separator(tab_settings, orient="horizontal")
+    settings_divider.pack(fill=tk.X, pady=(14, 10))
+
+    # Rodowód (graf przodków)
+    ttk.Label(tab_settings, text="Rodowód (graf przodków)", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+
+    settings_anc_readable_var = tk.BooleanVar(value=True)
+    settings_anc_unbounded_var = tk.BooleanVar(value=True)
+    settings_anc_click_var = tk.BooleanVar(value=False)
+    settings_anc_depth_var = tk.StringVar(value="4")
+
+    ttk.Checkbutton(
+        tab_settings,
+        text="Domyślnie: tryb czytelny (mniej etykiet)",
+        variable=settings_anc_readable_var,
+    ).pack(anchor="w", pady=(6, 0))
+
+    ttk.Checkbutton(
+        tab_settings,
+        text="Domyślnie: bez limitu (do founderów)",
+        variable=settings_anc_unbounded_var,
+    ).pack(anchor="w", pady=(6, 0))
+
+    ttk.Checkbutton(
+        tab_settings,
+        text="Domyślnie: klik w węzeł (podświetlenie + aktualizacja linii)",
+        variable=settings_anc_click_var,
+    ).pack(anchor="w", pady=(6, 0))
+
+    anc_depth_row = ttk.Frame(tab_settings)
+    anc_depth_row.pack(anchor="w", pady=(6, 0))
+    ttk.Label(anc_depth_row, text="Domyślny max pokoleń (gdy limit):").pack(side=tk.LEFT)
+    settings_anc_depth_entry = ttk.Entry(anc_depth_row, textvariable=settings_anc_depth_var, width=8)
+    settings_anc_depth_entry.pack(side=tk.LEFT, padx=(8, 0))
+
+    def _sync_settings_anc_depth_state() -> None:
+        st = "disabled" if bool(settings_anc_unbounded_var.get()) else "normal"
+        settings_anc_depth_entry.configure(state=st)
+
+    _sync_settings_anc_depth_state()
+    settings_anc_unbounded_var.trace_add("write", lambda *_args: _sync_settings_anc_depth_state())
+
+    settings_divider2 = ttk.Separator(tab_settings, orient="horizontal")
+    settings_divider2.pack(fill=tk.X, pady=(14, 10))
+
+    # Analizy: inbred (wybrany osobnik)
+    ttk.Label(tab_settings, text="Analiza indywidualna (Inbred F)", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    settings_inb_unbounded_var = tk.BooleanVar(value=True)
+    settings_inb_depth_var = tk.StringVar(value="4")
+
+    ttk.Checkbutton(
+        tab_settings,
+        text="Domyślnie: bez limitu (do founderów)",
+        variable=settings_inb_unbounded_var,
+    ).pack(anchor="w", pady=(6, 0))
+
+    inb_depth_row = ttk.Frame(tab_settings)
+    inb_depth_row.pack(anchor="w", pady=(6, 0))
+    ttk.Label(inb_depth_row, text="Domyślny max pokoleń (gdy limit):").pack(side=tk.LEFT)
+    settings_inb_depth_entry = ttk.Entry(inb_depth_row, textvariable=settings_inb_depth_var, width=8)
+    settings_inb_depth_entry.pack(side=tk.LEFT, padx=(8, 0))
+
+    def _sync_settings_inb_depth_state() -> None:
+        st = "disabled" if bool(settings_inb_unbounded_var.get()) else "normal"
+        settings_inb_depth_entry.configure(state=st)
+
+    _sync_settings_inb_depth_state()
+    settings_inb_unbounded_var.trace_add("write", lambda *_args: _sync_settings_inb_depth_state())
+
+    settings_divider3 = ttk.Separator(tab_settings, orient="horizontal")
+    settings_divider3.pack(fill=tk.X, pady=(14, 10))
+
+    # Populacja: trendy F
+    ttk.Label(tab_settings, text="Populacja (F, trendy w czasie)", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    settings_pop_unbounded_var = tk.BooleanVar(value=False)
+    settings_pop_depth_var = tk.StringVar(value="4")
+
+    ttk.Checkbutton(
+        tab_settings,
+        text="Domyślnie: bez limitu (do founderów)",
+        variable=settings_pop_unbounded_var,
+    ).pack(anchor="w", pady=(6, 0))
+
+    pop_depth_row = ttk.Frame(tab_settings)
+    pop_depth_row.pack(anchor="w", pady=(6, 0))
+    ttk.Label(pop_depth_row, text="Domyślny max pokoleń (gdy limit):").pack(side=tk.LEFT)
+    settings_pop_depth_entry = ttk.Entry(pop_depth_row, textvariable=settings_pop_depth_var, width=8)
+    settings_pop_depth_entry.pack(side=tk.LEFT, padx=(8, 0))
+
+    def _sync_settings_pop_depth_state() -> None:
+        st = "disabled" if bool(settings_pop_unbounded_var.get()) else "normal"
+        settings_pop_depth_entry.configure(state=st)
+
+    _sync_settings_pop_depth_state()
+    settings_pop_unbounded_var.trace_add("write", lambda *_args: _sync_settings_pop_depth_state())
 
     # -------------------------
     # Shared app state
     # -------------------------
-    state: dict[str, object] = {"df_std": None, "people": None, "line_memberships": {}}
+    state: dict[str, object] = {
+        "df_std": None,
+        "people": None,
+        "line_memberships": {},
+        "df_raw": None,
+        "raw_filename": None,
+    }
 
     # -------------------------
     # Populacja tab (podstawowe metryki)
@@ -192,6 +638,16 @@ def run_tk_pro() -> None:
     # Parametry liczenia inbredu (F) dla metryk populacyjnych (bez wpływu na "Analizy").
     pop_depth_inb_var = tk.StringVar(value="4")
     pop_unbounded_inb_var = tk.BooleanVar(value=False)
+
+    # Synchronizacja domyślnych ustawień dla wykresów F w zakładce "Populacja".
+    pop_depth_inb_var.set(settings_pop_depth_var.get())
+    pop_unbounded_inb_var.set(bool(settings_pop_unbounded_var.get()))
+    settings_pop_unbounded_var.trace_add(
+        "write", lambda *_args: pop_unbounded_inb_var.set(bool(settings_pop_unbounded_var.get()))
+    )
+    settings_pop_depth_var.trace_add(
+        "write", lambda *_args: pop_depth_inb_var.set(settings_pop_depth_var.get())
+    )
 
     # Genetyka populacyjna (TP/RP — zależnie od implementacji).
     pop_f_e_var = tk.StringVar(value="-")
@@ -561,6 +1017,11 @@ def run_tk_pro() -> None:
             ax1.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=8)
             ax1.legend(fontsize=8)
             fig1.tight_layout()
+            ttk.Button(
+                pop_birth_sex_plot_area,
+                text="Zapis wykresu (jpeg)",
+                command=lambda f=fig1: _save_figure_as_jpeg(f, default_basename="pop_urodzenia_plec"),
+            ).pack(anchor="w", pady=(0, 6))
             canvas1 = FigureCanvasTkAgg(fig1, master=pop_birth_sex_plot_area)
             canvas1.draw()
             canvas1.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -607,6 +1068,11 @@ def run_tk_pro() -> None:
             ax2.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=8)
             ax2.legend(fontsize=8)
             fig2.tight_layout()
+            ttk.Button(
+                pop_birth_line_plot_area,
+                text="Zapis wykresu (jpeg)",
+                command=lambda f=fig2: _save_figure_as_jpeg(f, default_basename="pop_urodzenia_linie"),
+            ).pack(anchor="w", pady=(0, 6))
             canvas2 = FigureCanvasTkAgg(fig2, master=pop_birth_line_plot_area)
             canvas2.draw()
             canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -640,6 +1106,11 @@ def run_tk_pro() -> None:
             ax3.set_xticks(xs3)
             ax3.set_xticklabels(ratio_labels, rotation=45, ha="right", fontsize=8)
             fig3.tight_layout()
+            ttk.Button(
+                pop_birth_ratio_plot_area,
+                text="Zapis wykresu (jpeg)",
+                command=lambda f=fig3: _save_figure_as_jpeg(f, default_basename="pop_urodzenia_ratio_FM"),
+            ).pack(anchor="w", pady=(0, 6))
             canvas3 = FigureCanvasTkAgg(fig3, master=pop_birth_ratio_plot_area)
             canvas3.draw()
             canvas3.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -739,6 +1210,11 @@ def run_tk_pro() -> None:
                 ax_c.set_xticklabels(cats, fontsize=9)
                 ax_c.legend(fontsize=8)
                 fig_c.tight_layout()
+                ttk.Button(
+                    pop_comp_sex_plot_area,
+                    text="Zapis wykresu (jpeg)",
+                    command=lambda f=fig_c: _save_figure_as_jpeg(f, default_basename="pop_kompletnosc_plec"),
+                ).pack(anchor="w", pady=(0, 6))
                 canvas_c = FigureCanvasTkAgg(fig_c, master=pop_comp_sex_plot_area)
                 canvas_c.draw()
                 canvas_c.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -764,6 +1240,11 @@ def run_tk_pro() -> None:
                 ax_l.set_xticklabels(cats2, fontsize=9)
                 ax_l.legend(fontsize=8)
                 fig_l.tight_layout()
+                ttk.Button(
+                    pop_comp_line_plot_area,
+                    text="Zapis wykresu (jpeg)",
+                    command=lambda f=fig_l: _save_figure_as_jpeg(f, default_basename="pop_kompletnosc_linie"),
+                ).pack(anchor="w", pady=(0, 6))
                 canvas_l = FigureCanvasTkAgg(fig_l, master=pop_comp_line_plot_area)
                 canvas_l.draw()
                 canvas_l.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -931,6 +1412,12 @@ def run_tk_pro() -> None:
                 ax_ria.set_xticks(ticks)
             fig.tight_layout()
 
+            ttk.Button(
+                pop_inb_year_sex_plot_area,
+                text="Zapis wykresu (jpeg)",
+                command=lambda f=fig: _save_figure_as_jpeg(f, default_basename="pop_inbred_trend_plec"),
+            ).pack(anchor="w", pady=(0, 6))
+
             canvas = FigureCanvasTkAgg(fig, master=pop_inb_year_sex_plot_area)
             canvas.draw()
             canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -983,6 +1470,12 @@ def run_tk_pro() -> None:
                 ax_avg2.set_xticks(ticks)
                 ax_ria2.set_xticks(ticks)
             fig2.tight_layout()
+
+            ttk.Button(
+                pop_inb_year_line_plot_area,
+                text="Zapis wykresu (jpeg)",
+                command=lambda f=fig2: _save_figure_as_jpeg(f, default_basename="pop_inbred_trend_linie"),
+            ).pack(anchor="w", pady=(0, 6))
 
             canvas2 = FigureCanvasTkAgg(fig2, master=pop_inb_year_line_plot_area)
             canvas2.draw()
@@ -1331,6 +1824,11 @@ def run_tk_pro() -> None:
                     ax_fe.axis("off")
 
                 fig_fe.tight_layout()
+                ttk.Button(
+                    pop_founders_plot_area,
+                    text="Zapis wykresu (jpeg)",
+                    command=lambda f=fig_fe: _save_figure_as_jpeg(f, default_basename="pop_founders_pi"),
+                ).pack(anchor="w", pady=(0, 6))
                 canvas_fe = FigureCanvasTkAgg(fig_fe, master=pop_founders_plot_area)
                 canvas_fe.draw()
                 canvas_fe.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -1373,6 +1871,11 @@ def run_tk_pro() -> None:
                 ax_gi.set_title("Odstęp międzypokoleniowy (GI)")
                 ax_gi.set_ylabel("GI (lata)")
                 fig_gi.tight_layout()
+                ttk.Button(
+                    pop_gi_plot_area,
+                    text="Zapis wykresu (jpeg)",
+                    command=lambda f=fig_gi: _save_figure_as_jpeg(f, default_basename="pop_gi_mean"),
+                ).pack(anchor="w", pady=(0, 6))
                 canvas_gi = FigureCanvasTkAgg(fig_gi, master=pop_gi_plot_area)
                 canvas_gi.draw()
                 canvas_gi.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -1429,6 +1932,11 @@ def run_tk_pro() -> None:
                         fontsize=8,
                     )
                     fig_t.tight_layout()
+                    ttk.Button(
+                        pop_gi_trend_plot_area,
+                        text="Zapis wykresu (jpeg)",
+                        command=lambda f=fig_t: _save_figure_as_jpeg(f, default_basename="pop_gi_trend"),
+                    ).pack(anchor="w", pady=(0, 6))
                     canvas_t = FigureCanvasTkAgg(fig_t, master=pop_gi_trend_plot_area)
                     canvas_t.draw()
                     canvas_t.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -1438,6 +1946,11 @@ def run_tk_pro() -> None:
                     ax_t.text(0.5, 0.5, "Brak danych GI w dekadach", ha="center", va="center")
                     ax_t.axis("off")
                     fig_t.tight_layout()
+                    ttk.Button(
+                        pop_gi_trend_plot_area,
+                        text="Zapis wykresu (jpeg)",
+                        command=lambda f=fig_t: _save_figure_as_jpeg(f, default_basename="pop_gi_trend"),
+                    ).pack(anchor="w", pady=(0, 6))
                     canvas_t = FigureCanvasTkAgg(fig_t, master=pop_gi_trend_plot_area)
                     canvas_t.draw()
                     canvas_t.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -1472,6 +1985,11 @@ def run_tk_pro() -> None:
                     ax_f.text(0.5, 0.5, "Brak danych rodzin", ha="center", va="center")
                     ax_f.axis("off")
                 fig_f.tight_layout()
+                ttk.Button(
+                    pop_family_plot_area,
+                    text="Zapis wykresu (jpeg)",
+                    command=lambda f=fig_f: _save_figure_as_jpeg(f, default_basename="pop_family_sizes"),
+                ).pack(anchor="w", pady=(0, 6))
                 canvas_f = FigureCanvasTkAgg(fig_f, master=pop_family_plot_area)
                 canvas_f.draw()
                 canvas_f.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -1492,6 +2010,272 @@ def run_tk_pro() -> None:
         status_var.set(msg)
         root.update_idletasks()
 
+    # -------------------------
+    # Loading tab: mapowanie kolumn
+    # -------------------------
+    LOAD_NONE = "<nie wybrano>"
+
+    loading_frame = ttk.Frame(tab_loading)
+    loading_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    ttk.Label(loading_frame, text="Wczytywanie bazy", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
+    ttk.Label(
+        loading_frame,
+        text=(
+            "1) Wybierz plik (CSV/XLSX).\n"
+            "2) Jeśli automatyczne mapowanie po nazwach nie zadziała, przypisz kolumny do pól aplikacji.\n"
+            "3) Kliknij „Zastosuj mapowanie i wczytaj”."
+        ),
+        foreground=colors.MUTED,
+        wraplength=900,
+        justify="left",
+    ).pack(anchor="w", pady=(6, 0))
+
+    loading_top_btns = ttk.Frame(loading_frame)
+    loading_top_btns.pack(anchor="w", pady=(14, 0), fill=tk.X)
+
+    raw_file_var = tk.StringVar(value="Brak wczytanego pliku.")
+    ttk.Label(loading_frame, textvariable=raw_file_var, foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
+
+    mapping_note_var = tk.StringVar(value="Wczytaj plik aby rozpocząć mapowanie.")
+    ttk.Label(loading_frame, textvariable=mapping_note_var, foreground=colors.TEXT, wraplength=900).pack(anchor="w", pady=(4, 10))
+
+    internet_lf = ttk.LabelFrame(loading_frame, text="Pobieranie z internetu (EBPB)")
+    internet_lf.pack(side=tk.TOP, fill=tk.BOTH, expand=False, pady=(0, 10), padx=0)
+
+    ebpb_url_var = tk.StringVar(value="")
+    ttk.Label(internet_lf, text="Wklej bezpośredni URL do pliku z 'pobierz zestawienie':").pack(anchor="w", padx=10, pady=(10, 0))
+    ebpb_row = ttk.Frame(internet_lf)
+    ebpb_row.pack(fill=tk.X, padx=10, pady=(8, 10))
+    ebpb_entry = ttk.Entry(ebpb_row, textvariable=ebpb_url_var)
+    ebpb_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    ebpb_download_btn = ttk.Button(ebpb_row, text="Pobierz i wczytaj", command=lambda: None)
+    ebpb_download_btn.pack(side=tk.LEFT, padx=(10, 0))
+
+    map_lf = ttk.LabelFrame(loading_frame, text="Mapowanie kolumn")
+    map_lf.pack(side=tk.TOP, fill=tk.BOTH, expand=False, pady=(0, 10))
+
+    map_grid = ttk.Frame(map_lf)
+    map_grid.pack(fill=tk.X, expand=True, padx=10, pady=10)
+
+    # Wewnętrzne pola aplikacji (df_std)
+    map_id_var = tk.StringVar(value=LOAD_NONE)
+    map_sex_var = tk.StringVar(value=LOAD_NONE)
+    map_line_var = tk.StringVar(value=LOAD_NONE)
+    map_birth_year_var = tk.StringVar(value=LOAD_NONE)
+    map_father_id_var = tk.StringVar(value=LOAD_NONE)
+    map_mother_id_var = tk.StringVar(value=LOAD_NONE)
+    map_name_var = tk.StringVar(value=LOAD_NONE)
+    map_father_line_var = tk.StringVar(value=LOAD_NONE)
+    map_mother_line_var = tk.StringVar(value=LOAD_NONE)
+
+    def _clean_colname(s: object) -> str:
+        if s is None:
+            return ""
+        return str(s).replace("\n", " ").strip()
+
+    def _set_cb_options(cb: ttk.Combobox, cols: list[str]) -> None:
+        options = [LOAD_NONE] + cols
+        cb.configure(values=options, state="readonly")
+
+    ttk.Label(map_grid, text="ID (id/Number)", foreground=colors.MUTED).grid(row=0, column=0, sticky="w", pady=4)
+    cb_id = ttk.Combobox(map_grid, textvariable=map_id_var, width=45)
+    cb_id.grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Płeć (sex: M/F)", foreground=colors.MUTED).grid(row=1, column=0, sticky="w", pady=4)
+    cb_sex = ttk.Combobox(map_grid, textvariable=map_sex_var, width=45)
+    cb_sex.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Linia (line: LB/LC)", foreground=colors.MUTED).grid(row=2, column=0, sticky="w", pady=4)
+    cb_line = ttk.Combobox(map_grid, textvariable=map_line_var, width=45)
+    cb_line.grid(row=2, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Rok urodzenia (birth_year)", foreground=colors.MUTED).grid(row=3, column=0, sticky="w", pady=4)
+    cb_birth_year = ttk.Combobox(map_grid, textvariable=map_birth_year_var, width=45)
+    cb_birth_year.grid(row=3, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Ojciec (father_id)", foreground=colors.MUTED).grid(row=4, column=0, sticky="w", pady=4)
+    cb_father_id = ttk.Combobox(map_grid, textvariable=map_father_id_var, width=45)
+    cb_father_id.grid(row=4, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Matka (mother_id)", foreground=colors.MUTED).grid(row=5, column=0, sticky="w", pady=4)
+    cb_mother_id = ttk.Combobox(map_grid, textvariable=map_mother_id_var, width=45)
+    cb_mother_id.grid(row=5, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Imię (name) [opcjonalnie]", foreground=colors.MUTED).grid(row=6, column=0, sticky="w", pady=4)
+    cb_name = ttk.Combobox(map_grid, textvariable=map_name_var, width=45)
+    cb_name.grid(row=6, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Linia ojca (father_line) [opcjonalnie]", foreground=colors.MUTED).grid(
+        row=7, column=0, sticky="w", pady=4
+    )
+    cb_father_line = ttk.Combobox(map_grid, textvariable=map_father_line_var, width=45)
+    cb_father_line.grid(row=7, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Linia matki (mother_line) [opcjonalnie]", foreground=colors.MUTED).grid(
+        row=8, column=0, sticky="w", pady=4
+    )
+    cb_mother_line = ttk.Combobox(map_grid, textvariable=map_mother_line_var, width=45)
+    cb_mother_line.grid(row=8, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    # kolumny muszą się zmieścić
+    map_grid.columnconfigure(1, weight=1)
+
+    def _clear_mapping_vars() -> None:
+        for v in [
+            map_id_var,
+            map_sex_var,
+            map_line_var,
+            map_birth_year_var,
+            map_father_id_var,
+            map_mother_id_var,
+            map_name_var,
+            map_father_line_var,
+            map_mother_line_var,
+        ]:
+            v.set(LOAD_NONE)
+
+    def _autoselect_mapping(cols_clean: list[str]) -> None:
+        # Tylko jeśli exact match po czyszczeniu.
+        colset = {c.upper(): c for c in cols_clean}
+
+        def pick(candidates: list[str]) -> Optional[str]:
+            for cand in candidates:
+                key = str(cand).upper()
+                if key in colset:
+                    return colset[key]
+            return None
+
+        map_id_var.set(pick(["Number", "ID", "id"]) or LOAD_NONE)
+        map_sex_var.set(pick(["Sex", "sex", "Gender", "gender"]) or LOAD_NONE)
+        map_line_var.set(pick(["Line", "line"]) or LOAD_NONE)
+        map_birth_year_var.set(pick(["Birth year", "birth_year", "BirthYear"]) or LOAD_NONE)
+        map_father_id_var.set(pick(["Father", "father_id", "Father ID", "father"]) or LOAD_NONE)
+        map_mother_id_var.set(pick(["Mother", "mother_id", "Mother ID", "mother"]) or LOAD_NONE)
+        map_name_var.set(pick(["Name", "name", "Alt name", "alt_name"]) or LOAD_NONE)
+        # Domyślne "niestandardowe" nazwy (Excel bywa puste/Unnamed:..)
+        map_father_line_var.set(pick(["Unnamed: 9", "father_line"]) or LOAD_NONE)
+        map_mother_line_var.set(pick(["Unnamed: 12", "mother_line"]) or LOAD_NONE)
+
+    def _refresh_mapping_form_for_raw_df(df_raw: object) -> None:
+        try:
+            cols = list(getattr(df_raw, "columns"))
+        except Exception:
+            cols = []
+        cols_clean = [_clean_colname(c) for c in cols]
+        _set_cb_options(cb_id, cols_clean)
+        _set_cb_options(cb_sex, cols_clean)
+        _set_cb_options(cb_line, cols_clean)
+        _set_cb_options(cb_birth_year, cols_clean)
+        _set_cb_options(cb_father_id, cols_clean)
+        _set_cb_options(cb_mother_id, cols_clean)
+        _set_cb_options(cb_name, cols_clean)
+        _set_cb_options(cb_father_line, cols_clean)
+        _set_cb_options(cb_mother_line, cols_clean)
+        _autoselect_mapping(cols_clean)
+
+    def _set_mapping_ready(enabled: bool) -> None:
+        apply_mapping_btn.configure(state="normal" if enabled else "disabled")
+
+    def on_apply_mapping() -> None:
+        df_raw = state.get("df_raw")
+        if df_raw is None:
+            messagebox.showinfo("Info", "Najpierw wczytaj plik.")
+            return
+
+        def _sel(v: str) -> Optional[str]:
+            if not v or v == LOAD_NONE:
+                return None
+            return v
+
+        column_mapping = {
+            "id": _sel(map_id_var.get()),
+            "sex": _sel(map_sex_var.get()),
+            "line": _sel(map_line_var.get()),
+            "birth_year": _sel(map_birth_year_var.get()),
+            "father_id": _sel(map_father_id_var.get()),
+            "mother_id": _sel(map_mother_id_var.get()),
+            "name": _sel(map_name_var.get()),
+            "father_line": _sel(map_father_line_var.get()),
+            "mother_line": _sel(map_mother_line_var.get()),
+        }
+
+        try:
+            df_std = standardize_bison_report_dataframe_with_column_mapping(df_raw, column_mapping)
+            people = _build_people_map(df_std)
+            _apply_dataset(
+                df_std=df_std,
+                people=people,
+                source=f"Wczytano (mapowanie): {state.get('raw_filename')}",
+            )
+            notebook.select(tab_persons)
+        except Exception as e:
+            messagebox.showerror("Błąd mapowania", str(e))
+            _set_status(f"Błąd mapowania: {e}")
+
+    def on_load_default() -> None:
+        try:
+            df_std, _info = load_default_bison_report()
+            people = _build_people_map(df_std)
+            _apply_dataset(df_std=df_std, people=people, source="Wczytano domyślną bazę")
+            notebook.select(tab_persons)
+            raw_file_var.set("Wczytano domyślną bazę (bez mapowania).")
+            mapping_note_var.set("Domyślna baza została wczytana automatycznie.")
+            _set_mapping_ready(False)
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się wczytać domyślnej bazy: {e}")
+            _set_status(f"Błąd: {e}")
+
+    def on_download_from_ebpb() -> None:
+        url = str(ebpb_url_var.get()).strip()
+        if not url:
+            messagebox.showinfo("Info", "Wklej URL do pliku z EBPB.")
+            return
+
+        # Krok 1: spróbuj wczytać od razu jako standardowy eksport aplikacji.
+        try:
+            df_std, _info = load_dataset_from_url(url)
+            people = _build_people_map(df_std)
+            _apply_dataset(df_std=df_std, people=people, source=f"Pobrano z internetu: {url}")
+            notebook.select(tab_persons)
+            state["df_raw"] = None
+            state["raw_filename"] = "ebpb_download"
+            raw_file_var.set("Pobrano z EBPB i wczytano automatycznie.")
+            mapping_note_var.set("Mapowanie kolumn nie było potrzebne.")
+            _set_mapping_ready(False)
+            return
+        except Exception:
+            # OK: przechodzimy na tryb 'mapowanie', jeśli eksport ma inne nagłówki.
+            pass
+
+        # Krok 2: wczytaj surową tabelę i przełącz UI na mapowanie.
+        try:
+            df_raw = load_raw_dataframe_from_url(url)
+            state["df_raw"] = df_raw
+            state["raw_filename"] = url
+
+            set_controls_enabled(False)
+            raw_file_var.set("Pobrano z EBPB: mapowanie wymagane.")
+            mapping_note_var.set("Automatyczne mapowanie po nazwach nie zadziałało — przypisz kolumny w formularzu.")
+
+            try:
+                for item in tree.get_children():
+                    tree.delete(item)
+            except Exception:
+                pass
+
+            dataset_range_var.set("Zakres ID: brak")
+            _clear_mapping_vars()
+            _refresh_mapping_form_for_raw_df(df_raw)
+            _set_mapping_ready(True)
+            notebook.select(tab_loading)
+            root.update_idletasks()
+        except Exception as e:
+            messagebox.showerror("Błąd pobierania", str(e))
+            _set_status(f"Błąd pobierania: {e}")
+
+    ebpb_download_btn.configure(command=on_download_from_ebpb)
+
     def on_choose_file() -> None:
         path = filedialog.askopenfilename(
             title="Wybierz plik",
@@ -1499,25 +2283,68 @@ def run_tk_pro() -> None:
         )
         if not path:
             return
+
+        # Krok 1: spróbujmy automatycznego mapowania po nazwach.
         try:
             df_std, _info = load_dataset_from_path(path)
             people = _build_people_map(df_std)
             _apply_dataset(df_std=df_std, people=people, source=f"Wczytano: {Path(path).name}")
+            notebook.select(tab_persons)
+            state["df_raw"] = None
+            state["raw_filename"] = Path(path).name
+            raw_file_var.set(f"Wczytano automatycznie: {Path(path).name}")
+            mapping_note_var.set("Mapowanie kolumn nie jest potrzebne (dopasowane do formatu aplikacji).")
+            _set_mapping_ready(False)
+            return
+        except Exception:
+            # OK: przejdziemy do mapowania ręcznego.
+            pass
+
+        # Krok 2: wczytujemy surowy plik i prosimy o mapowanie kolumn.
+        try:
+            import pandas as pd
+
+            ext = Path(path).suffix.lower()
+            if ext == ".csv":
+                df_raw = pd.read_csv(path)
+            elif ext in {".xlsx", ".xls"}:
+                df_raw = pd.read_excel(path, sheet_name=0)
+            else:
+                raise ValueError(f"Nieobsługiwany typ pliku: {ext}")
+
+            state["df_raw"] = df_raw
+            state["raw_filename"] = Path(path).name
+
+            # Przestaw UI w tryb "oczekuje na mapowanie".
+            set_controls_enabled(False)
+            raw_file_var.set(f"Wczytano plik: {Path(path).name} (mapowanie wymagane)")
+            mapping_note_var.set("Wybierz kolumny dla pól aplikacji, a potem kliknij „Zastosuj mapowanie i wczytaj”.")
+
+            # Wyczyść podgląd osób (żeby nie mylić danych).
+            try:
+                for item in tree.get_children():
+                    tree.delete(item)
+            except Exception:
+                pass
+
+            dataset_range_var.set("Zakres ID: brak")
+
+            _clear_mapping_vars()
+            _refresh_mapping_form_for_raw_df(df_raw)
+            _set_mapping_ready(True)
+            root.update_idletasks()
         except Exception as e:
             messagebox.showerror("Błąd wczytywania", str(e))
             _set_status(f"Błąd wczytywania: {e}")
 
-    def on_load_default() -> None:
-        try:
-            df_std, _info = load_default_bison_report()
-            people = _build_people_map(df_std)
-            _apply_dataset(df_std=df_std, people=people, source="Wczytano domyślną bazę")
-        except Exception as e:
-            messagebox.showerror("Błąd", f"Nie udało się wczytać domyślnej bazy: {e}")
-            _set_status(f"Błąd: {e}")
+    # Przycisk wymaga zmapowania
+    apply_mapping_btn = ttk.Button(loading_frame, text="Zastosuj mapowanie i wczytaj", command=on_apply_mapping, state="disabled")
+    apply_mapping_btn.pack(anchor="w", pady=(10, 0))
 
-    ttk.Button(persons_controls, text="Wybierz bazę", command=on_choose_file).pack(side=tk.LEFT, padx=(0, 10))
-    ttk.Button(persons_controls, text="Wczytaj domyślną bazę", command=on_load_default).pack(side=tk.LEFT)
+    loading_btns_left = ttk.Frame(loading_top_btns)
+    loading_btns_left.pack(side=tk.LEFT)
+    ttk.Button(loading_top_btns, text="Wybierz plik bazy", command=on_choose_file).pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Button(loading_top_btns, text="Wczytaj domyślną bazę", command=on_load_default).pack(side=tk.LEFT)
 
     dataset_range_var = tk.StringVar(value="")
     ttk.Label(persons_controls, textvariable=dataset_range_var, foreground=colors.MUTED).pack(side=tk.LEFT, padx=(16, 0))
@@ -1635,7 +2462,42 @@ def run_tk_pro() -> None:
         variable=readable_anc_var,
         state="disabled",
     )
-    readable_anc_cb.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+    readable_anc_cb.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+    # Filtr linii przodków (sire/dam) + zakres (bez limitu pokoleń).
+    anc_line_mode_var = tk.StringVar(value="both")
+    anc_line_radio_sire = ttk.Radiobutton(
+        rod_header, text="Tylko sire (ojciec)", value="sire", variable=anc_line_mode_var, state="disabled"
+    )
+    anc_line_radio_dam = ttk.Radiobutton(
+        rod_header, text="Tylko dam (matka)", value="dam", variable=anc_line_mode_var, state="disabled"
+    )
+    anc_line_radio_both = ttk.Radiobutton(
+        rod_header, text="Sire+Dam (obie linie)", value="both", variable=anc_line_mode_var, state="disabled"
+    )
+    anc_line_radio_both.grid(row=2, column=0, sticky="w")
+    anc_line_radio_sire.grid(row=2, column=1, sticky="w")
+    anc_line_radio_dam.grid(row=2, column=2, sticky="w")
+
+    unbounded_anc_var = tk.BooleanVar(value=True)
+    unbounded_anc_cb = ttk.Checkbutton(
+        rod_header,
+        text="Bez limitu (do founderów)",
+        variable=unbounded_anc_var,
+        state="disabled",
+    )
+    unbounded_anc_cb.grid(row=1, column=2, sticky="w", padx=(8, 0), pady=(6, 0))
+
+    def _sync_anc_depth_state() -> None:
+        # Gdy bez limitu: blokujemy max pokoleń; w przeciwnym razie odtwarzamy stan zależny od tego,
+        # czy kontrolki są aktywne (wczytano już bazę).
+        anc_enabled = readable_anc_cb.cget("state") == "normal"
+        st = "normal" if anc_enabled else "disabled"
+        depth_state = "disabled" if bool(unbounded_anc_var.get()) else st
+        depth_anc_entry.configure(state=depth_state)
+
+    _sync_anc_depth_state()
+    unbounded_anc_var.trace_add("write", lambda *_args: _sync_anc_depth_state())
 
     anc_btn = ttk.Button(rod_header, text="Generuj przodków", state="disabled")
     anc_btn.grid(row=0, column=4, sticky="w", padx=(14, 0))
@@ -1644,14 +2506,42 @@ def run_tk_pro() -> None:
     rod_canvas_container.pack(fill=tk.BOTH, expand=True, pady=(14, 0))
     rod_title_var = tk.StringVar(value="Wykres przodków")
     ttk.Label(rod_canvas_container, textvariable=rod_title_var, foreground=colors.MUTED).pack(anchor="w")
-    rod_line_var = tk.StringVar(value="")
+    ttk.Label(rod_canvas_container, text="Linie (sire/dam):", foreground=colors.MUTED, font=("TkDefaultFont", 11, "bold")).pack(
+        anchor="w", pady=(4, 0)
+    )
+
+    rod_line_subj_var = tk.StringVar(value="")
+    rod_line_father_var = tk.StringVar(value="")
+    rod_line_mother_var = tk.StringVar(value="")
+
+    rod_line_cols = ttk.Frame(rod_canvas_container)
+    rod_line_cols.pack(fill=tk.X, expand=False, pady=(0, 0))
+
+    rod_line_cols.columnconfigure(0, weight=1)
+    rod_line_cols.columnconfigure(1, weight=1)
+    rod_line_cols.columnconfigure(2, weight=1)
+
     ttk.Label(
-        rod_canvas_container,
-        textvariable=rod_line_var,
+        rod_line_cols,
+        textvariable=rod_line_subj_var,
         foreground=colors.MUTED,
         justify="left",
-        wraplength=1100,
-    ).pack(anchor="w", pady=(4, 0))
+        wraplength=360,
+    ).grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+    ttk.Label(
+        rod_line_cols,
+        textvariable=rod_line_father_var,
+        foreground=colors.MUTED,
+        justify="left",
+        wraplength=360,
+    ).grid(row=0, column=1, sticky="nsew", padx=(0, 10))
+    ttk.Label(
+        rod_line_cols,
+        textvariable=rod_line_mother_var,
+        foreground=colors.MUTED,
+        justify="left",
+        wraplength=360,
+    ).grid(row=0, column=2, sticky="nsew")
     rod_plot_frame = ttk.Frame(rod_canvas_container)
     rod_plot_frame.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
 
@@ -1785,8 +2675,14 @@ def run_tk_pro() -> None:
     def set_controls_enabled(enabled: bool) -> None:
         st = "normal" if enabled else "disabled"
         id_anc_entry.configure(state=st)
-        depth_anc_entry.configure(state=st)
+        # Gdy bez limitu jest włączone, blokujemy wpis max pokoleń.
+        depth_state = "disabled" if bool(unbounded_anc_var.get()) else st
+        depth_anc_entry.configure(state=depth_state)
         readable_anc_cb.configure(state=st)
+        anc_line_radio_sire.configure(state=st)
+        anc_line_radio_dam.configure(state=st)
+        anc_line_radio_both.configure(state=st)
+        unbounded_anc_cb.configure(state=st)
         anc_btn.configure(state=st)
 
         id_inb_entry.configure(state=st)
@@ -1797,6 +2693,17 @@ def run_tk_pro() -> None:
         pop_comp_cb.configure(state=st)
         pop_founders_cb.configure(state=st)
         pop_lines_cb.configure(state=st)
+        if enabled:
+            # Ustaw wartości domyślne z zakładki "Ustawienia".
+            readable_anc_var.set(bool(settings_anc_readable_var.get()))
+            unbounded_anc_var.set(bool(settings_anc_unbounded_var.get()))
+            depth_anc_var.set(str(settings_anc_depth_var.get()).strip() or "4")
+
+            unbounded_inb_var.set(bool(settings_inb_unbounded_var.get()))
+            depth_inb_var.set(str(settings_inb_depth_var.get()).strip() or "4")
+
+            # (Klik w grafie przodków jest sterowany osobno w `on_generate_pedigree`.)
+
         _sync_pop_all_btn()
 
     def on_calc_population_all() -> None:
@@ -1918,6 +2825,11 @@ def run_tk_pro() -> None:
                     ax_box.text(0.5, 0.5, "Brak danych", ha="center", va="center")
                     ax_box.axis("off")
                 fig_f.tight_layout()
+                ttk.Button(
+                    pop_tab_f,
+                    text="Zapis wykresu (jpeg)",
+                    command=lambda f=fig_f: _save_figure_as_jpeg(f, default_basename="analizy_pop_inbred_f"),
+                ).pack(anchor="w", pady=(0, 6))
                 canvas_f = FigureCanvasTkAgg(fig_f, master=pop_tab_f)
                 canvas_f.draw()
                 canvas_f.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -1944,6 +2856,11 @@ def run_tk_pro() -> None:
                 ax_pci.set_xlabel("PCI")
                 ax_pci.set_ylabel("liczba osobników")
                 fig_c.tight_layout()
+                ttk.Button(
+                    pop_tab_comp,
+                    text="Zapis wykresu (jpeg)",
+                    command=lambda f=fig_c: _save_figure_as_jpeg(f, default_basename="analizy_pop_kompletnosc"),
+                ).pack(anchor="w", pady=(0, 6))
                 canvas_c = FigureCanvasTkAgg(fig_c, master=pop_tab_comp)
                 canvas_c.draw()
                 canvas_c.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -1984,6 +2901,11 @@ def run_tk_pro() -> None:
                     ax_fe.text(0.5, 0.5, "Brak danych o założycielach", ha="center", va="center")
                     ax_fe.axis("off")
                 fig_fe.tight_layout()
+                ttk.Button(
+                    pop_tab_founders,
+                    text="Zapis wykresu (jpeg)",
+                    command=lambda f=fig_fe: _save_figure_as_jpeg(f, default_basename="analizy_pop_founders"),
+                ).pack(anchor="w", pady=(0, 6))
                 canvas_fe = FigureCanvasTkAgg(fig_fe, master=pop_tab_founders)
                 canvas_fe.draw()
                 canvas_fe.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -2010,6 +2932,11 @@ def run_tk_pro() -> None:
                 ax_l.set_xlabel("linia")
                 ax_l.set_ylabel("liczba osobników")
                 fig_l.tight_layout()
+                ttk.Button(
+                    pop_tab_lines,
+                    text="Zapis wykresu (jpeg)",
+                    command=lambda f=fig_l: _save_figure_as_jpeg(f, default_basename="analizy_pop_lines_LBLCNA"),
+                ).pack(anchor="w", pady=(0, 6))
                 canvas_l = FigureCanvasTkAgg(fig_l, master=pop_tab_lines)
                 canvas_l.draw()
                 canvas_l.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -2175,37 +3102,14 @@ def run_tk_pro() -> None:
             messagebox.showerror("Błąd", "Nie ma takiego ID w wczytanych danych.")
             return
 
-        try:
-            depth = int(str(depth_anc_var.get()).strip())
-        except Exception:
-            messagebox.showerror("Błąd", "Max pokoleń musi być liczbą całkowitą.")
-            return
-        if depth < 0:
-            messagebox.showerror("Błąd", "Max pokoleń nie może być ujemne.")
-            return
-        depth = min(depth, 30)
-
-        levels, edges = get_ancestor_levels_and_edges(person_id=person_id, depth=depth, people=people)
-        if not levels:
-            messagebox.showerror("Błąd", "Nie znaleziono przodków w podanym limicie.")
-            return
-
-        people_all = ensure_people_for_nodes(levels=levels, people=people)
-        fig = plot_ancestor_pedigree(
-            person_id=person_id,
-            levels=levels,
-            edges=edges,
-            people=people_all,
-            readable_mode=bool(readable_anc_var.get()),
-        )
-        rod_title_var.set(f"Przodkowie: {person_id}")
+        # Callback używany przez plot: klik w węzeł aktualizuje informacje o linii.
         lm_map = state.get("line_memberships", {}) or {}
 
-        def _pid_to_line(pid: object) -> str:
+        def _pid_to_line(pid: object, people_map: dict[str, object]) -> str:
             if pid is None:
                 return "NA"
             pid_s = str(pid)
-            p = people.get(pid_s)
+            p = people_map.get(pid_s)
             line_val = getattr(p, "line", None) if p else None
             if not line_val:
                 return "NA"
@@ -2223,6 +3127,139 @@ def run_tk_pro() -> None:
             if s in {"LB", "LC"}:
                 return s
             return "NA"
+
+        def _fmt_pid(pid: object) -> str:
+            if not pid:
+                return "brak danych"
+            pid_s = str(pid)
+            mem = lm_map.get(pid_s)
+            if mem is None:
+                return (
+                    f"Sireline: {pid_s} (NA) [steps=0]\n"
+                    f"Damline: {pid_s} (NA) [steps=0]"
+                )
+            return (
+                f"Sireline: {mem.sire_founder_id} ({mem.sire_founder_name or 'NA'}) [steps={mem.sire_steps}]\n"
+                f"Damline: {mem.dam_founder_id} ({mem.dam_founder_name or 'NA'}) [steps={mem.dam_steps}]"
+            )
+
+        unbounded = bool(unbounded_anc_var.get())
+        line_mode = str(anc_line_mode_var.get()).strip().lower()
+        if line_mode not in {"both", "sire", "dam"}:
+            line_mode = "both"
+
+        depth: int | None = None
+        if not unbounded:
+            try:
+                depth = int(str(depth_anc_var.get()).strip())
+            except Exception:
+                messagebox.showerror("Błąd", "Max pokoleń musi być liczbą całkowitą.")
+                return
+            if depth < 0:
+                messagebox.showerror("Błąd", "Max pokoleń nie może być ujemne.")
+                return
+            depth = min(depth, 30)
+
+        # Budujemy `levels` i `edges` w zależności od trybu linii.
+        def _build_levels_edges_line(follow: str) -> tuple[dict[str, int], list[tuple[str, str]]]:
+            from collections import deque
+
+            levels_local: dict[str, int] = {person_id: 0}
+            edges_local: list[tuple[str, str]] = []
+            q = deque([person_id])
+
+            while q:
+                cur = q.popleft()
+                cur_lvl = levels_local[cur]
+                if depth is not None and cur_lvl >= depth:
+                    continue
+
+                p = people.get(cur)
+                if p is None:
+                    continue
+
+                parent_ids: list[str] = []
+                if follow == "sire" and p.father_id:
+                    parent_ids.append(p.father_id)
+                if follow == "dam" and p.mother_id:
+                    parent_ids.append(p.mother_id)
+
+                for parent_id in parent_ids:
+                    edges_local.append((parent_id, cur))
+                    nxt_lvl = cur_lvl + 1
+                    prev = levels_local.get(parent_id)
+                    if prev is None or nxt_lvl < prev:
+                        levels_local[parent_id] = nxt_lvl
+                        q.append(parent_id)
+            return levels_local, edges_local
+
+        if line_mode == "both":
+            if unbounded:
+                from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
+
+                levels = get_ancestor_levels_unbounded(person_id=person_id, people=people)  # type: ignore[arg-type]
+                # krawędzie wyznaczamy z mapy rodziców (rodzice będą w `levels` nawet jako placeholdery).
+                people_all_tmp = ensure_people_for_nodes(levels=levels, people=people)
+                edges = []
+                for child_id in levels.keys():
+                    p = people_all_tmp.get(child_id)
+                    if not p:
+                        continue
+                    if p.father_id and p.father_id in levels:
+                        edges.append((p.father_id, child_id))
+                    if p.mother_id and p.mother_id in levels:
+                        edges.append((p.mother_id, child_id))
+            else:
+                levels, edges = get_ancestor_levels_and_edges(person_id=person_id, depth=depth or 0, people=people)
+        else:
+            levels, edges = _build_levels_edges_line(follow=line_mode)
+
+        if not levels:
+            messagebox.showerror("Błąd", "Nie znaleziono przodków w podanym zakresie.")
+            return
+
+        people_all = ensure_people_for_nodes(levels=levels, people=people)
+
+        father_id_ref = people.get(person_id).father_id if people.get(person_id) else None
+        mother_id_ref = people.get(person_id).mother_id if people.get(person_id) else None
+
+        def _on_node_click(nid: str, dbl: bool) -> None:
+            # Podmieniamy opis w panelu linii.
+            rod_title_var.set(f"Przodkowie: {person_id} | klik: {nid}")
+            clicked_line = _pid_to_line(nid, people_all)
+            clicked_text = f"Kliknięty ({nid}) | line={clicked_line}:\n{_fmt_pid(nid)}"
+            if nid == person_id:
+                rod_line_subj_var.set(clicked_text.replace(f"Kliknięty ({nid})", f"Oceniany ({nid})"))
+            elif nid == father_id_ref:
+                rod_line_father_var.set(clicked_text.replace(f"Kliknięty ({nid})", f"Ojciec ({nid})"))
+            elif nid == mother_id_ref:
+                rod_line_mother_var.set(clicked_text.replace(f"Kliknięty ({nid})", f"Matka ({nid})"))
+            else:
+                # Nie jest to bezpośredni rodzic/badany osobnik - zostawiamy bez zmiany pozostałych kolumn.
+                rod_line_subj_var.set(clicked_text)
+
+            # Double-click: automatycznie ustaw ID w "Analizy -> Inbred (F)" i policz F.
+            if dbl:
+                id_inb_var.set(nid)
+                try:
+                    notebook.select(tab_analysis)
+                except Exception:
+                    pass
+                try:
+                    on_calc_inbreeding()
+                except Exception:
+                    pass
+
+        fig = plot_ancestor_pedigree(
+            person_id=person_id,
+            levels=levels,
+            edges=edges,
+            people=people_all,
+            readable_mode=bool(readable_anc_var.get()),
+            enable_click_highlight=bool(settings_anc_click_var.get()),
+            on_node_click=_on_node_click,
+        )
+        rod_title_var.set(f"Przodkowie: {person_id}")
 
         # Linie dla ocenianego osobnika i jego rodziców bierzemy z kolumn Excela:
         # - osobnik: `line` (E)
@@ -2244,13 +3281,13 @@ def run_tk_pro() -> None:
 
         # Fallback, jeśli dla jakiegoś powodu nie uda się znaleźć wiersza w df_std.
         if own_line == "NA":
-            own_line = _pid_to_line(person_id)
+            own_line = _pid_to_line(person_id, people_all)
         tmp_father_id = people.get(person_id).father_id if people.get(person_id) else None
         if father_line == "NA" and tmp_father_id:
-            father_line = _pid_to_line(tmp_father_id)
+            father_line = _pid_to_line(tmp_father_id, people_all)
         tmp_mother_id = people.get(person_id).mother_id if people.get(person_id) else None
         if mother_line == "NA" and tmp_mother_id:
-            mother_line = _pid_to_line(tmp_mother_id)
+            mother_line = _pid_to_line(tmp_mother_id, people_all)
 
         def _fmt_pid(pid: object) -> str:
             if not pid:
@@ -2271,11 +3308,12 @@ def run_tk_pro() -> None:
         father_id = people.get(person_id).father_id if people.get(person_id) else None
         mother_id = people.get(person_id).mother_id if people.get(person_id) else None
 
-        rod_line_var.set(
-            "Linie (sire/dam):\n"
-            f"- Oceniany ({person_id}) | line={own_line}:\n{_fmt_pid(person_id)}\n\n"
-            f"- Ojciec ({father_id or 'NA'}) | line={father_line}:\n{_fmt_pid(father_id)}\n\n"
-            f"- Matka ({mother_id or 'NA'}) | line={mother_line}:\n{_fmt_pid(mother_id)}"
+        rod_line_subj_var.set(f"Oceniany ({person_id}) | line={own_line}:\n{_fmt_pid(person_id)}")
+        rod_line_father_var.set(
+            f"Ojciec ({father_id or 'NA'}) | line={father_line}:\n{_fmt_pid(father_id)}"
+        )
+        rod_line_mother_var.set(
+            f"Matka ({mother_id or 'NA'}) | line={mother_line}:\n{_fmt_pid(mother_id)}"
         )
 
         _clear_frame(rod_plot_frame)
@@ -2284,6 +3322,12 @@ def run_tk_pro() -> None:
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie mogę osadzić wykresu: {e}")
             return
+
+        ttk.Button(
+            rod_plot_frame,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig: _save_figure_as_jpeg(f, default_basename=f"rodowod_{person_id}"),
+        ).pack(anchor="w", pady=(0, 6))
 
         canvas = FigureCanvasTkAgg(fig, master=rod_plot_frame)
         canvas.draw()
@@ -2334,9 +3378,9 @@ def run_tk_pro() -> None:
         MG = 0
         EG = 0.0
         PCI = 0.0
+        by_gen: dict[int, int] = {}
         try:
             levels = get_ancestor_levels_unbounded(person_id=person_id, people=people)
-            by_gen: dict[int, int] = {}
             for _aid, lvl in levels.items():
                 if lvl is None:
                     continue
@@ -2447,9 +3491,17 @@ def run_tk_pro() -> None:
             messagebox.showerror("Błąd", f"Nie mogę narysować wykresu: {e}")
             return
 
+        diag_frame = ttk.Frame(inb_plot_frame)
+        diag_frame.pack(fill=tk.BOTH, expand=True)
+        comp_frame = ttk.Frame(inb_plot_frame)
+        comp_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
+
         max_trace_depth = min(20, int(f_res.used_generations) if f_res.used_generations else 0)
         depths = list(range(0, max_trace_depth + 1))
-        Fs = [wright_inbreeding_F(person_id=person_id, people=people, max_generations_back=int(d)).F for d in depths]
+        Fs = [
+            wright_inbreeding_F(person_id=person_id, people=people, max_generations_back=int(d)).F
+            for d in depths
+        ]
 
         fig, ax = plt.subplots(figsize=(7.5, 3.6))
         ax.plot(depths, Fs, marker="o", linewidth=2, color=colors.EDGE_PLOT)
@@ -2458,9 +3510,62 @@ def run_tk_pro() -> None:
         ax.set_ylabel("F")
         ax.grid(True, alpha=0.25)
 
-        canvas = FigureCanvasTkAgg(fig, master=inb_plot_frame)
+        ttk.Button(
+            diag_frame,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig: _save_figure_as_jpeg(f, default_basename=f"analiza_inbred_diag_{person_id}"),
+        ).pack(anchor="w", pady=(0, 6))
+
+        canvas = FigureCanvasTkAgg(fig, master=diag_frame)
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # --- Completeness per generation (ANC, PCL) ---
+        fig2 = plt.Figure(figsize=(7.5, 3.6))
+        ax_a = fig2.add_subplot(1, 2, 1)
+        ax_pcl = fig2.add_subplot(1, 2, 2)
+
+        if by_gen:
+            gens = sorted(by_gen.keys())
+            a_vals = [by_gen[g] for g in gens]
+            pcl_vals = [float(by_gen[g]) / float(2**g) for g in gens]
+
+            ax_a.bar([str(g) for g in gens], a_vals, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
+            ax_a.set_title("Ankiety przodków (a_g)")
+            ax_a.set_xlabel("pokolenie (g)")
+            ax_a.set_ylabel("a_g")
+            ax_a.tick_params(axis="x", labelsize=8)
+
+            ax_pcl.plot(gens, pcl_vals, marker="o", linewidth=2, color=colors.BUTTON_BG)
+            ax_pcl.axhline(1.0, color=colors.ACCENT, linewidth=1, alpha=0.6)
+            ax_pcl.set_title("Kompletność per pokolenie (PCL)")
+            ax_pcl.set_xlabel("pokolenie (g)")
+            ax_pcl.set_ylabel("PCL = a_g / 2^g")
+            ax_pcl.set_ylim(0, 1.05)
+            ax_pcl.grid(True, alpha=0.25)
+        else:
+            ax_a.text(0.5, 0.5, "Brak danych ANC", ha="center", va="center")
+            ax_a.axis("off")
+            ax_pcl.axis("off")
+
+        fig2.tight_layout()
+        ttk.Button(
+            comp_frame,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig2: _save_figure_as_jpeg(f, default_basename=f"analiza_inbred_anc_{person_id}"),
+        ).pack(anchor="w", pady=(0, 6))
+
+        canvas2 = FigureCanvasTkAgg(fig2, master=comp_frame)
+        canvas2.draw()
+        canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        ttk.Label(
+            comp_frame,
+            text="PCL (Pedigree Completeness Level) pokazuje, w którym pokoleniu wstecz mamy ilu przodków względem maksimum (2^g).",
+            font=("TkDefaultFont", 8),
+            foreground=colors.MUTED,
+            wraplength=900,
+            justify="left",
+        ).pack(anchor="w", pady=(6, 0))
 
     inb_btn.configure(command=on_calc_inbreeding)
 
