@@ -1,0 +1,2 @@
+"""Pakiet aplikacji (Tkinter + Streamlit)."""
+

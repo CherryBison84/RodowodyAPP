@@ -1,0 +1,2 @@
+"""Wspólne widoki i komponenty."""
+

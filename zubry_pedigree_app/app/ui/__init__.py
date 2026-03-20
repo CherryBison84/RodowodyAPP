@@ -1,0 +1,2 @@
+"""Pakiet widoków (UI)."""
+

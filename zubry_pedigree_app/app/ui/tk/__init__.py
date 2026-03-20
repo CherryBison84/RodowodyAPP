@@ -1,0 +1,2 @@
+"""Widoki Tkinter."""
+
