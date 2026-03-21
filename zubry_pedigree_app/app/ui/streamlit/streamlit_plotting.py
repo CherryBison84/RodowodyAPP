@@ -1,6 +1,6 @@
 """
-Wykresy Matplotlib współdzielone z logiką zbliżoną do gui_pro (Tk).
-Używane wyłącznie przez Streamlit.
+Rysowanie wykresów do wersji w przeglądarce (urodzenia, trendy inbredu, GI, rodziny itp.).
+Logika liczenia jest spójna z oknem na pulpicie, żeby wyniki się zgadzały.
 """
 
 from __future__ import annotations

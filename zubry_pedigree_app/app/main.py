@@ -1,3 +1,8 @@
+"""
+Punkt startowy z linii poleceń: wybór, czy pokazać program w oknie na pulpicie,
+czy w wersji otwieranej w przeglądarce.
+"""
+
 from __future__ import annotations
 
 import argparse

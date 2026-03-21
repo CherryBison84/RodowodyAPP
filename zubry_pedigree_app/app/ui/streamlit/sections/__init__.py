@@ -1,4 +1,6 @@
-"""Sekcje UI Streamlit (jedna zakładka = jeden moduł)."""
+"""
+Poszczególne ekrany wersji przeglądarkowej — każdy plik odpowiada jednej zakładce lub dużemu blokowi strony.
+"""
 
 from app.ui.streamlit.sections.analysis import section_analysis_inbred, section_analysis_mating
 from app.ui.streamlit.sections.breeding import section_breeding_placeholder

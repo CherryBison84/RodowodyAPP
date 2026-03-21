@@ -1,10 +1,6 @@
 """
-Wykresy zakładki Populacja w GUI Tk (Tkinter + matplotlib).
-
-Obejmuje m.in.: urodzenia w dekadach, trendy F/RIA, top p_i założycieli,
-średnie GI, trend GI po dekadach, histogram rodzin pełnego rodzeństwa.
-
-Wyodrębnione z gui_pro.py, aby zmniejszyć rozmiar pliku głównego.
+Wykresy do ekranu „Populacja” w oknie na pulpicie: urodzenia w dekadach, trendy inbredu,
+wkład założycieli, odstępy międzypokoleniowe i rozkład wielkości rodzin.
 """
 
 from __future__ import annotations

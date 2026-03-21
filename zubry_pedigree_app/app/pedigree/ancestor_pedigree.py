@@ -1,3 +1,8 @@
+"""
+Tworzenie opisu osobników (kto z kim spokrewniony, po ilu pokoleniach wstecz)
+z wczytanej tabeli identyfikatorów, płci i rodziców.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

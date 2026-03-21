@@ -1,3 +1,7 @@
+"""
+Pełne okno programu na pulpicie: wszystkie zakładki, wykresy populacji, analizy, raporty i ustawienia.
+"""
+
 from __future__ import annotations
 
 import tkinter as tk

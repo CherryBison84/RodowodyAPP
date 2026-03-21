@@ -1,7 +1,7 @@
 """
-Generation interval (GI), dekady GI oraz rozmiary rodzin pełnego rodzeństwa.
-
-Wspólna logika dla GUI Tk i Streamlit (bez zależności od warstwy UI).
+Odstępy międzypokoleniowe (średni „wiek rodziców” względem potomstwa),
+trend w czasie oraz liczenie wielkości rodzin pełnego rodzeństwa.
+Te same obliczenia służą zarówno oknu na pulpicie, jak i wersji w przeglądarce.
 """
 
 from __future__ import annotations

@@ -1,3 +1,7 @@
+"""
+Najprostsze uruchomienie programu w postaci okna na pulpicie (bez przeglądarki).
+"""
+
 from __future__ import annotations
 
 import sys

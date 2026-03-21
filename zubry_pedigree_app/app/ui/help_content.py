@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Polskie opisy parametrów, metryk i wykresów — współdzielone przez Streamlit i Tk.
-
-Uwaga: definicje liczbowe są zgodne z implementacją w `app.analytics` i `app.ui.streamlit.streamlit_plotting`.
+Teksty pomocy po polsku: co oznaczają skróty (F, GI, RIA…), jak czytać wykresy
+i jak rozumieć komunikaty — wspólne dla okna na pulpicie i wersji w przeglądarce.
 """
 
 from __future__ import annotations

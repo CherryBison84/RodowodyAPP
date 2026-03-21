@@ -1,3 +1,8 @@
+"""
+Po wczytaniu bazy program sprawdza, czy nie brakuje ważnych informacji
+i czy relacje rodzic–dziecko mają sens — stąd komunikaty ostrzegawcze.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

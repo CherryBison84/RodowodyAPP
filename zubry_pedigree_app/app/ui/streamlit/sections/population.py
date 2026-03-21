@@ -1,4 +1,6 @@
-"""Zakładka: statystyki populacji i wykresy."""
+"""
+Podsumowanie całego stada: średnie pokrewieństwo, linie, założyciele, wykresy w czasie i podobne zestawienia.
+"""
 
 from __future__ import annotations
 

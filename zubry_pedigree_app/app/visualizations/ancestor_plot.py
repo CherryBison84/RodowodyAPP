@@ -1,3 +1,7 @@
+"""
+Rysunek drzewa przodków (schemat pokoleń) dla wybranego osobnika.
+"""
+
 from __future__ import annotations
 
 import os

@@ -1,12 +1,6 @@
 """
-Uruchamianie aplikacji Streamlit.
-
-Zawsze używaj tego skryptu jako zwykłego Pythona (PyCharm „Run”):
-    python run_streamlit.py
-
-Wewnętrznie wywołuje: python -m streamlit run .../streamlit_app.py
-
-Nie importuj tutaj modułów Streamlit — unikniesz ostrzeżeń „missing ScriptRunContext”.
+Uruchamia wersję programu wyświetlaną w przeglądarce internetowej.
+Zwykle wystarczy uruchomić ten plik tak jak każdy inny skrypt Pythona.
 """
 
 from __future__ import annotations

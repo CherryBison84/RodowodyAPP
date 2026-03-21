@@ -1,3 +1,8 @@
+"""
+Liczenie współczynnika pokrewieństwa F (Wright) dla pojedynczych osobników
+na podstawie drzewa rodowego.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

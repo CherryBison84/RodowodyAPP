@@ -1,2 +1,4 @@
-"""Moduły rodowodu (graf, przodkowie, założyciele, kompletność)."""
+"""
+Budowanie listy przodków, powiązań między osobnikami i pomocniczych informacji o rodowodzie.
+"""
 

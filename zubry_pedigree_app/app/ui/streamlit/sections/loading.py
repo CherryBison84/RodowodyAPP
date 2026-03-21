@@ -1,4 +1,6 @@
-"""Zakładka: wczytywanie bazy."""
+"""
+Ekran wyboru pliku z danymi, mapowania kolumn i ewentualnego pobrania zestawienia z internetu.
+"""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 """
-Punkt wejścia aplikacji Streamlit — nawigacja i delegacja do `sections/`.
-Logika wykresów: `streamlit_plotting.py`; style/sesja: `common.py`.
+Główny ekran wersji przeglądarkowej: wybór zakładki i przełączanie między ekranami wczytywania,
+listy osobników, populacji, analiz itd.
 """
 
 from __future__ import annotations

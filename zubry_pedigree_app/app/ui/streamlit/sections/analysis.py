@@ -1,4 +1,6 @@
-"""Zakładka Analizy: Inbred + Mating."""
+"""
+Analiza pokrewieństwa pojedynczych osobników oraz symulacja możliwych miotów z danej pary rodziców.
+"""
 
 from __future__ import annotations
 

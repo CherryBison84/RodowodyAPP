@@ -1,3 +1,8 @@
+"""
+Otwieranie baz z dysku lub z internetu (np. zestawienie EBPB) oraz układanie ich
+w jednolity format zrozumiały dla reszty programu.
+"""
+
 from __future__ import annotations
 
 import re

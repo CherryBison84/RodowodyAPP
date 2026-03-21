@@ -1,4 +1,6 @@
-"""Zakładka: raporty tekstowe."""
+"""
+Generowanie dłuższych opisów tekstowych (raportów) dla osobnika lub populacji do skopiowania lub zapisu.
+"""
 
 from __future__ import annotations
 

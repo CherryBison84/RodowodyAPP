@@ -1,4 +1,7 @@
-"""Wspólny stan, style i pomocniki sesji Streamlit."""
+"""
+Wspólne ustawienia wyglądu, zapamiętywanie wczytanej bazy między krokami
+oraz skróty do bloków „Pomoc” na stronie.
+"""
 
 from __future__ import annotations
 

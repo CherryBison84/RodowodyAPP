@@ -1,3 +1,7 @@
+"""
+Składanie raportów tekstowych i PDF z wykresami dla jednego osobnika lub całej populacji.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict

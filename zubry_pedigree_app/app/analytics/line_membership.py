@@ -1,3 +1,7 @@
+"""
+Przypisywanie osobników do linii hodowlanych (np. wzdłuż linii ojców) na podstawie rodowodu.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

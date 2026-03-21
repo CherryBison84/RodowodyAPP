@@ -1,3 +1,7 @@
+"""
+Propozycje par hodowlanych z uwzględnieniem pokrewieństwa i prostych ograniczeń.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

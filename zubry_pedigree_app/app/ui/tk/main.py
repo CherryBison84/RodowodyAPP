@@ -1,3 +1,7 @@
+"""
+Prostsze okno startowe na pulpicie: menu, podgląd pojedynczego rodowodu i podstawowe działania.
+"""
+
 from __future__ import annotations
 
 import re

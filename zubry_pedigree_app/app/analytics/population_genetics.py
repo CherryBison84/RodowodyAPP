@@ -1,3 +1,8 @@
+"""
+Zestawienia dla całej populacji: średnie pokrewieństwo, założyciele, linie,
+kompletność rodowodu — to, co widać w podsumowaniach i raportach zbiorczych.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

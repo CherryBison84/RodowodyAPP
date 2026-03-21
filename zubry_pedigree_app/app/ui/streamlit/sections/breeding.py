@@ -1,4 +1,6 @@
-"""Zakładka: plan hodowlany (placeholder)."""
+"""
+Zarezerwowane miejsce na przyszły plan hodowlany (na razie krótki opis zamiast pełnych narzędzi).
+"""
 
 from __future__ import annotations
 

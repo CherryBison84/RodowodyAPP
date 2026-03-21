@@ -1,3 +1,7 @@
+"""
+Kolory i wygląd przycisków oraz tabel w oknie na pulpicie, żeby tekst był czytelny.
+"""
+
 from __future__ import annotations
 
 import tkinter as tk

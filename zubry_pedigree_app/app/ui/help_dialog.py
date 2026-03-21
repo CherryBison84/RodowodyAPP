@@ -1,4 +1,6 @@
-"""Okno pomocy z przewijanym tekstem — używane przez Tk."""
+"""
+Małe okno z przewijanym tekstem pomocy — wyświetlane z poziomu wersji na pulpicie.
+"""
 
 from __future__ import annotations
 

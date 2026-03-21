@@ -1,4 +1,6 @@
-"""Zakładka: lista osobników."""
+"""
+Przegląd tabeli wszystkich osobników w bazie (identyfikatory, płeć, rok urodzenia itd.).
+"""
 
 from __future__ import annotations
 

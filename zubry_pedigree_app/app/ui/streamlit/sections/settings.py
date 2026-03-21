@@ -1,4 +1,6 @@
-"""Zakładka: ustawienia sesji."""
+"""
+Drobne ustawienia bieżącej pracy w przeglądarce (np. dodatkowe podpisy przy wykresach).
+"""
 
 from __future__ import annotations
 

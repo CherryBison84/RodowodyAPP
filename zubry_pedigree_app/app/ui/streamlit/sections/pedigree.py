@@ -1,4 +1,6 @@
-"""Zakładka: graf rodowodowy."""
+"""
+Podgląd drzewa przodków dla wybranego numeru ID i zapis rysunku do pliku.
+"""
 
 from __future__ import annotations
 
