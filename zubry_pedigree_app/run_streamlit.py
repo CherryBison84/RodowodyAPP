@@ -1,9 +1,12 @@
 """
-Uruchamianie Streamlit z katalogu głównego repozytorium (kompatybilność).
+Uruchamianie aplikacji Streamlit.
 
+Zawsze używaj tego skryptu jako zwykłego Pythona (PyCharm „Run”):
     python run_streamlit.py
 
-Wywołuje Streamlit dla: zubry_pedigree_app/app/ui/streamlit/streamlit_app.py
+Wewnętrznie wywołuje: python -m streamlit run .../streamlit_app.py
+
+Nie importuj tutaj modułów Streamlit — unikniesz ostrzeżeń „missing ScriptRunContext”.
 """
 
 from __future__ import annotations
@@ -14,7 +17,8 @@ from pathlib import Path
 
 
 def main() -> int:
-    app = Path(__file__).resolve().parent / "zubry_pedigree_app" / "app" / "ui" / "streamlit" / "streamlit_app.py"
+    root = Path(__file__).resolve().parent
+    app = root / "app" / "ui" / "streamlit" / "streamlit_app.py"
     if not app.is_file():
         print(f"Nie znaleziono pliku aplikacji: {app}", file=sys.stderr)
         return 1

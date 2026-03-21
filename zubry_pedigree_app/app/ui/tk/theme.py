@@ -10,8 +10,8 @@ class Theme:
     APP_BG: str = "#ffffff"
     PANEL_BG: str = "#f4fbf5"
     PANEL_BG2: str = "#eaf7ec"
-    TEXT: str = "#0f3b2a"
-    MUTED: str = "#2c6a4e"
+    TEXT: str = "#000000"
+    MUTED: str = "#333333"
     ACCENT: str = "#caa86e"
     TAB_BG: str = "#e6ddd2"
     TAB_ACTIVE_BG: str = "#d5c4ae"
@@ -21,8 +21,8 @@ class Theme:
     ENTRY_BG: str = "#ffffff"
     EDGE_PLOT: str = "#2c6a4e"
     TREE_BG: str = "#f4fbf5"
-    TABLE_TEXT: str = "#10251b"
-    TABLE_HEADER_TEXT: str = "#1a1a1a"
+    TABLE_TEXT: str = "#000000"
+    TABLE_HEADER_TEXT: str = "#000000"
 
 
 def setup_theme(root: tk.Tk) -> Theme:
