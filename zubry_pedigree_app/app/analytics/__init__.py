@@ -1,2 +1,2 @@
-"""Moduły analityczne (inbreeding, metryki populacji, pokrewienstwo)."""
+"""Moduły analityczne (inbreeding, metryki populacji, GI/rodziny, pokrewieństwo)."""
 
