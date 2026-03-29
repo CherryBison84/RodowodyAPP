@@ -11,9 +11,19 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
+import os
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
+
+try:
+    import ttkbootstrap as ttk
+
+    _USE_TTKBOOTSTRAP = True
+except ImportError:  # pragma: no cover — instalacja minimalna bez pip
+    from tkinter import ttk
+
+    _USE_TTKBOOTSTRAP = False
 
 from app.analytics.inbreeding_wright import (
     batch_offspring_inbreeding_F_from_parent_pairs,
@@ -41,6 +51,7 @@ from app.analytics.line_membership import (
     get_line_membership,
 )
 from app.analytics.kinship_decomposition import close_kinship_note, explain_pair_kinship
+from app.analytics.mean_kinship import mean_kinship_pairwise
 from app.analytics.population_genetics import (
     TEST_ID,
     FounderContributionComputer,
@@ -58,6 +69,7 @@ from app.ui.tk.theme import setup_theme
 from app.ui.help_dialog import show_help_window
 from app.ui import help_content as hc
 from app.ui.typography import apply_matplotlib_fonts, tk_font
+from app.ui.streamlit.streamlit_plotting import fig_column_missing_heatmap
 
 # Liczba założycieli na wykresie p_i (Metryki populacji / Analizy populacji).
 POP_FOUNDERS_PI_TOP_N = 20
@@ -801,7 +813,8 @@ def render_gi_and_family_charts(
             gi_data.get("gi_ms"),
             gi_data.get("gi_md"),
         ]
-        gi_labels = ["Ojciec→Syn", "Ojciec→Córka", "Matka→Syn", "Matka→Córka"]
+        # Bez U+2192 (→) — brak glifu w wielu fontach sans (np. Helvetica Neue); matplotlib ostrzega przy rysowaniu.
+        gi_labels = ["Ojciec–Syn", "Ojciec–Córka", "Matka–Syn", "Matka–Córka"]
         fig_gi = plt.Figure(figsize=(8.6, 3.4), dpi=100)
         ax_gi = fig_gi.add_subplot(1, 1, 1)
         x = list(range(len(gi_labels)))
@@ -851,10 +864,10 @@ def render_gi_and_family_charts(
             def _to_plot(arr: list[float | None]) -> list[float]:
                 return [float(v) if v is not None else float("nan") for v in arr]
 
-            ax_t.plot(x_t, _to_plot(gi_fs), marker="o", linewidth=2, color="#9ecbff", label="Ojciec→Syn")
-            ax_t.plot(x_t, _to_plot(gi_fd), marker="o", linewidth=2, color="#ffb4c1", label="Ojciec→Córka")
-            ax_t.plot(x_t, _to_plot(gi_ms), marker="o", linewidth=2, color="#2e8b57", label="Matka→Syn")
-            ax_t.plot(x_t, _to_plot(gi_md), marker="o", linewidth=2, color="#d64545", label="Matka→Córka")
+            ax_t.plot(x_t, _to_plot(gi_fs), marker="o", linewidth=2, color="#9ecbff", label="Ojciec–Syn")
+            ax_t.plot(x_t, _to_plot(gi_fd), marker="o", linewidth=2, color="#ffb4c1", label="Ojciec–Córka")
+            ax_t.plot(x_t, _to_plot(gi_ms), marker="o", linewidth=2, color="#2e8b57", label="Matka–Syn")
+            ax_t.plot(x_t, _to_plot(gi_md), marker="o", linewidth=2, color="#d64545", label="Matka–Córka")
 
             ax_t.set_title("GI (trend) — Ojciec/Mak x płeć potomstwa (dekady)")
             ax_t.set_xlabel("dekada urodzenia potomstwa")
@@ -939,9 +952,16 @@ def render_gi_and_family_charts(
 
 def run_tk_pro() -> None:
     apply_matplotlib_fonts()
-    root = tk.Tk()
-    root.title("WisentPedigree Pro+")
-    root.geometry("1280x860")
+    if _USE_TTKBOOTSTRAP:
+        # Domyślnie „sandstone” (ziemia/ściółka); pełna paleta z Theme; nadpisywanie: WISENT_GUI_THEME=minty|litera|…
+        theme_name = (os.environ.get("WISENT_GUI_THEME") or "sandstone").strip() or "sandstone"
+        root = ttk.Window(themename=theme_name)
+        root.title("WisentPedigree Pro+")
+        root.geometry("1280x860")
+    else:
+        root = tk.Tk()
+        root.title("WisentPedigree Pro+")
+        root.geometry("1280x860")
 
     colors = setup_theme(root)
 
@@ -1064,7 +1084,6 @@ def run_tk_pro() -> None:
     analyses_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     tab_inb = ttk.Frame(analyses_nb, padding=10)
-    tab_pop = ttk.Frame(analyses_nb, padding=10)
     tab_kpair = ttk.Frame(analyses_nb, padding=10)
     tab_mating = ttk.Frame(analyses_nb, padding=10)
     tab_breeding = ttk.Frame(analyses_nb, padding=10)
@@ -1072,10 +1091,6 @@ def run_tk_pro() -> None:
     analyses_nb.add(tab_kpair, text="Para — Φ i wyjaśnienie")
     analyses_nb.add(tab_mating, text="Ranking kojarzeń")
     analyses_nb.add(tab_breeding, text="Plan hodowli")
-
-    def _placeholder(tab: ttk.Frame, title: str) -> None:
-        ttk.Label(tab, text=title, font=tk_font(16, bold=True)).pack(anchor="w")
-        ttk.Label(tab, text="Sekcja w przygotowaniu.", foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
 
     # -------------------------
     # Reports tab
@@ -1518,20 +1533,22 @@ def run_tk_pro() -> None:
     plan_right = ttk.Frame(plan_main)
     plan_right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-    plan_right_pane = ttk.PanedWindow(plan_right, orient=tk.VERTICAL)
+    plan_right_pane = ttk.Panedwindow(plan_right, orient=tk.VERTICAL)
     plan_right_pane.pack(fill=tk.BOTH, expand=True)
 
     plan_tree_upper = ttk.Frame(plan_right_pane)
     plan_detail_lower = ttk.LabelFrame(
         plan_right_pane,
         text="Zaznaczona para — statystyki i rodowód potomka",
-        padding=8,
     )
     plan_right_pane.add(plan_tree_upper, weight=2)
     plan_right_pane.add(plan_detail_lower, weight=3)
 
+    plan_detail_body = ttk.Frame(plan_detail_lower)
+    plan_detail_body.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
     plan_pair_stats_text = tk.Text(
-        plan_detail_lower,
+        plan_detail_body,
         height=11,
         wrap="word",
         state="disabled",
@@ -1541,7 +1558,7 @@ def run_tk_pro() -> None:
         font=tk_font(9),
     )
     plan_pair_stats_text.pack(fill=tk.BOTH, expand=True, pady=(0, 6))
-    plan_pair_btn_row = ttk.Frame(plan_detail_lower)
+    plan_pair_btn_row = ttk.Frame(plan_detail_body)
     plan_pair_btn_row.pack(fill=tk.X, pady=(4, 0))
     plan_sel_pair: dict[str, str | None] = {"dam": None, "sire": None}
 
@@ -1571,21 +1588,23 @@ def run_tk_pro() -> None:
     plan_risk_unbounded_var.trace_add("write", lambda *_args: _sync_plan_risk_depth_state())
 
     # Single pair calculation inputs
-    plan_pair_frame = ttk.LabelFrame(plan_left, text="Policz ryzyko dla pary", padding=10)
+    plan_pair_frame = ttk.LabelFrame(plan_left, text="Policz ryzyko dla pary")
     plan_pair_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 14))
+    plan_pair_body = ttk.Frame(plan_pair_frame)
+    plan_pair_body.pack(fill=tk.X, padx=10, pady=10)
 
-    ttk.Label(plan_pair_frame, text="Samica (F) — ID: ", foreground=colors.MUTED).grid(row=0, column=0, sticky="w")
+    ttk.Label(plan_pair_body, text="Samica (F) — ID: ", foreground=colors.MUTED).grid(row=0, column=0, sticky="w")
     plan_dam_id_var = tk.StringVar(value="")
-    plan_dam_id_entry = ttk.Entry(plan_pair_frame, textvariable=plan_dam_id_var, width=16, state="disabled")
+    plan_dam_id_entry = ttk.Entry(plan_pair_body, textvariable=plan_dam_id_var, width=16, state="disabled")
     plan_dam_id_entry.grid(row=0, column=1, sticky="w", padx=(8, 0))
 
-    ttk.Label(plan_pair_frame, text="Samiec (M) — ID: ", foreground=colors.MUTED).grid(row=1, column=0, sticky="w", pady=(6, 0))
+    ttk.Label(plan_pair_body, text="Samiec (M) — ID: ", foreground=colors.MUTED).grid(row=1, column=0, sticky="w", pady=(6, 0))
     plan_sire_id_var = tk.StringVar(value="")
-    plan_sire_id_entry = ttk.Entry(plan_pair_frame, textvariable=plan_sire_id_var, width=16, state="disabled")
+    plan_sire_id_entry = ttk.Entry(plan_pair_body, textvariable=plan_sire_id_var, width=16, state="disabled")
     plan_sire_id_entry.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
 
     plan_calc_pair_result_var = tk.StringVar(value="Ryzyko F( potomek ) = -")
-    ttk.Label(plan_pair_frame, textvariable=plan_calc_pair_result_var, foreground=colors.TEXT).grid(
+    ttk.Label(plan_pair_body, textvariable=plan_calc_pair_result_var, foreground=colors.TEXT).grid(
         row=2, column=0, columnspan=2, sticky="w", pady=(10, 0)
     )
 
@@ -1645,17 +1664,19 @@ def run_tk_pro() -> None:
         plan_calc_pair_result_var.set(f"Ryzyko F( potomek ) = {F_off:.6f} (dam line={dam_line}, sire line={sire_line})")
         _set_plan_status("Gotowe: policzono ryzyko pary.")
 
-    plan_calc_pair_btn = ttk.Button(plan_pair_frame, text="Policz ryzyko", command=on_calc_plan_pair, state="disabled")
+    plan_calc_pair_btn = ttk.Button(plan_pair_body, text="Policz ryzyko", command=on_calc_plan_pair, state="disabled")
     plan_calc_pair_btn.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     # Ranking / suggestion
-    plan_rank_frame = ttk.LabelFrame(plan_left, text="Podpowiedz pary (TOP-N)", padding=10)
+    plan_rank_frame = ttk.LabelFrame(plan_left, text="Podpowiedz pary (TOP-N)")
     plan_rank_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 14))
+    plan_rank_body = ttk.Frame(plan_rank_frame)
+    plan_rank_body.pack(fill=tk.X, padx=10, pady=10)
 
-    ttk.Label(plan_rank_frame, text="Linia (dla obu rodziców):", foreground=colors.MUTED).pack(anchor="w")
+    ttk.Label(plan_rank_body, text="Linia (dla obu rodziców):", foreground=colors.MUTED).pack(anchor="w")
     plan_line_filter_var = tk.StringVar(value="Bez filtra")
     plan_line_filter_combo = ttk.Combobox(
-        plan_rank_frame,
+        plan_rank_body,
         textvariable=plan_line_filter_var,
         state="disabled",
         values=["Bez filtra", "LB", "LC", "LB+LC", "NA"],
@@ -1663,66 +1684,68 @@ def run_tk_pro() -> None:
     )
     plan_line_filter_combo.pack(anchor="w", pady=(6, 0))
 
-    ttk.Label(plan_rank_frame, text="Wiek (lat) — min:", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
+    ttk.Label(plan_rank_body, text="Wiek (lat) — min:", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
     plan_min_age_var = tk.StringVar(value="0")
-    plan_min_age_entry = ttk.Entry(plan_rank_frame, textvariable=plan_min_age_var, width=8, state="disabled")
+    plan_min_age_entry = ttk.Entry(plan_rank_body, textvariable=plan_min_age_var, width=8, state="disabled")
     plan_min_age_entry.pack(anchor="w", pady=(2, 0))
 
-    ttk.Label(plan_rank_frame, text="Wiek (lat) — max:", foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
+    ttk.Label(plan_rank_body, text="Wiek (lat) — max:", foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
     plan_max_age_var = tk.StringVar(value="80")
-    plan_max_age_entry = ttk.Entry(plan_rank_frame, textvariable=plan_max_age_var, width=8, state="disabled")
+    plan_max_age_entry = ttk.Entry(plan_rank_body, textvariable=plan_max_age_var, width=8, state="disabled")
     plan_max_age_entry.pack(anchor="w", pady=(2, 0))
 
-    ttk.Label(plan_rank_frame, text="Limit kandydatów (dla wydajności):", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
+    ttk.Label(plan_rank_body, text="Limit kandydatów (dla wydajności):", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
     plan_candidate_limit_var = tk.StringVar(value="25")
-    plan_candidate_limit_entry = ttk.Entry(plan_rank_frame, textvariable=plan_candidate_limit_var, width=8, state="disabled")
+    plan_candidate_limit_entry = ttk.Entry(plan_rank_body, textvariable=plan_candidate_limit_var, width=8, state="disabled")
     plan_candidate_limit_entry.pack(anchor="w", pady=(2, 0))
 
-    ttk.Label(plan_rank_frame, text="TOP N par:", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
+    ttk.Label(plan_rank_body, text="TOP N par:", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
     plan_top_n_var = tk.StringVar(value="20")
-    plan_top_n_entry = ttk.Entry(plan_rank_frame, textvariable=plan_top_n_var, width=8, state="disabled")
+    plan_top_n_entry = ttk.Entry(plan_rank_body, textvariable=plan_top_n_var, width=8, state="disabled")
     plan_top_n_entry.pack(anchor="w", pady=(2, 0))
 
     # Goals / diversity constraints
-    plan_diversity_frame = ttk.LabelFrame(plan_rank_frame, text="Cele różnorodności", padding=10)
+    plan_diversity_frame = ttk.LabelFrame(plan_rank_body, text="Cele różnorodności")
     plan_diversity_frame.pack(anchor="w", fill=tk.X, pady=(12, 0))
+    plan_diversity_body = ttk.Frame(plan_diversity_frame)
+    plan_diversity_body.pack(fill=tk.X, padx=10, pady=10)
 
     plan_goal_mean_enabled_var = tk.BooleanVar(value=False)
     plan_goal_mean_enabled_cb = ttk.Checkbutton(
-        plan_diversity_frame,
+        plan_diversity_body,
         text="Cel: średnie F potomka <=",
         variable=plan_goal_mean_enabled_var,
         state="disabled",
     )
     plan_goal_mean_enabled_cb.pack(anchor="w")
     plan_goal_mean_F_var = tk.StringVar(value="0.05")
-    plan_goal_mean_F_entry = ttk.Entry(plan_diversity_frame, textvariable=plan_goal_mean_F_var, width=8, state="disabled")
+    plan_goal_mean_F_entry = ttk.Entry(plan_diversity_body, textvariable=plan_goal_mean_F_var, width=8, state="disabled")
     plan_goal_mean_F_entry.pack(anchor="w", pady=(2, 0), padx=(18, 0))
 
     plan_goal_max_enabled_var = tk.BooleanVar(value=False)
     plan_goal_max_enabled_cb = ttk.Checkbutton(
-        plan_diversity_frame,
+        plan_diversity_body,
         text="Cel: tylko pary z F potomka <=",
         variable=plan_goal_max_enabled_var,
         state="disabled",
     )
     plan_goal_max_enabled_cb.pack(anchor="w", pady=(8, 0))
     plan_goal_max_F_var = tk.StringVar(value="0.10")
-    plan_goal_max_F_entry = ttk.Entry(plan_diversity_frame, textvariable=plan_goal_max_F_var, width=8, state="disabled")
+    plan_goal_max_F_entry = ttk.Entry(plan_diversity_body, textvariable=plan_goal_max_F_var, width=8, state="disabled")
     plan_goal_max_F_entry.pack(anchor="w", pady=(2, 0), padx=(18, 0))
 
-    ttk.Label(plan_diversity_frame, text="Limit użyć samicy (max):", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
+    ttk.Label(plan_diversity_body, text="Limit użyć samicy (max):", foreground=colors.MUTED).pack(anchor="w", pady=(10, 0))
     plan_max_uses_dam_var = tk.StringVar(value="3")
-    plan_max_uses_dam_entry = ttk.Entry(plan_diversity_frame, textvariable=plan_max_uses_dam_var, width=8, state="disabled")
+    plan_max_uses_dam_entry = ttk.Entry(plan_diversity_body, textvariable=plan_max_uses_dam_var, width=8, state="disabled")
     plan_max_uses_dam_entry.pack(anchor="w", pady=(2, 0), padx=(18, 0))
 
-    ttk.Label(plan_diversity_frame, text="Limit użyć samca (max):", foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
+    ttk.Label(plan_diversity_body, text="Limit użyć samca (max):", foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
     plan_max_uses_sire_var = tk.StringVar(value="3")
-    plan_max_uses_sire_entry = ttk.Entry(plan_diversity_frame, textvariable=plan_max_uses_sire_var, width=8, state="disabled")
+    plan_max_uses_sire_entry = ttk.Entry(plan_diversity_body, textvariable=plan_max_uses_sire_var, width=8, state="disabled")
     plan_max_uses_sire_entry.pack(anchor="w", pady=(2, 0), padx=(18, 0))
 
     plan_suggest_result_var = tk.StringVar(value="")
-    ttk.Label(plan_rank_frame, textvariable=plan_suggest_result_var, foreground=colors.TEXT).pack(anchor="w", pady=(10, 0))
+    ttk.Label(plan_rank_body, textvariable=plan_suggest_result_var, foreground=colors.TEXT).pack(anchor="w", pady=(10, 0))
 
     def on_suggest_pairs() -> None:
         people = state.get("people")
@@ -1832,7 +1855,7 @@ def run_tk_pro() -> None:
             plan_suggest_result_var.set("")
             _set_plan_status("Błąd: ranking par.")
 
-    plan_suggest_btn = ttk.Button(plan_rank_frame, text="Podpowiedz pary", command=on_suggest_pairs, state="disabled")
+    plan_suggest_btn = ttk.Button(plan_rank_body, text="Podpowiedz pary", command=on_suggest_pairs, state="disabled")
     plan_suggest_btn.pack(anchor="w", pady=(12, 0))
 
     # Results tree
@@ -2318,6 +2341,7 @@ def run_tk_pro() -> None:
     pop_ne_var = tk.StringVar(value="-")
     pop_drift_var = tk.StringVar(value="-")
     pop_ria_overall_var = tk.StringVar(value="-")
+    pop_mean_kinship_var = tk.StringVar(value="-")
 
     # Demografia / rodowód.
     pop_gi_mean_var = tk.StringVar(value="-")
@@ -2410,13 +2434,17 @@ def run_tk_pro() -> None:
     ttk.Label(pop_meta_grid, textvariable=pop_drift_var, foreground=colors.TEXT).grid(row=2, column=0, sticky="w")
     ttk.Label(pop_meta_grid, textvariable=pop_ria_overall_var, foreground=colors.TEXT).grid(row=2, column=1, sticky="w")
 
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_mean_var, foreground=colors.TEXT).grid(row=3, column=0, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_family_count_var, foreground=colors.TEXT).grid(row=3, column=1, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_father_son_var, foreground=colors.TEXT).grid(row=4, column=0, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_father_daughter_var, foreground=colors.TEXT).grid(row=4, column=1, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_mother_son_var, foreground=colors.TEXT).grid(row=5, column=0, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_mother_daughter_var, foreground=colors.TEXT).grid(row=5, column=1, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_family_mean_size_var, foreground=colors.TEXT).grid(row=6, column=0, sticky="w")
+    ttk.Label(pop_meta_grid, textvariable=pop_mean_kinship_var, foreground=colors.TEXT).grid(
+        row=3, column=0, columnspan=2, sticky="w"
+    )
+
+    ttk.Label(pop_meta_grid, textvariable=pop_gi_mean_var, foreground=colors.TEXT).grid(row=4, column=0, sticky="w")
+    ttk.Label(pop_meta_grid, textvariable=pop_family_count_var, foreground=colors.TEXT).grid(row=4, column=1, sticky="w")
+    ttk.Label(pop_meta_grid, textvariable=pop_gi_father_son_var, foreground=colors.TEXT).grid(row=5, column=0, sticky="w")
+    ttk.Label(pop_meta_grid, textvariable=pop_gi_father_daughter_var, foreground=colors.TEXT).grid(row=5, column=1, sticky="w")
+    ttk.Label(pop_meta_grid, textvariable=pop_gi_mother_son_var, foreground=colors.TEXT).grid(row=6, column=0, sticky="w")
+    ttk.Label(pop_meta_grid, textvariable=pop_gi_mother_daughter_var, foreground=colors.TEXT).grid(row=6, column=1, sticky="w")
+    ttk.Label(pop_meta_grid, textvariable=pop_family_mean_size_var, foreground=colors.TEXT).grid(row=7, column=0, sticky="w")
 
     # -------------------------
     # Wykresy: każdy wykres = 1 zakładka
@@ -2617,6 +2645,7 @@ def run_tk_pro() -> None:
             pop_known_father_var.set("-")
             pop_known_mother_var.set("-")
             pop_lines_var.set("-")
+            pop_mean_kinship_var.set("-")
             return
 
         try:
@@ -2634,6 +2663,7 @@ def run_tk_pro() -> None:
             pop_known_father_var.set("-")
             pop_known_mother_var.set("-")
             pop_lines_var.set("-")
+            pop_mean_kinship_var.set("-")
             return
 
         father_known = df_use["father_id"].notna()
@@ -2673,6 +2703,7 @@ def run_tk_pro() -> None:
         pop_f_a_var.set("-")
         pop_bottleneck_var.set("-")
         pop_ne_var.set("-")
+        pop_mean_kinship_var.set("-")
 
         try:
             people_for_stats = state.get("people")
@@ -2686,6 +2717,20 @@ def run_tk_pro() -> None:
                     depth_val = 0
                 depth_val = min(depth_val, 30)
                 max_gen_back = None if bool(pop_unbounded_inb_var.get()) else depth_val
+
+                id_list = [str(x) for x in df_use["id"].tolist()]
+                try:
+                    m_phi, m_r, mk_note = mean_kinship_pairwise(
+                        people_for_stats,
+                        id_list,
+                        max_generations_back=max_gen_back,
+                    )
+                    if m_phi is not None and m_r is not None:
+                        pop_mean_kinship_var.set(
+                            f"- Mean kinship (śr. Φ po parach i≠j): {m_phi:.6f}  |  śr. R=2Φ: {m_r:.6f}  — {mk_note}"
+                        )
+                except Exception:
+                    pop_mean_kinship_var.set("- Mean kinship: nie udało się policzyć.")
 
                 stats_founders = compute_population_genetics_stats(
                     df_std=df_use,  # type: ignore[arg-type]
@@ -2908,6 +2953,57 @@ def run_tk_pro() -> None:
         state="disabled",
     )
     validation_export_btn.pack(anchor="w", pady=(6, 0))
+
+    validation_miss_lf = ttk.LabelFrame(
+        tab_validation,
+        text="Braki danych — heatmapa (% wierszy z luką w kolumnie)",
+    )
+    validation_miss_lf.pack(anchor="w", fill=tk.BOTH, expand=True, pady=(12, 0))
+    ttk.Label(
+        validation_miss_lf,
+        text=(
+            "Dla każdej kolumny: udział wierszy z NaN, pustym polem lub zapisem „nan”. "
+            "Mapa jak na pasie: w każdym polu nazwa kolumny i % braków; jasno = mało braków, ciemno (mech/kora) = więcej."
+        ),
+        foreground=colors.MUTED,
+        wraplength=900,
+        justify="left",
+    ).pack(anchor="w", padx=8, pady=(8, 4))
+    validation_miss_plot_host = ttk.Frame(validation_miss_lf)
+    validation_miss_plot_host.pack(anchor="w", fill=tk.BOTH, expand=True, padx=8, pady=(0, 10))
+
+    def _refresh_validation_missing_heatmap() -> None:
+        _clear_frame(validation_miss_plot_host)
+        df_v = state.get("df_std")
+        if df_v is None or getattr(df_v, "empty", True):
+            ttk.Label(
+                validation_miss_plot_host,
+                text="Wczytaj bazę (Import / domyślny plik), aby zobaczyć mapę braków.",
+                foreground=colors.MUTED,
+            ).pack(anchor="w", pady=8)
+            return
+        try:
+            fig_m = fig_column_missing_heatmap(df_v)
+        except Exception as ex:
+            ttk.Label(
+                validation_miss_plot_host,
+                text=f"Nie udało się narysować heatmapy braków: {ex}",
+                foreground=colors.MUTED,
+                wraplength=880,
+            ).pack(anchor="w", pady=8)
+            return
+        miss_btns = ttk.Frame(validation_miss_plot_host)
+        miss_btns.pack(anchor="w", pady=(0, 6))
+        ttk.Button(
+            miss_btns,
+            text="Zapis wykresu (JPEG)…",
+            command=lambda f=fig_m: _save_figure_as_jpeg(f, default_basename="walidacja_braki_heatmap"),
+        ).pack(side=tk.LEFT)
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        canvas_m = FigureCanvasTkAgg(fig_m, master=validation_miss_plot_host)
+        canvas_m.draw()
+        canvas_m.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
     internet_lf = ttk.LabelFrame(loading_frame, text="Pobieranie z internetu (EBPB)")
     internet_lf.pack(side=tk.TOP, fill=tk.BOTH, expand=False, pady=(0, 10), padx=0)
@@ -3589,57 +3685,6 @@ def run_tk_pro() -> None:
     inb_plot_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
 
     # -------------------------
-    # Population genetics: wybór metryk
-    # -------------------------
-    pop_f_var = tk.BooleanVar(value=False)
-    pop_comp_var = tk.BooleanVar(value=False)
-    pop_founders_opt_var = tk.BooleanVar(value=False)
-    pop_lines_opt_var = tk.BooleanVar(value=False)
-
-    pop_f_cb = ttk.Checkbutton(
-        tab_pop,
-        text="F (Wright): histogram + boxplot",
-        variable=pop_f_var,
-        state="disabled",
-    )
-    pop_f_cb.pack(anchor="w", pady=(10, 0))
-
-    pop_comp_cb = ttk.Checkbutton(
-        tab_pop,
-        text="Kompletność rodowodu: EG + PCI",
-        variable=pop_comp_var,
-        state="disabled",
-    )
-    pop_comp_cb.pack(anchor="w", pady=(4, 0))
-
-    pop_founders_cb = ttk.Checkbutton(
-        tab_pop,
-        text=f"Założyciele: f_e i top {POP_FOUNDERS_PI_TOP_N} p_i",
-        variable=pop_founders_opt_var,
-        state="disabled",
-    )
-    pop_founders_cb.pack(anchor="w", pady=(4, 0))
-
-    pop_lines_cb = ttk.Checkbutton(
-        tab_pop,
-        text="Linie: rozkład LB/LC/NA",
-        variable=pop_lines_opt_var,
-        state="disabled",
-    )
-    pop_lines_cb.pack(anchor="w", pady=(4, 0))
-
-    pop_calc_btn = ttk.Button(
-        tab_pop,
-        text="Policz wybrane statystyki",
-        state="disabled",
-    )
-    pop_calc_btn.pack(anchor="w", pady=(6, 0))
-
-    pop_text = tk.Text(tab_pop, height=10, wrap="word")
-    pop_text.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-    pop_text.configure(state="disabled", bg=colors.ENTRY_BG, fg=colors.TEXT, insertbackground=colors.TEXT)
-
-    # -------------------------
     # Optymalizacja kojarzeń (ranking par)
     # -------------------------
     ttk.Button(
@@ -4021,39 +4066,6 @@ def run_tk_pro() -> None:
     mating_export_phi_btn.configure(command=on_export_mating_phi_matrix)
     mating_kinship_btn.configure(command=on_kinship_pair)
 
-    # Obszar na wykresy statystyk populacyjnych (poukrywane na zakładkach).
-    pop_plots_frame = ttk.Frame(tab_pop)
-    pop_plots_frame.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-    pop_plots_frame.pack_forget()
-
-    pop_plots_nb = ttk.Notebook(pop_plots_frame)
-    pop_plots_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-    pop_tab_f = ttk.Frame(pop_plots_nb, padding=10)
-    pop_tab_comp = ttk.Frame(pop_plots_nb, padding=10)
-    pop_tab_founders = ttk.Frame(pop_plots_nb, padding=10)
-    pop_tab_lines = ttk.Frame(pop_plots_nb, padding=10)
-
-    pop_plots_nb.add(pop_tab_f, text="Rozkład F (Wright)")
-    pop_plots_nb.add(pop_tab_comp, text="Kompletność rodowodu")
-    pop_plots_nb.add(pop_tab_founders, text="Wkład założycieli")
-    pop_plots_nb.add(pop_tab_lines, text="Struktura linii (LB/LC)")
-
-    def _sync_pop_all_btn() -> None:
-        # Przycisk dostępny tylko, gdy włączono przynajmniej jedną metrykę.
-        any_sel = bool(
-            pop_f_var.get() or pop_comp_var.get() or pop_founders_opt_var.get() or pop_lines_opt_var.get()
-        )
-        if any_sel and str(pop_f_cb.cget("state")) == "normal":
-            pop_calc_btn.configure(state="normal")
-        else:
-            pop_calc_btn.configure(state="disabled")
-
-    pop_f_var.trace_add("write", lambda *_args: _sync_pop_all_btn())
-    pop_comp_var.trace_add("write", lambda *_args: _sync_pop_all_btn())
-    pop_founders_opt_var.trace_add("write", lambda *_args: _sync_pop_all_btn())
-    pop_lines_opt_var.trace_add("write", lambda *_args: _sync_pop_all_btn())
-
     def set_controls_enabled(enabled: bool) -> None:
         controls_enabled_ref[0] = bool(enabled)
         st = "normal" if enabled else "disabled"
@@ -4086,10 +4098,6 @@ def run_tk_pro() -> None:
 
         mating_depth_state = "disabled" if bool(mating_unbounded_var.get()) else st
         mating_depth_entry.configure(state=mating_depth_state)
-        pop_f_cb.configure(state=st)
-        pop_comp_cb.configure(state=st)
-        pop_founders_cb.configure(state=st)
-        pop_lines_cb.configure(state=st)
 
         # Plan hodowlany (dobór par)
         plan_risk_cb.configure(state=st)
@@ -4166,259 +4174,6 @@ def run_tk_pro() -> None:
         # Po zmianie unbounded/depth z konfiguracji trace bywa opóźniony — wymuszamy stan pól głębokości.
         _sync_anc_depth_state()
         _sync_mating_depth_state()
-        _sync_pop_all_btn()
-
-    def on_calc_population_all() -> None:
-        people = state.get("people")
-        df_std = state.get("df_std")
-        if not people or df_std is None:
-            messagebox.showinfo("Info", "Najpierw wczytaj bazę.")
-            return
-        calc_f = bool(pop_f_var.get())
-        calc_comp = bool(pop_comp_var.get())
-        calc_founders = bool(pop_founders_opt_var.get())
-        calc_lines = bool(pop_lines_opt_var.get())
-
-        if not (calc_f or calc_comp or calc_founders or calc_lines):
-            messagebox.showinfo("Info", "Wybierz przynajmniej jedną metrykę.")
-            return
-
-        pop_calc_btn.configure(state="disabled")
-        try:
-            pop_text.configure(state="normal")
-            pop_text.delete("1.0", tk.END)
-            pop_text.insert("1.0", "Liczenie… (może potrwać chwilę)\n")
-            pop_text.configure(state="disabled")
-            root.update_idletasks()
-
-            if calc_f:
-                if bool(unbounded_inb_var.get()):
-                    max_generations_back = None
-                else:
-                    try:
-                        depth = int(str(depth_inb_var.get()).strip())
-                    except Exception:
-                        messagebox.showerror("Błąd", "Max pokoleń musi być liczbą całkowitą.")
-                        return
-                    if depth < 0:
-                        messagebox.showerror("Błąd", "Max pokoleń nie może być ujemne.")
-                        return
-                    depth = min(depth, 30)
-                    max_generations_back = depth
-            else:
-                max_generations_back = 0
-
-            stats = compute_population_genetics_stats(
-                df_std=df_std,  # type: ignore[arg-type]
-                people=people,  # type: ignore[arg-type]
-                max_generations_back=max_generations_back,
-                calc_f=calc_f,
-                calc_completeness=calc_comp,
-                calc_founders=calc_founders,
-                calc_lines=calc_lines,
-            )
-
-            line_counts = stats.line_counts
-            pop_text.configure(state="normal")
-            pop_text.delete("1.0", tk.END)
-            lines_out = [
-                f"Populacja (bez test ID {TEST_ID}): n={stats.n}",
-                f"Założyciele (brak ojca LUB matki): {stats.n_founders_any_missing_parent}",
-                "",
-            ]
-            if calc_f:
-                lines_out += [
-                    "Inbred (Wright F) – podsumowanie:",
-                    f"- mean F: {stats.inbreeding.mean_F:.6f}",
-                    f"- median F: {stats.inbreeding.median_F:.6f}",
-                    f"- min F: {stats.inbreeding.min_F:.6f}",
-                    f"- max F: {stats.inbreeding.max_F:.6f}",
-                    f"- liczba F=0: {stats.inbreeding.zeros}/{stats.inbreeding.n}",
-                    "",
-                ]
-            if calc_comp:
-                lines_out += [
-                    "Kompletność rodowodu:",
-                    f"- mean EG: {stats.completeness.mean_EG:.4f}",
-                    f"- mean PCI: {stats.completeness.mean_PCI:.4f}",
-                    "",
-                ]
-            if calc_founders:
-                lines_out += [
-                    "Wkład założycieli:",
-                    f"- f_e: {stats.founders.f_e:.4f}",
-                    f"- f_a: {stats.founders.f_a:.4f}",
-                    "",
-                ]
-            if calc_lines:
-                lines_out += [
-                    "Rozkład linii (kolumna line):",
-                    f"- LB: {line_counts.get('LB', 0)}",
-                    f"- LC: {line_counts.get('LC', 0)}",
-                    f"- NA: {line_counts.get('NA', 0)}",
-                    "",
-                ]
-
-            pop_text.insert("1.0", "\n".join(lines_out))
-            pop_text.configure(state="disabled")
-            # --- Wykresy (opcjonalne, ale przydatne) ---
-            try:
-                import matplotlib.pyplot as plt
-                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
-                def _clear_tab(tab: ttk.Frame) -> None:
-                    for w in tab.winfo_children():
-                        w.destroy()
-
-                # F histogram + boxplot
-                _clear_tab(pop_tab_f)
-                fig_f = plt.Figure(figsize=(8.2, 4.8), dpi=100)
-                ax_hist = fig_f.add_subplot(1, 2, 1)
-                ax_box = fig_f.add_subplot(1, 2, 2)
-                ax_hist.hist(stats.f_values, bins=40, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
-                ax_hist.set_title("Histogram F")
-                ax_hist.set_xlabel("F")
-                ax_hist.set_ylabel("liczba osobników")
-                if stats.f_values:
-                    ax_box.boxplot(stats.f_values, vert=True, patch_artist=True)
-                    ax_box.set_title("Boxplot F")
-                    ax_box.set_ylabel("F")
-                else:
-                    ax_box.text(0.5, 0.5, "Brak danych", ha="center", va="center")
-                    ax_box.axis("off")
-                fig_f.tight_layout()
-                ttk.Button(
-                    pop_tab_f,
-                    text="Zapis wykresu (jpeg)",
-                    command=lambda f=fig_f: _save_figure_as_jpeg(f, default_basename="analizy_pop_inbred_f"),
-                ).pack(anchor="w", pady=(0, 6))
-                canvas_f = FigureCanvasTkAgg(fig_f, master=pop_tab_f)
-                canvas_f.draw()
-                canvas_f.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-                ttk.Label(
-                    pop_tab_f,
-                    text="Wykres F (Wright) dla całej populacji: pokazuje rozkład inbredu wywołanego wspólnymi przodkami.",
-                    font=tk_font(8),
-                    foreground=colors.MUTED,
-                    wraplength=900,
-                    justify="left",
-                ).pack(anchor="w", pady=(6, 0))
-
-                # Kompletność: EG i PCI
-                _clear_tab(pop_tab_comp)
-                fig_c = plt.Figure(figsize=(8.2, 4.8), dpi=100)
-                ax_eg = fig_c.add_subplot(1, 2, 1)
-                ax_pci = fig_c.add_subplot(1, 2, 2)
-                ax_eg.hist(stats.eg_values, bins=40, color=colors.BUTTON_BG, edgecolor=colors.ACCENT)
-                ax_eg.set_title("Rozkład EG")
-                ax_eg.set_xlabel("EG")
-                ax_eg.set_ylabel("liczba osobników")
-                ax_pci.hist(stats.pci_values, bins=40, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
-                ax_pci.set_title("Rozkład PCI")
-                ax_pci.set_xlabel("PCI")
-                ax_pci.set_ylabel("liczba osobników")
-                fig_c.tight_layout()
-                ttk.Button(
-                    pop_tab_comp,
-                    text="Zapis wykresu (jpeg)",
-                    command=lambda f=fig_c: _save_figure_as_jpeg(f, default_basename="analizy_pop_kompletnosc"),
-                ).pack(anchor="w", pady=(0, 6))
-                canvas_c = FigureCanvasTkAgg(fig_c, master=pop_tab_comp)
-                canvas_c.draw()
-                canvas_c.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-                ttk.Label(
-                    pop_tab_comp,
-                    text="Kompletność rodowodu: EG to suma wkładów przodków (1/2)^pokolenie, a PCI jest uśrednioną jakością kompletności po pokoleniach.",
-                    font=tk_font(8),
-                    foreground=colors.MUTED,
-                    wraplength=900,
-                    justify="left",
-                ).pack(anchor="w", pady=(6, 0))
-
-                # Założyciele: top wkładów (p_i)
-                _clear_tab(pop_tab_founders)
-                founder_items = sorted(stats.founder_contributions.items(), key=lambda kv: kv[1], reverse=True)
-                top_k = min(POP_FOUNDERS_PI_TOP_N, len(founder_items))
-                top_items = founder_items[:top_k]
-                fig_fe = plt.Figure(figsize=(11.0, 4.2), dpi=100)
-                ax_fe = fig_fe.add_subplot(1, 1, 1)
-                if top_items:
-                    ids = [fid for fid, _ in top_items]
-                    vals = [v for _, v in top_items]
-                    ax_fe.bar(range(len(top_items)), vals, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
-                    ax_fe.set_title(f"Top {top_k} założycieli (p_i)")
-                    ax_fe.set_xlabel("założyciel (ID + imię)")
-                    ax_fe.set_ylabel("p_i (udział)")
-                    ax_fe.set_xticks(range(len(top_items)))
-                    labels: list[str] = []
-                    for fid in ids:
-                        p = people.get(str(fid))  # type: ignore[name-defined]
-                        nm = p.name if p and p.name else None
-                        if nm:
-                            labels.append(f"{fid} ({nm})")
-                        else:
-                            labels.append(str(fid))
-                    ax_fe.set_xticklabels(labels, rotation=75, ha="right", fontsize=7)
-                else:
-                    ax_fe.text(0.5, 0.5, "Brak danych o założycielach", ha="center", va="center")
-                    ax_fe.axis("off")
-                fig_fe.tight_layout()
-                ttk.Button(
-                    pop_tab_founders,
-                    text="Zapis wykresu (jpeg)",
-                    command=lambda f=fig_fe: _save_figure_as_jpeg(f, default_basename="analizy_pop_founders"),
-                ).pack(anchor="w", pady=(0, 6))
-                canvas_fe = FigureCanvasTkAgg(fig_fe, master=pop_tab_founders)
-                canvas_fe.draw()
-                canvas_fe.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-                ttk.Label(
-                    pop_tab_founders,
-                    text="Wkład założycieli (p_i) wyliczony z founder-stop: pokazuje, którzy przodkowie odpowiadają za największą część różnorodności genetycznej.",
-                    font=tk_font(8),
-                    foreground=colors.MUTED,
-                    wraplength=900,
-                    justify="left",
-                ).pack(anchor="w", pady=(6, 0))
-
-                # Linie: LB/LC/NA
-                _clear_tab(pop_tab_lines)
-                fig_l = plt.Figure(figsize=(8.2, 4.8), dpi=100)
-                ax_l = fig_l.add_subplot(1, 1, 1)
-                lb = line_counts.get("LB", 0)
-                lc = line_counts.get("LC", 0)
-                na = line_counts.get("NA", 0)
-                xs = ["LB", "LC", "NA"]
-                ys = [lb, lc, na]
-                ax_l.bar(xs, ys, color=[colors.BUTTON_BG2, colors.BUTTON_BG, "#d6d0c4"], edgecolor=colors.ACCENT)
-                ax_l.set_title("Rozkład linii (kolumna line)")
-                ax_l.set_xlabel("linia")
-                ax_l.set_ylabel("liczba osobników")
-                fig_l.tight_layout()
-                ttk.Button(
-                    pop_tab_lines,
-                    text="Zapis wykresu (jpeg)",
-                    command=lambda f=fig_l: _save_figure_as_jpeg(f, default_basename="analizy_pop_lines_LBLCNA"),
-                ).pack(anchor="w", pady=(0, 6))
-                canvas_l = FigureCanvasTkAgg(fig_l, master=pop_tab_lines)
-                canvas_l.draw()
-                canvas_l.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-                ttk.Label(
-                    pop_tab_lines,
-                    text="Rozkład przynależności do linii (LB/LC) dla ocenianej populacji. Kolumna `line` pochodzi z pliku Excela.",
-                    font=tk_font(8),
-                    foreground=colors.MUTED,
-                    wraplength=900,
-                    justify="left",
-                ).pack(anchor="w", pady=(6, 0))
-
-                pop_plots_frame.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-            except Exception as e:
-                messagebox.showwarning("Wykresy", f"Nie udało się narysować wykresów: {e}")
-            _set_status("Gotowe: policzono statystyki populacyjne.")
-        finally:
-            _sync_pop_all_btn()
-
-    pop_calc_btn.configure(command=on_calc_population_all)
 
     # Double-click w Osobniki ustawia ID do rodowodu i analiz
     def on_tree_double_click(_event: tk.Event) -> None:
@@ -4575,6 +4330,7 @@ def run_tk_pro() -> None:
             id_anc_var.set(picked)
             id_inb_var.set(picked)
 
+        _refresh_validation_missing_heatmap()
         _update_population_metrics(df_std)
         set_controls_enabled(True)
 
@@ -5186,6 +4942,7 @@ def run_tk_pro() -> None:
 
     # Disable controls until dataset is loaded.
     set_controls_enabled(False)
+    _refresh_validation_missing_heatmap()
 
     # Auto-load default dataset for convenience.
     try:

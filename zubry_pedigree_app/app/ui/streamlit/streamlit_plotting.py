@@ -12,23 +12,214 @@ from typing import Any, Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.colors import LinearSegmentedColormap, to_rgb
+from matplotlib.patches import Rectangle
 from pandas import isna
 
-from app.ui.typography import apply_matplotlib_fonts
 from app.analytics.inbreeding_wright import wright_inbreeding_F
 from app.analytics.population_dashboard import reproducers_by_offspring_decade
 from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
+from app.ui.tk.theme import Theme
+from app.ui.typography import apply_matplotlib_fonts
 
-# Kolory zbliżone do theme.py / gui_pro
-ACCENT = "#caa86e"
-MUTED = "#2c6a4e"
-BUTTON_BG = "#dff4e3"
-BUTTON_BG2 = "#c8ead4"
+PLOT_THEME = Theme()
+ACCENT = PLOT_THEME.ACCENT
+MUTED = PLOT_THEME.MUTED
+BUTTON_BG = PLOT_THEME.BUTTON_BG
+BUTTON_BG2 = PLOT_THEME.BUTTON_BG2
+PLOT_BAR_3RD = PLOT_THEME.TAB_TEXT
 
 # Spójnie z gui_pro.POP_FOUNDERS_PI_TOP_N
 POP_FOUNDERS_PI_TOP_N = 20
 
 apply_matplotlib_fonts()
+
+# Kolejność jak w Treeview „Rejestr osobników” (Tk), potem typowe pola pomocnicze ze standardowego schematu.
+_REGISTRY_TREE_ORDER: tuple[str, ...] = (
+    "id",
+    "name",
+    "sex",
+    "birth_year",
+    "father_id",
+    "mother_id",
+    "line",
+    "father_line",
+    "mother_line",
+)
+_REGISTRY_EXTRA_ORDER: tuple[str, ...] = (
+    "alt_name",
+    "status",
+    "father_name",
+    "mother_name",
+    "birth_date",
+    "death_date",
+    "birth_location",
+)
+
+
+def registry_like_column_order(df_columns: pd.Index | list[str]) -> list[str]:
+    """Kolumny w tej samej kolejności co rejestr (najpierw widoczne w tabeli Tk), potem pozostałe alfabetycznie."""
+    names = [str(c) for c in df_columns]
+    colset = set(names)
+    preferred = _REGISTRY_TREE_ORDER + _REGISTRY_EXTRA_ORDER
+    ordered = [c for c in preferred if c in colset]
+    rest = sorted(c for c in colset if c not in ordered)
+    return ordered + rest
+
+
+def display_matplotlib_figure_in_streamlit(fig: plt.Figure) -> None:
+    """
+    Zapis wykresu do PNG i `st.image` — pewniejsze niż `st.pyplot` przy niektórych
+    przeglądarkach / backendach Matplotlib (pusta strona mimo poprawnej figury).
+    """
+    import io
+
+    import streamlit as st
+
+    buf = io.BytesIO()
+    try:
+        fig.savefig(
+            buf,
+            format="png",
+            dpi=130,
+            bbox_inches="tight",
+            pad_inches=0.2,
+            facecolor=fig.get_facecolor(),
+            edgecolor="none",
+        )
+    finally:
+        plt.close(fig)
+    buf.seek(0)
+    st.image(buf, use_container_width=True)
+
+
+def column_missing_percentages(df: pd.DataFrame) -> pd.Series:
+    """
+    Dla każdej kolumny: % wierszy z brakiem (NaN / puste / „nan” w tekście).
+    """
+    if df is None or df.empty:
+        return pd.Series(dtype=float)
+    n = len(df)
+    if n == 0:
+        return pd.Series(dtype=float)
+    out: dict[str, float] = {}
+    for col in df.columns:
+        s = df[col]
+        if pd.api.types.is_bool_dtype(s):
+            miss = s.isna()
+        elif pd.api.types.is_numeric_dtype(s):
+            miss = s.isna()
+        else:
+            sn = s.isna()
+            ss = s.astype(str)
+            miss = sn | (ss.str.strip() == "") | ss.str.lower().isin(("nan", "none", "<na>"))
+        out[str(col)] = 100.0 * float(miss.sum()) / float(n)
+    return pd.Series(out)
+
+
+def _truncate_col_label(name: str, ncol: int) -> str:
+    s = str(name).replace("\n", " ")
+    cap = max(6, min(24, int(160 / max(ncol, 1))))
+    if len(s) <= cap:
+        return s
+    return s[: cap - 1] + "…"
+
+
+def _forest_missing_segment_cmap(th: Theme) -> LinearSegmentedColormap:
+    """0% braków = jasna mgła; 100% = głęboka kora (jak skala na screenie, w barwach lasu)."""
+    return LinearSegmentedColormap.from_list(
+        "forest_miss_segments",
+        [
+            to_rgb(th.ENTRY_BG),
+            to_rgb(th.BUTTON_BG),
+            to_rgb(th.BUTTON_BG2),
+            to_rgb(th.EDGE_PLOT),
+            to_rgb(th.ACCENT),
+            (0.32, 0.20, 0.16),
+        ],
+        N=256,
+    )
+
+
+def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
+    """
+    Pozioma „mapa braków”: sąsiadujące prostokąty (jak na screenie), w każdym:
+    nazwa kolumny + % braków; skala leśna (jasno = mało braków).
+    """
+    th = PLOT_THEME
+    pct = column_missing_percentages(df)
+    if pct.empty:
+        fig, ax = plt.subplots(figsize=(6, 2))
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        ax.axis("off")
+        return fig
+    order = registry_like_column_order(pct.index)
+    pct = pct.reindex(order)
+    ncol = len(pct)
+    cmap = _forest_missing_segment_cmap(th)
+    fig_w = min(22, max(8.0, 0.62 * ncol + 2.2))
+    fig_h = 2.75
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    fig.patch.set_facecolor(th.APP_BG)
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.82, bottom=0.12)
+    ax.set_xlim(0, ncol)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    ax.set_facecolor(th.ENTRY_BG)
+
+    fig.text(
+        0.03,
+        0.93,
+        "Mapa braków danych",
+        fontsize=10.5,
+        color=th.TEXT,
+        ha="left",
+        va="top",
+    )
+
+    for j, (col_name, v_raw) in enumerate(pct.items()):
+        p = float(v_raw)
+        t = np.clip(p / 100.0, 0.0, 1.0)
+        rgba = cmap(t)
+        r, g, b = float(rgba[0]), float(rgba[1]), float(rgba[2])
+        lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        tcol = "#f7faf7" if lum < 0.42 else th.TEXT
+        rect = Rectangle((j, 0), 1.0, 1.0, facecolor=rgba, edgecolor="none", linewidth=0)
+        ax.add_patch(rect)
+        label = _truncate_col_label(col_name, ncol)
+        ax.text(
+            j + 0.5,
+            0.64,
+            label,
+            ha="center",
+            va="center",
+            fontsize=max(5.5, min(8.5, 110 / max(ncol, 1))),
+            color=tcol,
+            clip_on=True,
+        )
+        ax.text(
+            j + 0.5,
+            0.28,
+            f"{p:.1f}%",
+            ha="center",
+            va="center",
+            fontsize=max(5.5, min(8.5, 110 / max(ncol, 1))),
+            color=tcol,
+            fontweight="semibold",
+            clip_on=True,
+        )
+
+    frame = Rectangle(
+        (0, 0),
+        ncol,
+        1.0,
+        fill=False,
+        edgecolor=th.BORDER_SUBTLE,
+        linewidth=1.0,
+        zorder=5,
+    )
+    ax.add_patch(frame)
+    return fig
 
 
 def _parse_birth_year(v: object, *, lo: int = 1881, hi: int | None = None) -> int | None:
@@ -316,7 +507,7 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
     ww = 0.26
     ax_c.bar([i - ww for i in xs], MGv, width=ww, color=BUTTON_BG2, edgecolor=ACCENT, label="MG")
     ax_c.bar([i for i in xs], CGv, width=ww, color=BUTTON_BG, edgecolor=ACCENT, label="CG")
-    ax_c.bar([i + ww for i in xs], EGv, width=ww, color="#6b5b4d", edgecolor=ACCENT, label="EG")
+    ax_c.bar([i + ww for i in xs], EGv, width=ww, color=PLOT_BAR_3RD, edgecolor=ACCENT, label="EG")
     ax_c.set_title("Kompletność: MG/CG/EG wg płci")
     ax_c.set_xticks(xs)
     ax_c.set_xticklabels(cats)
@@ -331,7 +522,7 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
     ww2 = 0.22
     ax_l.bar([i - ww2 for i in xs2], MGv2, width=ww2, color=BUTTON_BG2, edgecolor=ACCENT, label="MG")
     ax_l.bar([i for i in xs2], CGv2, width=ww2, color=BUTTON_BG, edgecolor=ACCENT, label="CG")
-    ax_l.bar([i + ww2 for i in xs2], EGv2, width=ww2, color="#6b5b4d", edgecolor=ACCENT, label="EG")
+    ax_l.bar([i + ww2 for i in xs2], EGv2, width=ww2, color=PLOT_BAR_3RD, edgecolor=ACCENT, label="EG")
     ax_l.set_title("Kompletność: MG/CG/EG wg linii")
     ax_l.set_xticks(xs2)
     ax_l.set_xticklabels(cats2)
@@ -369,7 +560,7 @@ def fig_histogram_f(f_values: List[float]) -> plt.Figure:
         ax.text(0.5, 0.5, "Brak danych F", ha="center", va="center")
         ax.axis("off")
         return fig
-    ax.hist(f_values, bins=30, color="#d5c4ae", edgecolor="#4b3a2a")
+    ax.hist(f_values, bins=30, color=BUTTON_BG2, edgecolor=PLOT_BAR_3RD)
     ax.set_title("Rozkład F (Wright) w populacji")
     ax.set_xlabel("F")
     ax.set_ylabel("liczba osobników")
@@ -383,7 +574,8 @@ def fig_histogram_f(f_values: List[float]) -> plt.Figure:
 
 def fig_gi_mean_bar(gi_data: Dict[str, Any]) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(8.6, 3.4))
-    labels = ["Ojciec→Syn", "Ojciec→Córka", "Matka→Syn", "Matka→Córka"]
+    # Bez U+2192 (→): brak glifu w części fontów sans ustawianych przez OS dla matplotlib.
+    labels = ["Ojciec–Syn", "Ojciec–Córka", "Matka–Syn", "Matka–Córka"]
     vals = [
         gi_data.get("gi_fs"),
         gi_data.get("gi_fd"),
@@ -421,7 +613,7 @@ def fig_gi_trend_decades(gi_data: Dict[str, Any]) -> plt.Figure:
     decade_labels = [f"{d}-{d+9}" for d in all_decades]
     x = list(range(len(all_decades)))
     colors = {"FS": "#9ecbff", "FD": "#ffb4c1", "MS": "#2e8b57", "MD": "#d64545"}
-    labels_map = {"FS": "Ojciec→Syn", "FD": "Ojciec→Córka", "MS": "Matka→Syn", "MD": "Matka→Córka"}
+    labels_map = {"FS": "Ojciec–Syn", "FD": "Ojciec–Córka", "MS": "Matka–Syn", "MD": "Matka–Córka"}
 
     def _dec_mean(path_key: str, d: int) -> Optional[float]:
         xs = gi_decades.get(path_key, {}).get(d, [])

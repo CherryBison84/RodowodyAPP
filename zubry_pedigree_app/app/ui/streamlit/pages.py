@@ -30,6 +30,7 @@ from app.analytics.population_dashboard import (
     sire_offspring_concentration,
     summarize_active_cohort,
 )
+from app.analytics.mean_kinship import mean_kinship_pairwise
 from app.analytics.population_genetics import (
     TEST_ID,
     FounderContributionComputer,
@@ -153,6 +154,20 @@ def section_validation() -> None:
             f"Zakres ID: min **{min(ids.tolist(), key=sc.id_sort_key)}**, "
             f"max **{max(ids.tolist(), key=sc.id_sort_key)}**"
         )
+    st.markdown("**Braki danych — heatmapa**")
+    st.caption(
+        "Dla każdej kolumny: **% wierszy** z brakiem (NaN, puste lub nieprawidłowy tekst „nan”). "
+        "Kolejność jak w **Rejestrze**. **Mapa braków** — sąsiadujące pola: góra = kolumna, dół = % braków; "
+        "jasna zieleń = mało braków, ciemniejszy mech / kora = więcej."
+    )
+    fig_miss = splt.fig_column_missing_heatmap(df_std)
+    splt.display_matplotlib_figure_in_streamlit(fig_miss)
+    _miss_raw = splt.column_missing_percentages(df_std).round(2)
+    _miss_ord = splt.registry_like_column_order(_miss_raw.index)
+    _miss_pct = _miss_raw.reindex(_miss_ord)
+    with st.expander("Tabela % braków (według kolumn)", expanded=False):
+        st.dataframe(_miss_pct.to_frame("% braków"), width="stretch")
+
     rep = st.session_state.get("validation_report")
     if rep is not None:
         st.markdown(rep.ui_summary())
@@ -182,6 +197,8 @@ def section_persons(df_std: pd.DataFrame) -> None:
     people = st.session_state.get("people") or {}
     base = df_std.copy()
     base["id"] = base["id"].astype(str)
+    _p_cols = splt.registry_like_column_order(base.columns)
+    base = base[_p_cols]
 
     def _row_line(pid: str) -> str:
         m = lm.get(pid)
@@ -790,6 +807,18 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             calc_lines=True,
         )
         gi_data = compute_gi_and_family_data(df_use, people)
+
+    mk_phi, mk_r, mk_note = None, None, ""
+    with st.spinner("Średni kinship (Φ po parach)…"):
+        try:
+            _ids_pop = df_use["id"].astype(str).tolist()
+            mk_phi, mk_r, mk_note = mean_kinship_pairwise(
+                people,
+                _ids_pop,
+                max_generations_back=max_gen,
+            )
+        except Exception:
+            mk_phi, mk_r, mk_note = None, None, "nie udało się policzyć"
         ria_pct = global_ria_percent(stats.f_values)
         f_ge_n = len(stats.founder_contributions or {})
         pct_inc_par = pct_individuals_incomplete_parents(df_use)
@@ -824,6 +853,19 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
     d6.metric("f_ge (węzły założ.)", str(f_ge_n))
     d7.metric("Średni EG", f"{stats.completeness.mean_EG:.4f}")
     d8.metric("Średni GI (lat)", f"{gi_all:.2f}" if gi_all is not None else "—")
+    mk_help = (mk_note[:480] + "…") if mk_note and len(mk_note) > 480 else mk_note
+    d8a, d8b, _, _ = st.columns(4)
+    _mk_h = mk_help or "Średnia Φ po parach i≠j; przy dużym n — losowa próba osobników."
+    d8a.metric(
+        "Mean kinship Φ̄",
+        f"{mk_phi:.6f}" if mk_phi is not None else "—",
+        help=_mk_h,
+    )
+    d8b.metric(
+        "Średnie R (2Φ̄)",
+        f"{mk_r:.6f}" if mk_r is not None else "—",
+        help=_mk_h,
+    )
     d9, d10, d11, d12 = st.columns(4)
     d9.metric("% rek. z brakiem ojca lub matki", f"{pct_inc_par:.1f}%")
     d10.metric("% pustych slotów (2n)", f"{pct_slot:.1f}%")

@@ -37,12 +37,9 @@ apply_matplotlib_fonts()
 
 def _node_color(sex: Optional[str]) -> str:
     if sex == "M":
-        # pastel blue (ojciec)
         return "#9ecbff"
     if sex == "F":
-        # pastel pink (matka)
         return "#ffb4c1"
-    # brak danych
     return "#d6d0c4"
 
 
@@ -73,9 +70,9 @@ def _line_text_and_color(line: Optional[str]) -> Tuple[str, str]:
     """
 
     if line == "LB":
-        return "LB", "#d64545"  # czerwień dla LB (jak na screenie)
+        return "LB", "#d64545"
     if line == "LC":
-        return "LC", "#2e8b57"  # zieleń dla LC (jak na screenie)
+        return "LC", "#2e8b57"
     return "NA", "#9aa3a2"
 
 

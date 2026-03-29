@@ -15,6 +15,7 @@ GLOSSARY = """
 ### Inbred i współczynnik F (Wright)
 - **F** — liczba od 0 w górę, która mówi, **jak bardzo w rodowodzie powtarzają się ci sami przodkowie**. Im wyższe F, tym większe ryzyko, że u potomka spotykają się kopie genów od tych samych osób (to właśnie nazywa się inbredem). W aplikacji F jest liczone z zapisu rodziców w bazie, z możliwym limitem „ile pokoleń wstecz brać pod uwagę”.
 - **Związek rodziców (Φ)** — klasycznie F potomka zależy od tego, jak bardzo **ojciec i matka są ze sobą spokrewnieni**. Tu Φ jest liczone z drzewa rodowego; jeśli w bazie brakuje ojca lub matki, obliczenia zatrzymują się na tym miejscu (**„founder-stop”** — tak traktujemy koniec znanej gałęzi).
+- **Mean kinship (średni kinship)** — **średnia z Φ(i,j)** po parach różnych osobników (i≠j); opisuje, jak **średnio** spokrewniona jest populacja. **Średnie R = 2Φ̄** to średni współczynnik relacji Wrighta (autosomy). Przy bardzo dużym **n** program liczy średnią po parach **w losowej próbie** osobników (szybciej); przy mniejszym n — po wszystkich parach. **Ten sam limit pokoleń** co przy F / Φ dla pojedynczej pary.
 - **Limit pokoleń** — możesz ograniczyć, jak głęboko program schodzi wstecz przy liczeniu F. **Bez limitu** schodzi tak daleko, jak pozwalają dane, aż do osób bez dalszych rodziców w bazie.
 - **Wykres F a maksymalna głębokość** — pokazuje, czy wynik F „ustabilizował się”, gdy zwiększasz liczbę pokoleń. Jeśli od pewnego poziomu krzywa się już prawie nie zmienia, dalsze pokolenia niewiele dodają — to częsty znak, że w tym fragmencie rodowodu dane są w miarę pełne.
 
@@ -78,6 +79,8 @@ SECTION_VALIDATION = """
 
 Status **OK** znaczy: **nie znaleziono błędów krytycznych**. **Ostrzeżenia** warto przejrzeć przed wnioskami hodowlanymi — często da się je zrozumieć po historii danych lub po poprawce pojedynczych pól.
 
+**Mapa braków (walidacja):** poziomy pas pól obok siebie — w każdym **nazwa kolumny** i **% wierszy z luką** (NaN, puste, „nan”), w **kolejności jak w rejestrze**; kolory **leśne** (jasna mgła = mało braków, ciemniejszy mech/kora = więcej).
+
 **Eksport CSV:** możesz pobrać listę problemów (**id**, **waga** ERROR/WARN, **typ_problemu**, **szczegoly**) — do filtrowania i poprawy w Excelu. Dla problemów dotyczących całej bazy (np. cykl w rodowodzie) w kolumnie id jest `_GLOBAL_`.
 """
 
@@ -130,6 +133,7 @@ SECTION_POPULATION = """
 
 - **n** — ile osobników jest w analizie (bez rekordu testowego).
 - **Średnie F** — średnia F po osobnikach przy wybranym limicie dla populacji.
+- **Mean kinship Φ̄** i **średnie R (2Φ̄)** — średnia współzgodności po parach i≠j (przy dużym stadzie: losowa próba; patrz słownik).
 - **f_e, f_a** — miary związane z **założycielami** i różnorodnością genów (patrz słownik).
 - **RIA % (globalna)** — odsetek osobników z F > 0 przy tym samym limicie pokoleń co reszta sekcji.
 - **f_ge** — liczba odrębnych identyfikatorów założycielskich w modelu wkładów (founder-stop), tj. rozmiar listy średnich wkładów p_i.

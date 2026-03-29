@@ -56,6 +56,13 @@ def apply_page_style() -> None:
         [data-testid="stSidebar"] {{
             background-color: {THEME.PANEL_BG};
             color: {THEME.TEXT};
+            border-right: 1px solid rgba(0, 0, 0, 0.06);
+            box-shadow: 6px 0 24px rgba(0, 0, 0, 0.04);
+        }}
+        .stApp .main .block-container {{
+            padding-top: 1.5rem;
+            padding-bottom: 2.5rem;
+            max-width: min(120rem, 100%);
         }}
         [data-testid="stSidebar"] p,
         [data-testid="stSidebar"] span,
@@ -89,6 +96,61 @@ def apply_page_style() -> None:
         }}
         div[data-testid="stMetric"] [data-testid="stMetricValue"] {{
             color: {THEME.TEXT} !important;
+        }}
+        .stApp a, section[data-testid="stSidebar"] a {{
+            color: {THEME.LINK} !important;
+        }}
+        .stMarkdown a {{
+            color: {THEME.LINK} !important;
+        }}
+        /* Pola formularza i selecty — leśne tła (BaseWeb / domyślne inputy) */
+        .stTextInput input, .stNumberInput input, .stDateInput input {{
+            background-color: {THEME.ENTRY_BG} !important;
+            color: {THEME.TEXT} !important;
+            border-color: {THEME.BORDER_SUBTLE} !important;
+            border-radius: 6px !important;
+        }}
+        .stTextArea textarea {{
+            background-color: {THEME.ENTRY_BG} !important;
+            color: {THEME.TEXT} !important;
+            border-color: {THEME.BORDER_SUBTLE} !important;
+            border-radius: 6px !important;
+        }}
+        div[data-baseweb="select"] > div {{
+            background-color: {THEME.ENTRY_BG} !important;
+            border-color: {THEME.BORDER_SUBTLE} !important;
+            color: {THEME.TEXT} !important;
+        }}
+        div[data-testid="stExpander"] details {{
+            background-color: {THEME.PANEL_BG};
+            border: 1px solid {THEME.BORDER_SUBTLE};
+            border-radius: 8px;
+        }}
+        div[data-testid="stVerticalBlockBorderWrapper"] {{
+            border-color: {THEME.BORDER_SUBTLE} !important;
+        }}
+        /* Przyciski — stonowana zieleń jak mech */
+        .stButton > button {{
+            background-color: {THEME.BUTTON_BG} !important;
+            color: {THEME.TEXT} !important;
+            border: 1px solid {THEME.BORDER_SUBTLE} !important;
+        }}
+        .stButton > button:hover {{
+            background-color: {THEME.BUTTON_BG2} !important;
+            border-color: {THEME.ACCENT} !important;
+        }}
+        .stDownloadButton > button {{
+            background-color: {THEME.BUTTON_BG2} !important;
+            color: {THEME.TEXT} !important;
+            border: 1px solid {THEME.ACCENT} !important;
+        }}
+        /* Radio / checkbox */
+        .stRadio label, .stCheckbox label, .stToggle label {{
+            color: {THEME.TEXT} !important;
+        }}
+        /* Suwaki */
+        div[data-testid="stSlider"] {{
+            color: {THEME.TEXT};
         }}
         </style>
         """,
