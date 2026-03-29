@@ -38,6 +38,25 @@ class ValidationReport:
             return f"Walidacja: Ostrzeżenia ({n_warns})"
         return "Walidacja: OK"
 
+    def ui_summary(self, *, max_issues: int = 30) -> str:
+        """
+        Nagłówek jak `short_status()` oraz wypunktowane ERROR/WARN (bez wpisów OK),
+        do jednowierszowego podglądu w zakładce Import / Streamlit.
+        """
+        head = self.short_status()
+        problems = [i for i in self.issues if i.severity in ("ERROR", "WARN")]
+        if not problems:
+            return head
+        lines = [head]
+        for issue in problems[:max_issues]:
+            if issue.details:
+                lines.append(f"• {issue.title} — {issue.details}")
+            else:
+                lines.append(f"• {issue.title}")
+        if len(problems) > max_issues:
+            lines.append(f"• … (+{len(problems) - max_issues} więcej — pełna lista w eksporcie raportu walidacji)")
+        return "\n".join(lines)
+
     def to_text(self) -> str:
         lines: List[str] = []
         lines.append(self.short_status())

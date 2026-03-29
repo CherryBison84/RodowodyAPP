@@ -48,8 +48,8 @@ from app.ui.help_dialog import show_help_window
 from app.ui import help_content as hc
 from app.ui.typography import apply_matplotlib_fonts, tk_font
 
-# Liczba założycieli na wykresie p_i (Populacja / Analizy populacji).
-POP_FOUNDERS_PI_TOP_N = 50
+# Liczba założycieli na wykresie p_i (Metryki populacji / Analizy populacji).
+POP_FOUNDERS_PI_TOP_N = 20
 
 
 def _clear_frame(frame: ttk.Frame) -> None:
@@ -1473,7 +1473,7 @@ def run_tk_pro() -> None:
     plan_tree_upper = ttk.Frame(plan_right_pane)
     plan_detail_lower = ttk.LabelFrame(
         plan_right_pane,
-        text="Zaznaczona para — uproszczony rodowód i statystyki",
+        text="Zaznaczona para — statystyki i rodowód potomka",
         padding=8,
     )
     plan_right_pane.add(plan_tree_upper, weight=2)
@@ -1489,9 +1489,10 @@ def run_tk_pro() -> None:
         insertbackground=colors.TEXT,
         font=tk_font(9),
     )
-    plan_pair_stats_text.pack(fill=tk.X, expand=False, pady=(0, 6))
-    plan_pair_plot_frame = ttk.Frame(plan_detail_lower)
-    plan_pair_plot_frame.pack(fill=tk.BOTH, expand=True)
+    plan_pair_stats_text.pack(fill=tk.BOTH, expand=True, pady=(0, 6))
+    plan_pair_btn_row = ttk.Frame(plan_detail_lower)
+    plan_pair_btn_row.pack(fill=tk.X, pady=(4, 0))
+    plan_sel_pair: dict[str, str | None] = {"dam": None, "sire": None}
 
     # Risk calculation settings
     plan_risk_unbounded_var = tk.BooleanVar(value=False)
@@ -1810,19 +1811,28 @@ def run_tk_pro() -> None:
 
     PLAN_HYPO_ID = "__PLAN_HYPO_OFFSPRING__"
 
+    plan_pedigree_win_btn = ttk.Button(
+        plan_pair_btn_row,
+        text="Pokaż rodowód potomka w nowym oknie",
+        state="disabled",
+    )
+    plan_pedigree_win_btn.pack(side=tk.LEFT)
+
     def _clear_plan_tree() -> None:
         for item in plan_tree.get_children():
             plan_tree.delete(item)
         _clear_plan_pair_detail()
 
     def _clear_plan_pair_detail() -> None:
-        for w in plan_pair_plot_frame.winfo_children():
-            w.destroy()
+        plan_sel_pair["dam"] = None
+        plan_sel_pair["sire"] = None
+        plan_pedigree_win_btn.configure(state="disabled")
         plan_pair_stats_text.configure(state="normal")
         plan_pair_stats_text.delete("1.0", tk.END)
         plan_pair_stats_text.insert(
             "1.0",
-            "Zaznacz wiersz w tabeli par (klik), aby zobaczyć uproszczony rodowód potomka oraz statystyki hodowlane.\n",
+            "Zaznacz wiersz w tabeli par (klik), aby zobaczyć statystyki.\n"
+            "Rodowód hipotetycznego potomka otworzysz przyciskiem poniżej.\n",
         )
         plan_pair_stats_text.configure(state="disabled")
 
@@ -1866,6 +1876,77 @@ def run_tk_pro() -> None:
         except Exception:
             pass
         return MG, EG, PCI
+
+    def _open_plan_offspring_pedigree_window() -> None:
+        people = state.get("people")
+        dam_id = plan_sel_pair.get("dam")
+        sire_id = plan_sel_pair.get("sire")
+        if not people or not dam_id or not sire_id:
+            messagebox.showinfo("Info", "Najpierw zaznacz parę w tabeli wyników.")
+            return
+        if dam_id not in people or sire_id not in people:
+            messagebox.showerror("Błąd", "Wybrane ID nie występują w wczytanych danych.")
+            return
+
+        plot_depth = _plan_pedigree_plot_depth()
+        people_h = dict(people)
+        people_h[PLAN_HYPO_ID] = Person(
+            id=PLAN_HYPO_ID,
+            name="potomek (hipotetyczny)",
+            sex=None,
+            line=None,
+            father_id=sire_id,
+            mother_id=dam_id,
+            birth_year=None,
+        )
+        try:
+            levels, edges = get_ancestor_levels_and_edges(
+                person_id=PLAN_HYPO_ID,
+                depth=plot_depth,
+                people=people_h,
+            )
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+            fig_p = plot_ancestor_pedigree(
+                person_id=PLAN_HYPO_ID,
+                levels=levels,
+                edges=edges,
+                people=people_h,
+                readable_mode=True,
+                enable_click_highlight=False,
+                on_node_click=None,
+            )
+        except Exception as exc:
+            messagebox.showerror("Błąd", f"Nie udało się narysować rodowodu: {exc}")
+            return
+
+        win = tk.Toplevel(root)
+        win.title(f"Rodowód potomka (hipotetyczny) — {sire_id} × {dam_id}")
+        win.geometry("1040x720")
+        win.minsize(640, 480)
+        win.configure(bg=colors.APP_BG)
+
+        top_bar = ttk.Frame(win, padding=(8, 8))
+        top_bar.pack(side=tk.TOP, fill=tk.X)
+        ttk.Label(
+            top_bar,
+            text=f"Hipotetyczny potomek: samiec {sire_id} × samica {dam_id}  |  do {plot_depth} pokoleń wstecz",
+            foreground=colors.MUTED,
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            top_bar,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig_p: _save_figure_as_jpeg(f, default_basename=f"plan_para_{dam_id}_{sire_id}"),
+        ).pack(side=tk.RIGHT, padx=(8, 0))
+        ttk.Button(top_bar, text="Zamknij", command=win.destroy).pack(side=tk.RIGHT)
+
+        plot_host = ttk.Frame(win)
+        plot_host.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        canvas_p = FigureCanvasTkAgg(fig_p, master=plot_host)
+        canvas_p.draw()
+        canvas_p.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    plan_pedigree_win_btn.configure(command=_open_plan_offspring_pedigree_window)
 
     def _on_plan_tree_select(_evt: object | None = None) -> None:
         people = state.get("people")
@@ -1932,57 +2013,16 @@ def run_tk_pro() -> None:
             f"Kompletność rodowodu (ANC, bez limitu) — samica: MG={MG_d}, EG={EG_d:.4f}, PCI={PCI_d:.4f}",
             f"Kompletność rodowodu (ANC, bez limitu) — samiec: MG={MG_s}, EG={EG_s:.4f}, PCI={PCI_s:.4f}",
             "",
-            f"Graf: hipotetyczny potomek + przodkowie do {plot_depth} pokoleń wstecz (uproszczony podgląd).",
+            f"Graf rodowodu potomka: do {plot_depth} pokoleń wstecz — otwórz przyciskiem „Pokaż rodowód potomka w nowym oknie”.",
         ]
+        plan_sel_pair["dam"] = dam_id
+        plan_sel_pair["sire"] = sire_id
+        plan_pedigree_win_btn.configure(state="normal")
+
         plan_pair_stats_text.configure(state="normal")
         plan_pair_stats_text.delete("1.0", tk.END)
         plan_pair_stats_text.insert("1.0", "\n".join(lines))
         plan_pair_stats_text.configure(state="disabled")
-
-        people_h = dict(people)
-        people_h[PLAN_HYPO_ID] = Person(
-            id=PLAN_HYPO_ID,
-            name="potomek (hipotetyczny)",
-            sex=None,
-            line=None,
-            father_id=sire_id,
-            mother_id=dam_id,
-            birth_year=None,
-        )
-        for w in plan_pair_plot_frame.winfo_children():
-            w.destroy()
-        try:
-            levels, edges = get_ancestor_levels_and_edges(
-                person_id=PLAN_HYPO_ID,
-                depth=plot_depth,
-                people=people_h,
-            )
-            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
-            fig_p = plot_ancestor_pedigree(
-                person_id=PLAN_HYPO_ID,
-                levels=levels,
-                edges=edges,
-                people=people_h,
-                readable_mode=True,
-                enable_click_highlight=False,
-                on_node_click=None,
-            )
-            ttk.Button(
-                plan_pair_plot_frame,
-                text="Zapis wykresu (jpeg)",
-                command=lambda f=fig_p: _save_figure_as_jpeg(f, default_basename=f"plan_para_{dam_id}_{sire_id}"),
-            ).pack(anchor="w", pady=(0, 4))
-            canvas_p = FigureCanvasTkAgg(fig_p, master=plan_pair_plot_frame)
-            canvas_p.draw()
-            canvas_p.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        except Exception as exc:
-            ttk.Label(
-                plan_pair_plot_frame,
-                text=f"Nie udało się narysować rodowodu: {exc}",
-                foreground=colors.MUTED,
-                wraplength=720,
-            ).pack(anchor="w", pady=(8, 0))
 
     plan_tree.bind("<<TreeviewSelect>>", _on_plan_tree_select, add="+")
     _clear_plan_pair_detail()
@@ -2195,6 +2235,8 @@ def run_tk_pro() -> None:
         "df_raw": None,
         "raw_filename": None,
     }
+    # Czy kontrolki po wczytaniu bazy są aktywne (nie wnioskować ze stanu innych widgetów — macOS/ttk bywa zawodne).
+    controls_enabled_ref: list[bool] = [False]
 
     # -------------------------
     # Populacja tab (podstawowe metryki)
@@ -3169,39 +3211,21 @@ def run_tk_pro() -> None:
     id_anc_entry.grid(row=0, column=1, sticky="w", padx=(8, 16))
 
     ttk.Label(rod_header, text="Max pokoleń:").grid(row=0, column=2, sticky="w")
-    depth_anc_intvar = tk.IntVar(value=4)
-    depth_anc_display = tk.StringVar(value="4")
-
-    def _sync_anc_depth_display(*_args: object) -> None:
-        try:
-            depth_anc_display.set(str(int(depth_anc_intvar.get())))
-        except Exception:
-            depth_anc_display.set("4")
-
-    depth_anc_intvar.trace_add("write", lambda *_a: _sync_anc_depth_display())
+    depth_anc_strvar = tk.StringVar(value="4")
 
     depth_anc_controls = ttk.Frame(rod_header)
     depth_anc_controls.grid(row=0, column=3, sticky="w", padx=(8, 16))
-    # tk.Scale (nie ttk): na macOS ttk.Scale często nie aktualizuje IntVar — suwak „nie działa”.
-    depth_anc_scale = tk.Scale(
+    # Spinbox zamiast suwaka: na macOS suwaki Tk/ttk bywają martwe; Spinbox jest stabilny.
+    depth_anc_spin = ttk.Spinbox(
         depth_anc_controls,
         from_=0,
         to=30,
-        orient=tk.HORIZONTAL,
-        variable=depth_anc_intvar,
-        length=220,
-        width=12,
-        showvalue=0,
-        resolution=1,
-        bd=0,
-        highlightthickness=0,
-        bg=colors.PANEL_BG,
-        fg=colors.TEXT,
-        troughcolor=colors.BUTTON_BG2,
-        activebackground=colors.ACCENT,
+        increment=1,
+        textvariable=depth_anc_strvar,
+        width=6,
+        wrap=False,
     )
-    depth_anc_scale.pack(side=tk.LEFT)
-    ttk.Label(depth_anc_controls, textvariable=depth_anc_display, width=4).pack(side=tk.LEFT, padx=(10, 0))
+    depth_anc_spin.pack(side=tk.LEFT)
 
     readable_anc_var = tk.BooleanVar(value=True)
     readable_anc_cb = ttk.Checkbutton(
@@ -3238,12 +3262,11 @@ def run_tk_pro() -> None:
     unbounded_anc_cb.grid(row=1, column=2, sticky="w", padx=(8, 0), pady=(6, 0))
 
     def _sync_anc_depth_state() -> None:
-        # Gdy bez limitu: blokujemy max pokoleń; w przeciwnym razie odtwarzamy stan zależny od tego,
-        # czy kontrolki są aktywne (wczytano już bazę).
-        anc_enabled = readable_anc_cb.cget("state") == "normal"
+        # Gdy bez limitu: blokujemy max pokoleń; w przeciwnym razie zależnie od tego, czy UI jest odblokowane.
+        anc_enabled = bool(controls_enabled_ref[0])
         st = "normal" if anc_enabled else "disabled"
         depth_state = "disabled" if bool(unbounded_anc_var.get()) else st
-        depth_anc_scale.configure(state=depth_state)
+        depth_anc_spin.configure(state=depth_state)
 
     _sync_anc_depth_state()
     unbounded_anc_var.trace_add("write", lambda *_args: _sync_anc_depth_state())
@@ -3457,9 +3480,8 @@ def run_tk_pro() -> None:
     )
 
     def _sync_mating_depth_state() -> None:
-        # Gdy bez limitu jest włączone, blokujemy wpis max pokoleń.
-        depth_state = "disabled" if bool(mating_unbounded_var.get()) else ("normal" if str(mating_depth_entry.cget("state")) == "normal" else "disabled")
-        # powyższe jest odporne, gdy set_controls_enabled jeszcze nie ustawiło state
+        base = "normal" if controls_enabled_ref[0] else "disabled"
+        depth_state = "disabled" if bool(mating_unbounded_var.get()) else base
         mating_depth_entry.configure(state=depth_state)
 
     mating_unbounded_var.trace_add("write", lambda *_args: _sync_mating_depth_state())
@@ -3631,11 +3653,9 @@ def run_tk_pro() -> None:
     pop_lines_opt_var.trace_add("write", lambda *_args: _sync_pop_all_btn())
 
     def set_controls_enabled(enabled: bool) -> None:
+        controls_enabled_ref[0] = bool(enabled)
         st = "normal" if enabled else "disabled"
         id_anc_entry.configure(state=st)
-        # Gdy bez limitu jest włączone, blokujemy suwak max pokoleń.
-        depth_state = "disabled" if bool(unbounded_anc_var.get()) else st
-        depth_anc_scale.configure(state=depth_state)
         readable_anc_cb.configure(state=st)
         anc_line_radio_sire.configure(state=st)
         anc_line_radio_dam.configure(state=st)
@@ -3670,6 +3690,10 @@ def run_tk_pro() -> None:
         plan_candidate_limit_entry.configure(state=st)
         plan_top_n_entry.configure(state=st)
         plan_suggest_btn.configure(state=st)
+        if not enabled:
+            plan_sel_pair["dam"] = None
+            plan_sel_pair["sire"] = None
+            plan_pedigree_win_btn.configure(state="disabled")
         plan_goal_mean_enabled_cb.configure(state=st)
         plan_goal_mean_F_entry.configure(state=st)
         plan_goal_max_enabled_cb.configure(state=st)
@@ -3694,7 +3718,7 @@ def run_tk_pro() -> None:
                 _danc = int(str(settings_anc_depth_var.get()).strip() or "4")
             except Exception:
                 _danc = 4
-            depth_anc_intvar.set(max(0, min(30, _danc)))
+            depth_anc_strvar.set(str(max(0, min(30, _danc))))
 
             unbounded_inb_var.set(bool(settings_inb_unbounded_var.get()))
             depth_inb_var.set(str(settings_inb_depth_var.get()).strip() or "4")
@@ -3724,8 +3748,9 @@ def run_tk_pro() -> None:
             plan_goal_max_F_var.set(str(settings_plan_goal_max_f_var.get()).strip() or "0.10")
             rep_include_plots_export_var.set(bool(rep_default_include_plots_var.get()))
 
-        # Po zmianie unbounded/depth z Konfiguracji Tk czasem nie odpala trace — wymuszamy stan suwaka.
+        # Po zmianie unbounded/depth z konfiguracji trace bywa opóźniony — wymuszamy stan pól głębokości.
         _sync_anc_depth_state()
+        _sync_mating_depth_state()
         _sync_pop_all_btn()
 
     def on_calc_population_all() -> None:
@@ -4021,7 +4046,7 @@ def run_tk_pro() -> None:
 
             report = validate_loaded_dataset(df_std=df_std, people=people, current_year=datetime.now().year)
             state["validation_report"] = report
-            validation_var.set(report.short_status())
+            validation_var.set(report.ui_summary())
         except Exception:
             state["validation_report"] = None
             validation_var.set("Walidacja bazy: nie udało się przeprowadzić walidacji.")
@@ -4184,7 +4209,7 @@ def run_tk_pro() -> None:
         depth: int | None = None
         if not unbounded:
             try:
-                depth = int(depth_anc_intvar.get())
+                depth = int(str(depth_anc_strvar.get()).strip())
             except Exception:
                 depth = 4
             depth = max(0, min(30, depth))

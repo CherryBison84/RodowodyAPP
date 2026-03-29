@@ -25,7 +25,7 @@ BUTTON_BG = "#dff4e3"
 BUTTON_BG2 = "#c8ead4"
 
 # Spójnie z gui_pro.POP_FOUNDERS_PI_TOP_N
-POP_FOUNDERS_PI_TOP_N = 50
+POP_FOUNDERS_PI_TOP_N = 20
 
 apply_matplotlib_fonts()
 

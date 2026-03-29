@@ -61,7 +61,7 @@ def run_streamlit_direct() -> None:
             st.markdown(sc.SECTION_VALIDATION)
 
     st.markdown(
-        f'<p style="color:{sc.THEME.MUTED};font-family:{sc.FONT_FAMILY_CSS};font-size:0.95rem;margin-top:0;">'
+        f'<p style="color:{sc.THEME.MUTED};font-family:{sc.FONT_FAMILY_CSS};font-size:1.05rem;line-height:1.5;margin-top:0;">'
         "Import danych • Analityka • Pedigree • Metryki populacji • Raportowanie"
         "</p>",
         unsafe_allow_html=True,

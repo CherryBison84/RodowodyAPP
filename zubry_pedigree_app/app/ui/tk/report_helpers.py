@@ -19,7 +19,7 @@ from app.pedigree.ancestor_pedigree import (
 from app.visualizations.ancestor_plot import plot_ancestor_pedigree
 
 # Zgodnie z gui_pro.POP_FOUNDERS_PI_TOP_N (unikamy importu cyklicznego gui_pro → report_helpers).
-_POP_FOUNDERS_PI_TOP_N = 50
+_POP_FOUNDERS_PI_TOP_N = 20
 
 
 def write_text_pages_to_pdf(pdf: PdfPages, *, text: str) -> None:

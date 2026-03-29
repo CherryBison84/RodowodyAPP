@@ -119,7 +119,7 @@ def section_loading() -> None:
             )
         rep = st.session_state.get("validation_report")
         if rep is not None:
-            st.caption(f"Walidacja: **{rep.short_status()}**")
+            st.caption(rep.ui_summary())
             with st.expander("Pełny raport walidacji (tekst)"):
                 st.text(rep.to_text())
                 st.download_button(
@@ -504,7 +504,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         st.pyplot(fig, width="stretch")
 
     with tabs[6]:
-        st.caption("Top 50 wkładu genetycznego założycieli (p_i).")
+        st.caption("Top 20 wkładu genetycznego założycieli (p_i).")
         sc.help_expander("Interpretacja: założyciele p_i", hc.CHART_FOUNDERS_PI, expanded=verbose)
         fig = splt.fig_founder_contributions(stats.founder_contributions or {}, people)
         st.pyplot(fig, width="stretch")

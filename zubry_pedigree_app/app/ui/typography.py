@@ -1,30 +1,93 @@
 """
 Wspólna czcionka interfejsu: to samo „pismo” w oknie na pulpicie, w przeglądarce i na wykresach.
-Na Macu domyślnie Helvetica Neue, na Windows Segoe UI, na Linuxie DejaVu Sans.
+Priorytet: sans-serif z pełnym zestawem znaków łacińskich (polskie ogonki) na danej platformie.
 """
 
 from __future__ import annotations
 
 import sys
-from typing import Tuple, Union
+from typing import Any, Tuple, Union
+
+# Rozmiary (pt) — jeden zestaw dla Tk / ttk
+TK_PT_LABEL = 12
+TK_PT_BUTTON = 11
+TK_PT_ENTRY = 11
+TK_PT_TREE = 11
+TK_PT_NOTEBOOK_TAB = 11
+TK_PT_SMALL = 10
+TK_PT_HELP_BODY = 15
 
 # Kolejność dla CSS / matplotlib (pierwsza dostępna w systemie)
 FONT_STACK_SANS: list[str] = [
+    "SF Pro Text",
+    ".SF NS Text",
     "Helvetica Neue",
+    "Lucida Grande",
     "Segoe UI",
+    "Arial",
     "DejaVu Sans",
     "Liberation Sans",
-    "Arial",
+    "Noto Sans",
+    "Helvetica",
     "sans-serif",
 ]
 
-# Jedna nazwa dla Tk (ttk nie obsługuje listy zapasowej)
-def ui_font_family() -> str:
+# Preferencja dla Tk: pierwsza nazwa faktycznie zwrócona przez font.families() (UTF-8 / PL).
+_TK_FAMILY_PRIORITY: tuple[str, ...] = (
+    "SF Pro Text",
+    ".SF NS Text",
+    "Helvetica Neue",
+    "Lucida Grande",
+    "Segoe UI",
+    "Arial",
+    "DejaVu Sans",
+    "Liberation Sans",
+    "Noto Sans",
+    "Cantarell",
+    "Ubuntu",
+    "Helvetica",
+)
+
+_resolved_tk_family: str | None = None
+
+
+def _platform_fallback_family() -> str:
     if sys.platform == "darwin":
         return "Helvetica Neue"
     if sys.platform == "win32":
         return "Segoe UI"
     return "DejaVu Sans"
+
+
+def set_tk_font_family_from_root(widget: Any) -> None:
+    """Wybiera pierwszą dostępną czcionkę z listy (lepsze pokrycie PL niż sztywna nazwa)."""
+    global _resolved_tk_family
+    if _resolved_tk_family is not None:
+        return
+    try:
+        import tkinter.font as tkfont
+    except Exception:
+        _resolved_tk_family = _platform_fallback_family()
+        return
+    try:
+        fams = set(tkfont.families(widget))
+    except Exception:
+        _resolved_tk_family = _platform_fallback_family()
+        return
+    for name in _TK_FAMILY_PRIORITY:
+        if name in fams:
+            _resolved_tk_family = name
+            return
+    _resolved_tk_family = _platform_fallback_family()
+
+
+def ensure_tk_font_resolved(widget: Any) -> None:
+    """Wywołaj np. przed pierwszym oknem pomocy, jeśli motyw jeszcze nie zainicjował rodziny."""
+    set_tk_font_family_from_root(widget)
+
+
+def ui_font_family() -> str:
+    return _resolved_tk_family or _platform_fallback_family()
 
 
 def tk_font(size: int, *, bold: bool = False) -> Union[Tuple[str, int], Tuple[str, int, str]]:
@@ -54,13 +117,13 @@ def apply_matplotlib_fonts() -> None:
         {
             "font.family": "sans-serif",
             "font.sans-serif": FONT_STACK_SANS[:-1],
-            "font.size": 10,
-            "axes.titlesize": 11,
-            "axes.labelsize": 10,
-            "xtick.labelsize": 9,
-            "ytick.labelsize": 9,
-            "legend.fontsize": 9,
-            "figure.titlesize": 12,
+            "font.size": 11,
+            "axes.titlesize": 12,
+            "axes.labelsize": 11,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "legend.fontsize": 10,
+            "figure.titlesize": 13,
         }
     )
     _mpl_configured = True

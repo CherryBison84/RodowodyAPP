@@ -8,7 +8,16 @@ import tkinter as tk
 from dataclasses import dataclass
 from tkinter import ttk
 
-from app.ui.typography import tk_font
+from app.ui.typography import (
+    TK_PT_BUTTON,
+    TK_PT_ENTRY,
+    TK_PT_LABEL,
+    TK_PT_NOTEBOOK_TAB,
+    TK_PT_SMALL,
+    TK_PT_TREE,
+    set_tk_font_family_from_root,
+    tk_font,
+)
 
 
 @dataclass(frozen=True)
@@ -34,6 +43,7 @@ class Theme:
 def setup_theme(root: tk.Tk) -> Theme:
     colors = Theme()
     root.configure(bg=colors.APP_BG)
+    set_tk_font_family_from_root(root)
 
     style = ttk.Style(root)
     try:
@@ -42,14 +52,14 @@ def setup_theme(root: tk.Tk) -> Theme:
         pass
 
     style.configure("TFrame", background=colors.PANEL_BG)
-    style.configure("TLabel", background=colors.PANEL_BG, foreground=colors.TEXT, font=tk_font(11))
+    style.configure("TLabel", background=colors.PANEL_BG, foreground=colors.TEXT, font=tk_font(TK_PT_LABEL))
     style.configure("TNotebook", background=colors.PANEL_BG)
     style.configure(
         "TNotebook.Tab",
         background=colors.TAB_BG,
         foreground=colors.TAB_TEXT,
         padding=(10, 6),
-        font=tk_font(11, bold=True),
+        font=tk_font(TK_PT_NOTEBOOK_TAB, bold=True),
     )
     style.map(
         "TNotebook.Tab",
@@ -57,7 +67,9 @@ def setup_theme(root: tk.Tk) -> Theme:
         foreground=[("selected", colors.TAB_TEXT), ("active", colors.TAB_TEXT)],
     )
 
-    style.configure("TButton", background=colors.BUTTON_BG, foreground=colors.TEXT, padding=(10, 6), font=tk_font(10))
+    style.configure(
+        "TButton", background=colors.BUTTON_BG, foreground=colors.TEXT, padding=(10, 6), font=tk_font(TK_PT_BUTTON)
+    )
     style.map(
         "TButton",
         background=[("active", colors.BUTTON_BG2), ("pressed", "#c9b296")],
@@ -70,20 +82,20 @@ def setup_theme(root: tk.Tk) -> Theme:
         background=colors.ENTRY_BG,
         foreground=colors.TEXT,
         bordercolor=colors.ACCENT,
-        font=tk_font(10),
+        font=tk_font(TK_PT_ENTRY),
     )
-    style.configure("TCheckbutton", background=colors.PANEL_BG, foreground=colors.TEXT, font=tk_font(10))
-    style.configure("TRadiobutton", background=colors.PANEL_BG, foreground=colors.TEXT, font=tk_font(10))
+    style.configure("TCheckbutton", background=colors.PANEL_BG, foreground=colors.TEXT, font=tk_font(TK_PT_ENTRY))
+    style.configure("TRadiobutton", background=colors.PANEL_BG, foreground=colors.TEXT, font=tk_font(TK_PT_ENTRY))
 
     style.configure("TLabelframe", background=colors.PANEL_BG)
-    style.configure("TLabelframe.Label", background=colors.PANEL_BG, foreground=colors.MUTED, font=tk_font(10))
+    style.configure("TLabelframe.Label", background=colors.PANEL_BG, foreground=colors.MUTED, font=tk_font(TK_PT_SMALL))
 
     style.configure(
         "TCombobox",
         fieldbackground=colors.ENTRY_BG,
         background=colors.ENTRY_BG,
         foreground=colors.TEXT,
-        font=tk_font(10),
+        font=tk_font(TK_PT_ENTRY),
     )
     style.map("TCombobox", fieldbackground=[("readonly", colors.ENTRY_BG)])
 
@@ -92,9 +104,9 @@ def setup_theme(root: tk.Tk) -> Theme:
         background=colors.TREE_BG,
         fieldbackground=colors.TREE_BG,
         foreground=colors.TABLE_TEXT,
-        rowheight=22,
+        rowheight=24,
         borderwidth=0,
-        font=tk_font(10),
+        font=tk_font(TK_PT_TREE),
     )
     style.configure(
         "Treeview.Heading",
@@ -103,7 +115,7 @@ def setup_theme(root: tk.Tk) -> Theme:
         borderwidth=0,
         relief="flat",
         padding=(6, 4),
-        font=tk_font(10, bold=True),
+        font=tk_font(TK_PT_TREE, bold=True),
     )
     style.map("Treeview", background=[("selected", colors.BUTTON_BG)], foreground=[("selected", colors.TABLE_TEXT)])
 
