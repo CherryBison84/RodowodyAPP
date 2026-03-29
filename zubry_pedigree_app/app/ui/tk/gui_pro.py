@@ -58,6 +58,7 @@ from app.analytics.population_genetics import (
     compute_gi_and_family_data,
     compute_population_genetics_stats,
 )
+from app.config import resolve_app_icon_ico
 from app.data.validator import validate_loaded_dataset
 from app.ui.tk.breeding_helpers import suggest_pairs_with_constraints
 from app.ui.tk.report_helpers import (
@@ -73,6 +74,27 @@ from app.ui.streamlit.streamlit_plotting import fig_column_missing_heatmap
 
 # Liczba założycieli na wykresie p_i (Metryki populacji / Analizy populacji).
 POP_FOUNDERS_PI_TOP_N = 20
+
+
+def _apply_tk_window_icon(root: tk.Misc, ico_path: Path) -> None:
+    """Ustawia ikonę okna z `.ico` (Windows/Linux); na macOS często wymaga Pillow + `iconphoto`."""
+    p = str(ico_path.resolve())
+    try:
+        root.iconbitmap(p)
+        return
+    except tk.TclError:
+        pass
+    try:
+        from PIL import Image, ImageTk
+
+        im = Image.open(ico_path)
+        im = im.convert("RGBA")
+        im.thumbnail((64, 64), Image.Resampling.LANCZOS)
+        photo = ImageTk.PhotoImage(im)
+        root.wm_iconphoto(True, photo)
+        setattr(root, "_wisent_icon_photo_keepalive", photo)
+    except Exception:
+        pass
 
 
 def _open_exported_file(path: str | Path) -> None:
@@ -962,6 +984,10 @@ def run_tk_pro() -> None:
         root = tk.Tk()
         root.title("WisentPedigree Pro+")
         root.geometry("1280x860")
+
+    _ico = resolve_app_icon_ico()
+    if _ico is not None:
+        _apply_tk_window_icon(root, _ico)
 
     colors = setup_theme(root)
 

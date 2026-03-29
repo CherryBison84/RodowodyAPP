@@ -158,20 +158,21 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
     ncol = len(pct)
     cmap = _forest_missing_segment_cmap(th)
     fig_w = min(22, max(8.0, 0.62 * ncol + 2.2))
-    fig_h = 2.75
+    fig_h = 3.05
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
     fig.patch.set_facecolor(th.APP_BG)
-    fig.subplots_adjust(left=0.03, right=0.97, top=0.82, bottom=0.12)
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.84, bottom=0.11)
     ax.set_xlim(0, ncol)
     ax.set_ylim(0, 1)
     ax.axis("off")
     ax.set_facecolor(th.ENTRY_BG)
 
+    _miss_seg_fs = max(7.0, min(11.2, 152.0 / max(ncol, 1)))
     fig.text(
         0.03,
         0.93,
         "Mapa braków danych",
-        fontsize=10.5,
+        fontsize=12.5,
         color=th.TEXT,
         ha="left",
         va="top",
@@ -193,7 +194,7 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
             label,
             ha="center",
             va="center",
-            fontsize=max(5.5, min(8.5, 110 / max(ncol, 1))),
+            fontsize=_miss_seg_fs,
             color=tcol,
             clip_on=True,
         )
@@ -203,7 +204,7 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
             f"{p:.1f}%",
             ha="center",
             va="center",
-            fontsize=max(5.5, min(8.5, 110 / max(ncol, 1))),
+            fontsize=_miss_seg_fs,
             color=tcol,
             fontweight="semibold",
             clip_on=True,
