@@ -567,9 +567,19 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
 
 
 def section_pair_kinship_analysis(df_std: pd.DataFrame, people: dict) -> None:
-    st.markdown("#### Analiza rodowodowa — para")
+    st.markdown("#### Analiza rodowodowa — para rodziców (ojciec × matka)")
     sc.help_expander("Optymalizacja kojarzeń — interpretacja rankingu", hc.SECTION_MATING)
-    id_opts = sorted(df_std["id"].astype(str).unique().tolist(), key=sc.id_sort_key)
+    df_ids = df_std.copy()
+    df_ids["id"] = df_ids["id"].astype(str)
+    if "sex" in df_ids.columns:
+        sx = df_ids["sex"].astype(str).str.strip().str.upper()
+        male_opts = sorted(df_ids.loc[sx == "M", "id"].drop_duplicates().tolist(), key=sc.id_sort_key)
+        female_opts = sorted(df_ids.loc[sx == "F", "id"].drop_duplicates().tolist(), key=sc.id_sort_key)
+    else:
+        male_opts, female_opts = [], []
+    st.caption(
+        "Listy zawierają tylko ID z płcią M / F. Możesz też wpisać numer ID w polu tekstowym (nadpisuje wybór z listy)."
+    )
     c0, c1 = st.columns(2)
     with c0:
         pair_ub = st.checkbox("Φ bez limitu pokoleń (wolniejsze)", value=False, key="pair_ub")
@@ -577,32 +587,62 @@ def section_pair_kinship_analysis(df_std: pd.DataFrame, people: dict) -> None:
         pair_d = st.number_input("Max pokoleń (gdy limit)", 0, 30, 4, key="pair_d", disabled=pair_ub)
     kc1, kc2 = st.columns(2)
     with kc1:
-        kin_a = st.selectbox("Osobnik A", id_opts, key="pair_kin_a")
-    with kc2:
-        kin_b = st.selectbox(
-            "Osobnik B",
-            id_opts,
-            index=min(1, len(id_opts) - 1) if len(id_opts) > 1 else 0,
-            key="pair_kin_b",
+        st.markdown("**Ojciec (samiec M)**")
+        kin_sire_sel = st.selectbox(
+            "Wybór z listy",
+            [""] + male_opts,
+            key="pair_kin_sire_sel",
+            format_func=lambda x: "— wybierz —" if x == "" else str(x),
         )
+        kin_sire_txt = st.text_input("Lub wpisz ID", "", key="pair_kin_sire_txt", placeholder="np. 12345")
+    with kc2:
+        st.markdown("**Matka (samica F)**")
+        kin_dam_sel = st.selectbox(
+            "Wybór z listy",
+            [""] + female_opts,
+            key="pair_kin_dam_sel",
+            format_func=lambda x: "— wybierz —" if x == "" else str(x),
+        )
+        kin_dam_txt = st.text_input("Lub wpisz ID", "", key="pair_kin_dam_txt", placeholder="np. 12345")
+    sire_id = (kin_sire_txt or "").strip() or (kin_sire_sel or "").strip()
+    dam_id = (kin_dam_txt or "").strip() or (kin_dam_sel or "").strip()
     max_back = None if pair_ub else int(pair_d)
     if st.button("Oblicz Φ, R, F potomka i wyjaśnienie", type="primary", key="pair_calc"):
-        try:
-            phi_v, r_v = wright_kinship_phi_and_relationship_R(
-                str(kin_a), str(kin_b), people, max_generations_back=max_back
-            )
-            f_pot = wright_offspring_inbreeding_F_from_parents(
-                str(kin_a), str(kin_b), people, max_generations_back=max_back
-            )
-            st.session_state["pair_phi"] = phi_v
-            st.session_state["pair_r"] = r_v
-            st.session_state["pair_fpot"] = f_pot
-            st.session_state["pair_explain"] = explain_pair_kinship(
-                str(kin_a), str(kin_b), people, max_generations_back=max_back
-            )
-        except Exception as e:
-            st.session_state.pop("pair_explain", None)
-            st.error(str(e))
+        if not sire_id or not dam_id:
+            st.error("Wybierz lub wpisz ID ojca (M) i matki (F).")
+        elif sire_id not in people or dam_id not in people:
+            st.error("Oba ID muszą istnieć w wczytanej bazie.")
+        else:
+
+            def _sx(pid: str) -> str | None:
+                p = people.get(pid)
+                if not p:
+                    return None
+                s = (p.sex or "").strip().upper()
+                return s if s else None
+
+            sx_s, sx_d = _sx(sire_id), _sx(dam_id)
+            if sx_s and sx_s != "M":
+                st.error("Pole ojca: w bazie ten osobnik nie jest oznaczony jako M (samiec).")
+            elif sx_d and sx_d != "F":
+                st.error("Pole matki: w bazie ten osobnik nie jest oznaczony jako F (samica).")
+            else:
+                try:
+                    phi_v, r_v = wright_kinship_phi_and_relationship_R(
+                        sire_id, dam_id, people, max_generations_back=max_back
+                    )
+                    f_pot = wright_offspring_inbreeding_F_from_parents(
+                        sire_id, dam_id, people, max_generations_back=max_back
+                    )
+                    st.session_state["pair_phi"] = phi_v
+                    st.session_state["pair_r"] = r_v
+                    st.session_state["pair_fpot"] = f_pot
+                    st.session_state["pair_explain"] = explain_pair_kinship(
+                        sire_id, dam_id, people, max_generations_back=max_back
+                    )
+                except Exception as e:
+                    st.session_state.pop("pair_explain", None)
+                    st.error(str(e))
 
     if st.session_state.get("pair_explain") is not None:
         ex = st.session_state["pair_explain"]
@@ -611,7 +651,7 @@ def section_pair_kinship_analysis(df_std: pd.DataFrame, people: dict) -> None:
         m1, m2, m3 = st.columns(3)
         m1.metric("Φ (coancestry)", f"{phi_v:.6f}")
         m2.metric("R = 2Φ", f"{r_v:.6f}")
-        m3.metric("F potomka (A×B)", f"{float(st.session_state.get('pair_fpot', phi_v)):.6f}")
+        m3.metric("F potomka (ojciec×matka)", f"{float(st.session_state.get('pair_fpot', phi_v)):.6f}")
         warn = close_kinship_note(phi_v)
         if warn:
             st.warning(warn)
@@ -643,10 +683,10 @@ def section_pair_kinship_analysis(df_std: pd.DataFrame, people: dict) -> None:
             pr.append(
                 {
                     "Przodek": d.ancestor_id,
-                    "krawędzie A/B": f"{d.n_edges_a}+{d.n_edges_b}",
+                    "krawędzie (ojciec/matka)": f"{d.n_edges_a}+{d.n_edges_b}",
                     "Wkład Φ": round(d.contribution_to_phi, 8),
-                    "Ścieżka A": "→".join(d.path_a) if d.path_a else "·",
-                    "Ścieżka B": "→".join(d.path_b) if d.path_b else "·",
+                    "Ścieżka (ojciec)": "→".join(d.path_a) if d.path_a else "·",
+                    "Ścieżka (matka)": "→".join(d.path_b) if d.path_b else "·",
                 }
             )
         with st.expander("Najsilniejsze pary ścieżek", expanded=True):

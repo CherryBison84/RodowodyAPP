@@ -58,7 +58,7 @@ from app.analytics.population_genetics import (
     compute_gi_and_family_data,
     compute_population_genetics_stats,
 )
-from app.config import resolve_app_icon_ico
+from app.config import app_icon_pil_best, resolve_app_icon_ico
 from app.data.validator import validate_loaded_dataset
 from app.ui.tk.breeding_helpers import suggest_pairs_with_constraints
 from app.ui.tk.report_helpers import (
@@ -77,24 +77,35 @@ POP_FOUNDERS_PI_TOP_N = 20
 
 
 def _apply_tk_window_icon(root: tk.Misc, ico_path: Path) -> None:
-    """Ustawia ikonę okna z `.ico` (Windows/Linux); na macOS często wymaga Pillow + `iconphoto`."""
-    p = str(ico_path.resolve())
-    try:
-        root.iconbitmap(p)
-        return
-    except tk.TclError:
-        pass
+    """
+    Ikona okna: `wm_iconphoto` z największej klatki ICO (macOS / Linux; czytelna też przy małych 16×16).
+    Windows: dodatkowo natywne `iconbitmap(.ico)` dla paska zadań.
+    """
+    photo = None
     try:
         from PIL import Image, ImageTk
 
-        im = Image.open(ico_path)
-        im = im.convert("RGBA")
-        im.thumbnail((64, 64), Image.Resampling.LANCZOS)
-        photo = ImageTk.PhotoImage(im)
-        root.wm_iconphoto(True, photo)
-        setattr(root, "_wisent_icon_photo_keepalive", photo)
+        pil_img = app_icon_pil_best()
+        if pil_img is not None:
+            img = pil_img
+            mw = max(img.size)
+            if mw < 48:
+                k = max(2, (64 + mw - 1) // mw)
+                img = img.resize((img.size[0] * k, img.size[1] * k), Image.Resampling.NEAREST)
+            elif mw > 256:
+                img = img.copy()
+                img.thumbnail((256, 256), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+            root.wm_iconphoto(True, photo)
+            setattr(root, "_wisent_icon_photo_keepalive", photo)
     except Exception:
-        pass
+        photo = None
+
+    if sys.platform == "win32" or (photo is None and sys.platform != "darwin"):
+        try:
+            root.iconbitmap(str(ico_path.resolve()))
+        except tk.TclError:
+            pass
 
 
 def _open_exported_file(path: str | Path) -> None:
@@ -125,6 +136,44 @@ def _open_exported_file(path: str | Path) -> None:
 def _clear_frame(frame: ttk.Frame) -> None:
     for w in frame.winfo_children():
         w.destroy()
+
+
+def _pop_stat_row(
+    parent: ttk.Frame,
+    row: int,
+    label: str,
+    value_var: tk.StringVar,
+    *,
+    colors: Any,
+    label_wrap: int = 400,
+    value_wrap: int = 0,
+) -> None:
+    """Wiersz metryki: opis (stonowany) + wartość (pogrubiona, kolor akcentu wykresów)."""
+    label_kw: dict[str, Any] = {
+        "text": label,
+        "font": tk_font(10),
+        "foreground": colors.MUTED,
+        "justify": "left",
+        "anchor": "w",
+    }
+    if label_wrap > 0:
+        label_kw["wraplength"] = label_wrap
+    ttk.Label(parent, **label_kw).grid(row=row, column=0, sticky="nw", padx=(0, 12), pady=4)
+    v_kwargs: dict[str, Any] = {
+        "textvariable": value_var,
+        "font": tk_font(11, bold=True),
+        "foreground": colors.EDGE_PLOT,
+    }
+    if value_wrap > 0:
+        v_kwargs["wraplength"] = value_wrap
+        v_kwargs["anchor"] = "w"
+        v_kwargs["justify"] = "left"
+        vst = "nw"
+    else:
+        v_kwargs["anchor"] = "e"
+        v_kwargs["justify"] = "right"
+        vst = "ne"
+    ttk.Label(parent, **v_kwargs).grid(row=row, column=1, sticky=vst, pady=4)
 
 
 def _save_figure_as_jpeg(fig, *, default_basename: str = "wykres") -> None:
@@ -582,7 +631,7 @@ def render_inbreeding_year_trends(
             f_vals = dfc["_F"].tolist() if "_F" in dfc.columns else []
             if f_vals:
                 ria_overall = 100.0 * float(sum(1 for v in f_vals if v > eps_inbred)) / float(len(f_vals))
-                pop_ria_overall_var.set(f"- RIA ogółem (F>0): {ria_overall:.1f}%")
+                pop_ria_overall_var.set(f"{ria_overall:.1f}%")
         except Exception:
             pass
 
@@ -730,9 +779,9 @@ def render_inbreeding_year_trends(
                     deltaF_per_gen = slope_per_year * float(gi_mean)
                     if deltaF_per_gen > 0:
                         ne = 1.0 / (2.0 * deltaF_per_gen)
-                        pop_ne_var.set(f"- N_e (efektywna wielkość populacji, z trendu F): {ne:.1f}")
+                        pop_ne_var.set(f"{ne:.1f}")
                     else:
-                        pop_ne_var.set("- N_e: brak wzrostu F (ΔF<=0)")
+                        pop_ne_var.set("brak wzrostu F (ΔF<=0)")
         except Exception:
             pass
 
@@ -2361,23 +2410,25 @@ def run_tk_pro() -> None:
     )
 
     # Genetyka populacyjna (TP/RP — zależnie od implementacji).
-    pop_f_e_var = tk.StringVar(value="-")
-    pop_f_a_var = tk.StringVar(value="-")
-    pop_bottleneck_var = tk.StringVar(value="-")
-    pop_ne_var = tk.StringVar(value="-")
-    pop_drift_var = tk.StringVar(value="-")
-    pop_ria_overall_var = tk.StringVar(value="-")
-    pop_mean_kinship_var = tk.StringVar(value="-")
+    pop_f_e_var = tk.StringVar(value="—")
+    pop_f_a_var = tk.StringVar(value="—")
+    pop_bottleneck_var = tk.StringVar(value="—")
+    pop_ne_var = tk.StringVar(value="—")
+    pop_drift_var = tk.StringVar(value="—")
+    pop_ria_overall_var = tk.StringVar(value="—")
+    pop_mk_phi_var = tk.StringVar(value="—")
+    pop_mk_r_var = tk.StringVar(value="—")
+    pop_mk_note_var = tk.StringVar(value="")
 
     # Demografia / rodowód.
-    pop_gi_mean_var = tk.StringVar(value="-")
-    pop_gi_father_son_var = tk.StringVar(value="-")
-    pop_gi_father_daughter_var = tk.StringVar(value="-")
-    pop_gi_mother_son_var = tk.StringVar(value="-")
-    pop_gi_mother_daughter_var = tk.StringVar(value="-")
+    pop_gi_mean_var = tk.StringVar(value="—")
+    pop_gi_father_son_var = tk.StringVar(value="—")
+    pop_gi_father_daughter_var = tk.StringVar(value="—")
+    pop_gi_mother_son_var = tk.StringVar(value="—")
+    pop_gi_mother_daughter_var = tk.StringVar(value="—")
 
-    pop_family_count_var = tk.StringVar(value="-")
-    pop_family_mean_size_var = tk.StringVar(value="-")
+    pop_family_count_var = tk.StringVar(value="—")
+    pop_family_mean_size_var = tk.StringVar(value="—")
 
     pop_title_row = ttk.Frame(pop_frame)
     pop_title_row.pack(side=tk.TOP, fill=tk.X)
@@ -2443,34 +2494,125 @@ def run_tk_pro() -> None:
     # --- Genetyka i demografia populacji (skrót) ---
     ttk.Label(
         pop_frame,
-        text="Wskaźniki genetyczne i demograficzne:",
+        text="Wskaźniki genetyczne i demograficzne",
         foreground=colors.TEXT,
-        font=tk_font(12, bold=True),
-    ).pack(anchor="w", pady=(12, 0))
+        font=tk_font(13, bold=True),
+    ).pack(anchor="w", pady=(12, 2))
+    ttk.Label(
+        pop_frame,
+        text="Podsumowanie metryk populacji — wartości liczbowe z bieżącej bazy (jak przy wykresach F).",
+        foreground=colors.MUTED,
+        font=tk_font(9),
+        wraplength=920,
+        justify="left",
+    ).pack(anchor="w", pady=(0, 6))
 
-    pop_meta_grid = ttk.Frame(pop_frame)
-    pop_meta_grid.pack(side=tk.TOP, fill=tk.X, pady=(6, 0))
-    pop_meta_grid.columnconfigure(0, weight=1)
-    pop_meta_grid.columnconfigure(1, weight=1)
+    pop_meta_stack = ttk.Frame(pop_frame)
+    pop_meta_stack.pack(side=tk.TOP, fill=tk.X, pady=(4, 0))
 
-    ttk.Label(pop_meta_grid, textvariable=pop_f_e_var, foreground=colors.TEXT).grid(row=0, column=0, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_f_a_var, foreground=colors.TEXT).grid(row=0, column=1, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_bottleneck_var, foreground=colors.TEXT).grid(row=1, column=0, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_ne_var, foreground=colors.TEXT).grid(row=1, column=1, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_drift_var, foreground=colors.TEXT).grid(row=2, column=0, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_ria_overall_var, foreground=colors.TEXT).grid(row=2, column=1, sticky="w")
-
-    ttk.Label(pop_meta_grid, textvariable=pop_mean_kinship_var, foreground=colors.TEXT).grid(
-        row=3, column=0, columnspan=2, sticky="w"
+    lf_founders = ttk.Labelframe(
+        pop_meta_stack,
+        text=" Założyciele, bottleneck, dryf, N_e, RIA ",
+        padding=(12, 10),
     )
+    lf_founders.pack(fill=tk.X, pady=(0, 8))
+    founders_row = ttk.Frame(lf_founders)
+    founders_row.pack(fill=tk.X)
+    gf_left = ttk.Frame(founders_row)
+    gf_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+    gf_right = ttk.Frame(founders_row)
+    gf_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    for _gf in (gf_left, gf_right):
+        _gf.columnconfigure(0, weight=2)
+        _gf.columnconfigure(1, weight=1)
+    _pop_stat_row(gf_left, 0, "f_e (efektywna liczba założycieli)", pop_f_e_var, colors=colors)
+    _pop_stat_row(gf_left, 1, "Bottleneck f_e/f_a", pop_bottleneck_var, colors=colors)
+    _pop_stat_row(gf_left, 2, "Dryf f_e/f_ge (f_ge=f_e, aproksymacja)", pop_drift_var, colors=colors)
+    _pop_stat_row(gf_right, 0, "f_a (efektywna liczba przodków)", pop_f_a_var, colors=colors)
+    _pop_stat_row(
+        gf_right,
+        1,
+        "N_e (efektywna wielkość populacji, z trendu średniego F)",
+        pop_ne_var,
+        colors=colors,
+        value_wrap=280,
+    )
+    _pop_stat_row(gf_right, 2, "RIA ogółem (F>0)", pop_ria_overall_var, colors=colors)
 
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_mean_var, foreground=colors.TEXT).grid(row=4, column=0, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_family_count_var, foreground=colors.TEXT).grid(row=4, column=1, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_father_son_var, foreground=colors.TEXT).grid(row=5, column=0, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_father_daughter_var, foreground=colors.TEXT).grid(row=5, column=1, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_mother_son_var, foreground=colors.TEXT).grid(row=6, column=0, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_gi_mother_daughter_var, foreground=colors.TEXT).grid(row=6, column=1, sticky="w")
-    ttk.Label(pop_meta_grid, textvariable=pop_family_mean_size_var, foreground=colors.TEXT).grid(row=7, column=0, sticky="w")
+    lf_mk = ttk.Labelframe(
+        pop_meta_stack,
+        text=" Mean kinship (Φ, R po parach i≠j) ",
+        padding=(12, 10),
+    )
+    lf_mk.pack(fill=tk.X, pady=(0, 8))
+    mk_vals = ttk.Frame(lf_mk)
+    mk_vals.pack(fill=tk.X)
+    mk_vals.columnconfigure(0, weight=1)
+    mk_vals.columnconfigure(1, weight=1)
+    mk_phi_col = ttk.Frame(mk_vals)
+    mk_phi_col.grid(row=0, column=0, sticky="nw", padx=(0, 16))
+    ttk.Label(
+        mk_phi_col,
+        text="śr. Φ (Malecot, pary i≠j)",
+        font=tk_font(10),
+        foreground=colors.MUTED,
+        anchor="w",
+    ).pack(anchor="w")
+    ttk.Label(
+        mk_phi_col,
+        textvariable=pop_mk_phi_var,
+        font=tk_font(12, bold=True),
+        foreground=colors.EDGE_PLOT,
+        anchor="w",
+    ).pack(anchor="w", pady=(2, 0))
+    mk_r_col = ttk.Frame(mk_vals)
+    mk_r_col.grid(row=0, column=1, sticky="nw")
+    ttk.Label(
+        mk_r_col,
+        text="śr. R = 2Φ (Wright, autosomy)",
+        font=tk_font(10),
+        foreground=colors.MUTED,
+        anchor="w",
+    ).pack(anchor="w")
+    ttk.Label(
+        mk_r_col,
+        textvariable=pop_mk_r_var,
+        font=tk_font(12, bold=True),
+        foreground=colors.EDGE_PLOT,
+        anchor="w",
+    ).pack(anchor="w", pady=(2, 0))
+    ttk.Label(
+        lf_mk,
+        textvariable=pop_mk_note_var,
+        font=tk_font(9),
+        foreground=colors.MUTED,
+        wraplength=860,
+        justify="left",
+        anchor="w",
+    ).pack(anchor="w", fill=tk.X, pady=(10, 0))
+
+    lf_gi = ttk.Labelframe(
+        pop_meta_stack,
+        text=" Generation Interval (GI) i rodziny pełnego rodzeństwa ",
+        padding=(12, 10),
+    )
+    lf_gi.pack(fill=tk.X, pady=(0, 4))
+    gi_row = ttk.Frame(lf_gi)
+    gi_row.pack(fill=tk.X)
+    gi_left = ttk.Frame(gi_row)
+    gi_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+    gi_right = ttk.Frame(gi_row)
+    gi_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    for _gi in (gi_left, gi_right):
+        _gi.columnconfigure(0, weight=2)
+        _gi.columnconfigure(1, weight=1)
+    _pop_stat_row(gi_left, 0, "GI (Generation Interval, średnio), lata", pop_gi_mean_var, colors=colors)
+    _pop_stat_row(gi_left, 1, "GI: Ojciec → syn", pop_gi_father_son_var, colors=colors)
+    _pop_stat_row(gi_left, 2, "GI: Matka → syn", pop_gi_mother_son_var, colors=colors)
+    _pop_stat_row(gi_left, 3, "Średnia wielkość rodziny (pełne rodzeństwo)", pop_family_mean_size_var, colors=colors)
+    _pop_stat_row(gi_right, 0, "Liczba rodzin pełnego rodzeństwa", pop_family_count_var, colors=colors)
+    _pop_stat_row(gi_right, 1, "GI: Ojciec → córka", pop_gi_father_daughter_var, colors=colors)
+    _pop_stat_row(gi_right, 2, "GI: Matka → córka", pop_gi_mother_daughter_var, colors=colors)
 
     # -------------------------
     # Wykresy: każdy wykres = 1 zakładka
@@ -2664,6 +2806,25 @@ def run_tk_pro() -> None:
 
     def _update_population_metrics(df_std) -> None:
         TEST_ID = "99999"
+
+        def _clear_gen_demo_vars() -> None:
+            pop_f_e_var.set("—")
+            pop_f_a_var.set("—")
+            pop_bottleneck_var.set("—")
+            pop_ne_var.set("—")
+            pop_drift_var.set("—")
+            pop_ria_overall_var.set("—")
+            pop_mk_phi_var.set("—")
+            pop_mk_r_var.set("—")
+            pop_mk_note_var.set("")
+            pop_gi_mean_var.set("—")
+            pop_gi_father_son_var.set("—")
+            pop_gi_father_daughter_var.set("—")
+            pop_gi_mother_son_var.set("—")
+            pop_gi_mother_daughter_var.set("—")
+            pop_family_count_var.set("—")
+            pop_family_mean_size_var.set("—")
+
         if df_std is None or getattr(df_std, "empty", True):
             pop_total_var.set("-")
             pop_founders_count_var.set("-")
@@ -2671,7 +2832,7 @@ def run_tk_pro() -> None:
             pop_known_father_var.set("-")
             pop_known_mother_var.set("-")
             pop_lines_var.set("-")
-            pop_mean_kinship_var.set("-")
+            _clear_gen_demo_vars()
             return
 
         try:
@@ -2689,7 +2850,7 @@ def run_tk_pro() -> None:
             pop_known_father_var.set("-")
             pop_known_mother_var.set("-")
             pop_lines_var.set("-")
-            pop_mean_kinship_var.set("-")
+            _clear_gen_demo_vars()
             return
 
         father_known = df_use["father_id"].notna()
@@ -2725,11 +2886,7 @@ def run_tk_pro() -> None:
             pop_lines_var.set("- Linie: brak kolumny `line`")
 
         # --- Wkład założycieli / bottleneck (na podstawie p_i i founder-stop) ---
-        pop_f_e_var.set("-")
-        pop_f_a_var.set("-")
-        pop_bottleneck_var.set("-")
-        pop_ne_var.set("-")
-        pop_mean_kinship_var.set("-")
+        _clear_gen_demo_vars()
 
         try:
             people_for_stats = state.get("people")
@@ -2752,11 +2909,13 @@ def run_tk_pro() -> None:
                         max_generations_back=max_gen_back,
                     )
                     if m_phi is not None and m_r is not None:
-                        pop_mean_kinship_var.set(
-                            f"- Mean kinship (śr. Φ po parach i≠j): {m_phi:.6f}  |  śr. R=2Φ: {m_r:.6f}  — {mk_note}"
-                        )
+                        pop_mk_phi_var.set(f"{m_phi:.6f}")
+                        pop_mk_r_var.set(f"{m_r:.6f}")
+                        pop_mk_note_var.set(mk_note)
                 except Exception:
-                    pop_mean_kinship_var.set("- Mean kinship: nie udało się policzyć.")
+                    pop_mk_phi_var.set("—")
+                    pop_mk_r_var.set("—")
+                    pop_mk_note_var.set("Nie udało się policzyć mean kinship.")
 
                 stats_founders = compute_population_genetics_stats(
                     df_std=df_use,  # type: ignore[arg-type]
@@ -2770,13 +2929,13 @@ def run_tk_pro() -> None:
                 state["population_founder_contributions"] = stats_founders.founder_contributions
                 f_e = float(stats_founders.founders.f_e)
                 f_a = float(stats_founders.founders.f_a)
-                pop_f_e_var.set(f"- f_e (efektywna liczba założycieli): {f_e:.4f}")
-                pop_f_a_var.set(f"- f_a (efektywna liczba przodków): {f_a:.4f}")
+                pop_f_e_var.set(f"{f_e:.4f}")
+                pop_f_a_var.set(f"{f_a:.4f}")
                 if f_a > 0:
-                    pop_bottleneck_var.set(f"- Bottleneck f_e/f_a: {f_e / f_a:.3f}")
+                    pop_bottleneck_var.set(f"{f_e / f_a:.3f}")
                 # W aktualnej implementacji `f_a` jest policzone spójnie z founder-stop,
                 # a brak osobnej wersji `f_ge` — przyjmujemy więc przybliżenie f_ge = f_e.
-                pop_drift_var.set("- Dryf f_e/f_ge (f_ge=f_e, aproksymacja): 1.000")
+                pop_drift_var.set("1.000")
         except Exception:
             # Jeśli założyciele policzyć się nie uda, reszta metryk może działać.
             pass
@@ -2784,33 +2943,33 @@ def run_tk_pro() -> None:
         # --- GI (Generation Interval) oraz struktura rodzin ---
         people = state.get("people")
         state["population_gi_mean"] = None
-        pop_gi_mean_var.set("-")
-        pop_gi_father_son_var.set("-")
-        pop_gi_father_daughter_var.set("-")
-        pop_gi_mother_son_var.set("-")
-        pop_gi_mother_daughter_var.set("-")
-        pop_family_count_var.set("-")
-        pop_family_mean_size_var.set("-")
+        pop_gi_mean_var.set("—")
+        pop_gi_father_son_var.set("—")
+        pop_gi_father_daughter_var.set("—")
+        pop_gi_mother_son_var.set("—")
+        pop_gi_mother_daughter_var.set("—")
+        pop_family_count_var.set("—")
+        pop_family_mean_size_var.set("—")
 
         gi_data = compute_gi_and_family_data(df_use, people if people else {})
         gi_all = gi_data.get("gi_all")
         if gi_all is not None:
             state["population_gi_mean"] = gi_all
-            pop_gi_mean_var.set(f"- GI (Generation Interval, średnio): {float(gi_all):.2f} lat")
+            pop_gi_mean_var.set(f"{float(gi_all):.2f} lat")
         if gi_data.get("gi_fs") is not None:
-            pop_gi_father_son_var.set(f"- GI Ojciec→Syn: {float(gi_data['gi_fs']):.2f} lat")
+            pop_gi_father_son_var.set(f"{float(gi_data['gi_fs']):.2f} lat")
         if gi_data.get("gi_fd") is not None:
-            pop_gi_father_daughter_var.set(f"- GI Ojciec→Córka: {float(gi_data['gi_fd']):.2f} lat")
+            pop_gi_father_daughter_var.set(f"{float(gi_data['gi_fd']):.2f} lat")
         if gi_data.get("gi_ms") is not None:
-            pop_gi_mother_son_var.set(f"- GI Matka→Syn: {float(gi_data['gi_ms']):.2f} lat")
+            pop_gi_mother_son_var.set(f"{float(gi_data['gi_ms']):.2f} lat")
         if gi_data.get("gi_md") is not None:
-            pop_gi_mother_daughter_var.set(f"- GI Matka→Córka: {float(gi_data['gi_md']):.2f} lat")
+            pop_gi_mother_daughter_var.set(f"{float(gi_data['gi_md']):.2f} lat")
 
         fs_fam: list = gi_data.get("family_sizes") or []
         state["population_family_sizes"] = fs_fam
         if fs_fam:
-            pop_family_count_var.set(f"- Liczba rodzin pełnego rodzeństwa: {len(fs_fam)}")
-            pop_family_mean_size_var.set(f"- Średnia wielkość rodziny: {float(sum(fs_fam)) / float(len(fs_fam)):.2f}")
+            pop_family_count_var.set(str(len(fs_fam)))
+            pop_family_mean_size_var.set(f"{float(sum(fs_fam)) / float(len(fs_fam)):.2f}")
 
         # Aktualizacja wykresów po wczytaniu danych.
         try:
@@ -3789,34 +3948,44 @@ def run_tk_pro() -> None:
         justify="left",
     ).pack(anchor="w", pady=(0, 6))
 
-    kinship_lf = ttk.LabelFrame(tab_kpair, text="Kinship — dowolna para (Φ, R, F potomka, wyjaśnienie)")
+    kinship_lf = ttk.LabelFrame(
+        tab_kpair,
+        text="Kinship — para rodziców (ojciec × matka): Φ, R, F potomka, wyjaśnienie",
+    )
     kinship_lf.pack(anchor="w", fill=tk.X, pady=(10, 0))
     ttk.Label(
         kinship_lf,
         text=(
-            "Φ jest symetryczne względem A i B (Malecot / Wright). R = 2Φ. F potomka z kojarzenia A×B = Φ. "
-            "Poniżej: „dlaczego taki wynik” — top wspólni przodkowie, wkład do Φ (skalowany do rekurencji), liczba par ścieżek."
+            "Φ (Malecot / Wright) między hipotetycznym ojcem a matką jest symetryczne; R = 2Φ. "
+            "F potomka = Φ(ojciec, matka). Poniżej: dlaczego taki wynik — wspólni przodkowie, wkład do Φ, pary ścieżek."
         ),
         foreground=colors.MUTED,
         wraplength=880,
     ).grid(row=0, column=0, columnspan=4, sticky="w", padx=10, pady=(8, 4))
-    mating_kin_a_var = tk.StringVar(value="")
-    mating_kin_b_var = tk.StringVar(value="")
-    ttk.Label(kinship_lf, text="Osobnik A:").grid(row=1, column=0, sticky="w", padx=(10, 6), pady=(0, 8))
-    mating_kin_a_cb = ttk.Combobox(
-        kinship_lf, width=24, state="readonly", textvariable=mating_kin_a_var
+    ttk.Label(
+        kinship_lf,
+        text="Listy zawierają tylko ID o płci M / F (z kolumny sex). Możesz też wpisać numer ID ręcznie w polu.",
+        foreground=colors.MUTED,
+        font=tk_font(9),
+        wraplength=880,
+    ).grid(row=1, column=0, columnspan=4, sticky="w", padx=10, pady=(0, 4))
+    mating_kin_sire_var = tk.StringVar(value="")
+    mating_kin_dam_var = tk.StringVar(value="")
+    ttk.Label(kinship_lf, text="Ojciec (M):").grid(row=2, column=0, sticky="w", padx=(10, 6), pady=(4, 8))
+    mating_kin_sire_cb = ttk.Combobox(
+        kinship_lf, width=28, state="normal", textvariable=mating_kin_sire_var
     )
-    mating_kin_a_cb.grid(row=1, column=1, sticky="w", pady=(0, 8))
-    ttk.Label(kinship_lf, text="Osobnik B:").grid(row=1, column=2, sticky="w", padx=(12, 6), pady=(0, 8))
-    mating_kin_b_cb = ttk.Combobox(
-        kinship_lf, width=24, state="readonly", textvariable=mating_kin_b_var
+    mating_kin_sire_cb.grid(row=2, column=1, sticky="w", pady=(4, 8))
+    ttk.Label(kinship_lf, text="Matka (F):").grid(row=2, column=2, sticky="w", padx=(12, 6), pady=(4, 8))
+    mating_kin_dam_cb = ttk.Combobox(
+        kinship_lf, width=28, state="normal", textvariable=mating_kin_dam_var
     )
-    mating_kin_b_cb.grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(0, 8))
+    mating_kin_dam_cb.grid(row=2, column=3, sticky="w", padx=(0, 10), pady=(4, 8))
     mating_kinship_btn = ttk.Button(kinship_lf, text="Oblicz Φ, R i wyjaśnienie", state="disabled")
-    mating_kinship_btn.grid(row=2, column=0, sticky="w", padx=(10, 0), pady=(0, 10))
+    mating_kinship_btn.grid(row=3, column=0, sticky="w", padx=(10, 0), pady=(0, 10))
     mating_kin_result_var = tk.StringVar(value="")
     ttk.Label(kinship_lf, textvariable=mating_kin_result_var, foreground=colors.TEXT, wraplength=860).grid(
-        row=2, column=1, columnspan=3, sticky="w", pady=(0, 10)
+        row=3, column=1, columnspan=3, sticky="w", pady=(0, 10)
     )
 
     kpair_explain_frame = ttk.LabelFrame(tab_kpair, text="Dlaczego ta para ma taki wynik? (wspólni przodkowie, ścieżki)")
@@ -4020,19 +4189,43 @@ def run_tk_pro() -> None:
         _set_status(f"Zapisano macierz Φ: {filename}")
         _open_exported_file(filename)
 
+    def _norm_kin_combo_id(raw: str) -> str:
+        s = (raw or "").strip()
+        if not s:
+            return ""
+        return s.split(None, 1)[0].strip()
+
     def on_kinship_pair() -> None:
         people = state.get("people")
         if not people:
             messagebox.showinfo("Info", "Najpierw wczytaj bazę.")
             return
-        a_id = str(mating_kin_a_var.get() or "").strip()
-        b_id = str(mating_kin_b_var.get() or "").strip()
-        if not a_id or not b_id:
-            messagebox.showinfo("Info", "Wybierz dwa ID z list.")
+
+        sire_id = _norm_kin_combo_id(str(mating_kin_sire_var.get() or ""))
+        dam_id = _norm_kin_combo_id(str(mating_kin_dam_var.get() or ""))
+        if not sire_id or not dam_id:
+            messagebox.showinfo("Info", "Podaj ID ojca (M) i matki (F) — z listy lub wpisane ręcznie.")
             return
-        if a_id not in people or b_id not in people:
+        if sire_id not in people or dam_id not in people:
             messagebox.showinfo("Info", "Oba ID muszą istnieć w wczytanej bazie.")
             return
+
+        def _declared_sex(pid: str) -> str | None:
+            p = people.get(pid)
+            if not p:
+                return None
+            sx = (p.sex or "").strip().upper()
+            return sx if sx else None
+
+        sx_s = _declared_sex(sire_id)
+        if sx_s and sx_s != "M":
+            messagebox.showinfo("Info", "W polu „Ojciec” wybierz lub wpisz osobnika zapisanego jako samiec (M) w bazie.")
+            return
+        sx_d = _declared_sex(dam_id)
+        if sx_d and sx_d != "F":
+            messagebox.showinfo("Info", "W polu „Matka” wybierz lub wpisz osobnika zapisaną jako samica (F) w bazie.")
+            return
+
         if bool(mating_unbounded_var.get()):
             max_generations_back: int | None = None
         else:
@@ -4043,16 +4236,16 @@ def run_tk_pro() -> None:
             max_generations_back = max(0, min(30, depth))
         try:
             phi_v, r_v = wright_kinship_phi_and_relationship_R(
-                a_id, b_id, people, max_generations_back=max_generations_back
+                sire_id, dam_id, people, max_generations_back=max_generations_back
             )
             f_pot = wright_offspring_inbreeding_F_from_parents(
-                a_id, b_id, people, max_generations_back=max_generations_back
+                sire_id, dam_id, people, max_generations_back=max_generations_back
             )
             mating_kin_result_var.set(
-                f"Φ = {phi_v:.6f}  |  R = 2Φ = {r_v:.6f}  |  F potomka (A×B) = {f_pot:.6f} "
+                f"Φ = {phi_v:.6f}  |  R = 2Φ = {r_v:.6f}  |  F potomka (ojciec×matka) = {f_pot:.6f} "
                 f"({'bez limitu' if max_generations_back is None else f'max {max_generations_back} pok.'})"
             )
-            ex = explain_pair_kinship(a_id, b_id, people, max_generations_back=max_generations_back)
+            ex = explain_pair_kinship(sire_id, dam_id, people, max_generations_back=max_generations_back)
             warn = close_kinship_note(phi_v)
             lines: list[str] = []
             if warn:
@@ -4074,7 +4267,7 @@ def run_tk_pro() -> None:
                 pct = (100.0 * to_phi / ex.phi_recursive) if ex.phi_recursive > 1e-15 else 0.0
                 lines.append(f"  • {aid}  ({nm})  Φ={to_phi:.6f}  ({pct:.2f}%)  |  pary={npair}  |  surowe={raw_v:.6f}")
             lines.append("")
-            lines.append("Najsilniejsze pary ścieżek (skrót):")
+            lines.append("Najsilniejsze pary ścieżek (skrót; pierwsza ścieżka = od ojca, druga = od matki):")
             for d in ex.path_pairs[:12]:
                 pa = "→".join(d.path_a) if d.path_a else "·"
                 pb = "→".join(d.path_b) if d.path_b else "·"
@@ -4124,6 +4317,8 @@ def run_tk_pro() -> None:
 
         mating_depth_state = "disabled" if bool(mating_unbounded_var.get()) else st
         mating_depth_entry.configure(state=mating_depth_state)
+        mating_kin_sire_cb.configure(state=st if st == "normal" else "disabled")
+        mating_kin_dam_cb.configure(state=st if st == "normal" else "disabled")
 
         # Plan hodowlany (dobór par)
         plan_risk_cb.configure(state=st)
@@ -4239,11 +4434,18 @@ def run_tk_pro() -> None:
         except Exception:
             pass
         try:
-            id_sorted = sorted({str(x) for x in df_std["id"].tolist()}, key=_id_sort_key)
-            mating_kin_a_cb.configure(values=id_sorted)
-            mating_kin_b_cb.configure(values=id_sorted)
-            mating_kin_a_var.set("")
-            mating_kin_b_var.set("")
+            df_k = df_std.copy()
+            df_k["id"] = df_k["id"].astype(str)
+            if "sex" in df_k.columns:
+                sx = df_k["sex"].astype(str).str.strip().str.upper()
+                males = sorted(df_k.loc[sx == "M", "id"].drop_duplicates().tolist(), key=_id_sort_key)
+                females = sorted(df_k.loc[sx == "F", "id"].drop_duplicates().tolist(), key=_id_sort_key)
+            else:
+                males, females = [], []
+            mating_kin_sire_cb.configure(values=males)
+            mating_kin_dam_cb.configure(values=females)
+            mating_kin_sire_var.set("")
+            mating_kin_dam_var.set("")
         except Exception:
             pass
         # Precompute line memberships for quick display in "Osobniki" and "Rodowód".

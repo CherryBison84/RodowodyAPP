@@ -9,7 +9,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from app.config import resolve_app_icon_ico
+from app.config import app_icon_pil_best
 from app.ui.streamlit import common as sc
 from app.ui.streamlit.pages import (
     section_analysis_individual,
@@ -32,10 +32,10 @@ def _methods_guide_pdf_cached() -> bytes:
 
 
 def run_streamlit_direct() -> None:
-    _ico = resolve_app_icon_ico()
+    _icon_img = app_icon_pil_best()
     st.set_page_config(
         page_title="WisentPedigree Pro+",
-        page_icon=str(_ico.resolve()) if _ico is not None else "🦬",
+        page_icon=_icon_img if _icon_img is not None else "🦬",
         layout="wide",
         initial_sidebar_state="expanded",
     )

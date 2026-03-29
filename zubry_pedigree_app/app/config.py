@@ -6,6 +6,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PIL.Image import Image as PILImage
 
 
 @dataclass(frozen=True)
@@ -34,4 +38,40 @@ def resolve_app_icon_ico() -> Path | None:
         if p.is_file():
             return p
     return None
+
+
+def _ico_largest_frame_rgba(im: "PILImage") -> "PILImage":
+    """Z wieloklatkowego ICO wybiera największą bitmapę (czytelna ikona w Tk / Streamlit)."""
+    from PIL import Image
+
+    frames: list[Image.Image] = []
+    n = int(getattr(im, "n_frames", 1) or 1)
+    try:
+        for i in range(n):
+            im.seek(i)
+            frames.append(im.copy())
+    except EOFError:
+        pass
+    if not frames:
+        return im.convert("RGBA")
+    best = max(frames, key=lambda x: x.size[0] * x.size[1])
+    return best.convert("RGBA")
+
+
+def app_icon_pil_best() -> "PILImage | None":
+    """
+    Ikona jako obraz PIL (najlepsza klatka `ikona.ico`).
+    Używane przez Streamlit (`page_icon`) i Tk (`iconphoto`).
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    path = resolve_app_icon_ico()
+    if path is None:
+        return None
+    try:
+        return _ico_largest_frame_rgba(Image.open(path))
+    except Exception:
+        return None
 
