@@ -142,3 +142,4 @@ FONT_FAMILY_CSS = css_font_family()
 # Eksport help_content dla sekcji (sidebar)
 GLOSSARY = hc.GLOSSARY
 SECTION_VALIDATION = hc.SECTION_VALIDATION
+SECTION_REFERENCES = hc.SECTION_REFERENCES

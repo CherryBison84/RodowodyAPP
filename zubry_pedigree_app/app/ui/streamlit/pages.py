@@ -5,8 +5,10 @@ analizy, populacja, raporty, ustawienia, plan hodowlany).
 
 from __future__ import annotations
 
+import csv
 import io
 from datetime import datetime
+from io import StringIO
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -15,6 +17,7 @@ import streamlit as st
 from app.analytics.inbreeding_wright import (
     batch_offspring_inbreeding_F_from_parent_pairs,
     wright_inbreeding_F,
+    wright_kinship_phi_and_relationship_R,
 )
 from app.analytics.population_genetics import TEST_ID, compute_gi_and_family_data, compute_population_genetics_stats
 from app.data.dataset_loader import (
@@ -120,6 +123,13 @@ def section_loading() -> None:
         rep = st.session_state.get("validation_report")
         if rep is not None:
             st.caption(rep.ui_summary())
+            st.download_button(
+                "Pobierz listę problemów walidacji (CSV — id, typ, szczegóły)",
+                data=rep.to_csv_string().encode("utf-8-sig"),
+                file_name="walidacja_problemy.csv",
+                mime="text/csv",
+                key="val_csv_dl",
+            )
             with st.expander("Pełny raport walidacji (tekst)"):
                 st.text(rep.to_text())
                 st.download_button(
@@ -323,8 +333,8 @@ def section_analysis_mating(df_std: pd.DataFrame, people: dict) -> None:
     st.markdown("#### Optymalizacja kojarzeń (ranking par, minimalne F potomka)")
     sc.help_expander("Optymalizacja kojarzeń — interpretacja rankingu", hc.SECTION_MATING)
     st.caption(
-        "Filtr wieku: ostatnie 15 lat (jak w Tk). Ranking: do 36 par (najmniejsze F), "
-        "każdy osobnik w liście wynikowej max 3× (jako sire lub dam). Limity kandydatów ograniczają czas obliczeń."
+        "Filtr wieku: ostatnie 15 lat (jak w Tk). Ranking: do 36 par (najmniejsze Φ = F potomka), "
+        "R = 2Φ; każdy osobnik w liście wynikowej max 3×. Limity kandydatów ograniczają czas obliczeń."
     )
 
     mating_unbounded = st.checkbox("F bez limitu pokoleń (wolniejsze)", value=False, key="mat_ub")
@@ -356,6 +366,8 @@ def section_analysis_mating(df_std: pd.DataFrame, people: dict) -> None:
         pairs = [(s, d) for s in males for d in females]
         if not pairs:
             st.warning("Brak kandydatów po filtrze wieku.")
+            st.session_state.pop("mating_ranking_text", None)
+            st.session_state.pop("mating_phi_csv", None)
             return
         max_back = None if mating_unbounded else int(mating_depth)
         with st.spinner(f"Liczenie {len(pairs)} par…"):
@@ -373,14 +385,64 @@ def section_analysis_mating(df_std: pd.DataFrame, people: dict) -> None:
             ranked.append((fv, (sire_id, dam_id)))
             use_count[sire_id] = use_count.get(sire_id, 0) + 1
             use_count[dam_id] = use_count.get(dam_id, 0) + 1
-        lines = [f"Wybrano {len(ranked)} par (cel do {top_n}; max {max_uses}× ten sam ID w liście).", ""]
+        lines = [
+            f"Wybrano {len(ranked)} par (cel do {top_n}; max {max_uses}× ten sam ID w liście).",
+            "",
+            "Φ = kinship (współzgodność) sire×dam = F potomka; R = 2Φ.",
+            "",
+        ]
         for i, (fv, (sire_id, dam_id)) in enumerate(ranked, 1):
+            rv = 2.0 * fv
             sn = getattr(people.get(sire_id), "name", None)
             dn = getattr(people.get(dam_id), "name", None)
             lines.append(
-                f"{i}. F={fv:.6f} | sire={sire_id} ({sn or '-'}) × dam={dam_id} ({dn or '-'})"
+                f"{i}. Φ=F={fv:.6f}  R={rv:.6f} | sire={sire_id} ({sn or '-'}) × dam={dam_id} ({dn or '-'})"
             )
-        st.text("\n".join(lines))
+        st.session_state["mating_ranking_text"] = "\n".join(lines)
+        buf = StringIO()
+        w = csv.writer(buf, delimiter=";")
+        nf = len(females)
+        w.writerow(["sire_id"] + [str(x) for x in females])
+        for i, mid in enumerate(males):
+            row = [str(mid)] + [f"{Fs[i * nf + j]:.10g}" for j in range(nf)]
+            w.writerow(row)
+        st.session_state["mating_phi_csv"] = buf.getvalue()
+
+    if st.session_state.get("mating_ranking_text"):
+        st.text(st.session_state["mating_ranking_text"])
+    if st.session_state.get("mating_phi_csv"):
+        st.download_button(
+            "Pobierz macierz Φ (CSV, sire × dam)",
+            data=st.session_state["mating_phi_csv"].encode("utf-8"),
+            file_name="macierz_phi_kojarzenia.csv",
+            mime="text/csv",
+            key="mat_phi_dl",
+        )
+
+    st.markdown("##### Kinship — dowolna para")
+    st.caption(
+        "Φ i R liczone tą samą metodą co F potomka z pary A×B (A jako ojciec, B jako matka w rekurencji); "
+        "głębokość jak powyżej."
+    )
+    id_opts = sorted(df_std["id"].astype(str).unique().tolist())
+    kc1, kc2 = st.columns(2)
+    with kc1:
+        kin_a = st.selectbox("Osobnik A", id_opts, key="kin_a")
+    with kc2:
+        kin_b = st.selectbox("Osobnik B", id_opts, index=min(1, len(id_opts) - 1) if len(id_opts) > 1 else 0, key="kin_b")
+    if st.button("Oblicz Φ i R dla pary", key="kin_go"):
+        max_back = None if mating_unbounded else int(mating_depth)
+        try:
+            phi_v, r_v = wright_kinship_phi_and_relationship_R(
+                str(kin_a), str(kin_b), people, max_generations_back=max_back
+            )
+            st.session_state["kin_pair_result"] = (
+                f"Φ(A,B) = {phi_v:.6f}  |  R = 2Φ = {r_v:.6f}  |  F potomka (A×B) = {phi_v:.6f}"
+            )
+        except Exception as e:
+            st.session_state["kin_pair_result"] = f"Błąd: {e}"
+    if st.session_state.get("kin_pair_result"):
+        st.info(st.session_state["kin_pair_result"])
 
 
 def _figure_to_jpeg_bytes(fig: plt.Figure) -> bytes:

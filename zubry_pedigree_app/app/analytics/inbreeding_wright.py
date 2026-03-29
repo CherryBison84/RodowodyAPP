@@ -200,6 +200,31 @@ def wright_offspring_inbreeding_F_from_parents(
     return float(F_off)
 
 
+def wright_kinship_phi_and_relationship_R(
+    individual_a_id: str,
+    individual_b_id: str,
+    people: Dict[str, Person],
+    *,
+    max_generations_back: int | None,
+) -> tuple[float, float]:
+    """
+    Współczynnik współzgodności Φ (coancestry, Malecot/Wright) i współczynnik relacji R = 2Φ
+    między dwoma osobnikami — ta sama rekurencja i głębokość co przy F hipotetycznego potomka
+    z ojcem `individual_a_id` i matką `individual_b_id`.
+
+    Dla kojarzenia: **F potomka = Φ(ojciec, matka)** przy tej samej głębokości liczenia.
+    **R** to klasyczny współczynnik pokrewieństwa Wrighta (autosomy), np. R=0,5 dla rodzic–dziecko
+    przy braku dodatkowego pokrewieństwa.
+    """
+    phi = wright_offspring_inbreeding_F_from_parents(
+        individual_a_id,
+        individual_b_id,
+        people,
+        max_generations_back=max_generations_back,
+    )
+    return float(phi), float(2.0 * phi)
+
+
 def _max_generations_to_founders(*, person_id: str, people: Dict[str, Person], max_visits: int = 500_000) -> int:
     """
     Zwraca maksymalną liczbę pokoleń wstecz, potrzebną do zejścia aż do osobników,

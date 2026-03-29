@@ -23,6 +23,13 @@ from app.ui.streamlit.pages import (
 )
 
 
+@st.cache_data(show_spinner=False)
+def _methods_guide_pdf_cached() -> bytes:
+    from app.ui.methods_guide_pdf import methods_guide_pdf_bytes
+
+    return methods_guide_pdf_bytes()
+
+
 def run_streamlit_direct() -> None:
     st.set_page_config(
         page_title="WisentPedigree Pro+",
@@ -59,6 +66,15 @@ def run_streamlit_direct() -> None:
             st.markdown(sc.GLOSSARY)
         with st.expander("Walidacja bazy — skrót", expanded=False):
             st.markdown(sc.SECTION_VALIDATION)
+        with st.expander("Literatura — źródła metod (F, p_i, N_e…)", expanded=False):
+            st.markdown(sc.SECTION_REFERENCES)
+        st.download_button(
+            "Pobierz przewodnik metod (PDF — cytowania)",
+            data=_methods_guide_pdf_cached(),
+            file_name="WisentPedigree_Pro_przewodnik_metod_2026.pdf",
+            mime="application/pdf",
+            key="sidebar_methods_pdf",
+        )
 
     st.markdown(
         f'<p style="color:{sc.THEME.MUTED};font-family:{sc.FONT_FAMILY_CSS};font-size:1.05rem;line-height:1.5;margin-top:0;">'

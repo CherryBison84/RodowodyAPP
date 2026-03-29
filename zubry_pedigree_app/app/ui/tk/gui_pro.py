@@ -4,6 +4,10 @@ Pełne okno programu na pulpicie: wszystkie zakładki, wykresy populacji, analiz
 
 from __future__ import annotations
 
+import csv
+import os
+import subprocess
+import sys
 from collections.abc import Callable
 from typing import Any
 
@@ -14,6 +18,7 @@ from tkinter import filedialog, messagebox, ttk
 from app.analytics.inbreeding_wright import (
     batch_offspring_inbreeding_F_from_parent_pairs,
     wright_inbreeding_F,
+    wright_kinship_phi_and_relationship_R,
     wright_offspring_inbreeding_F_from_parents,
 )
 from app.data.dataset_loader import (
@@ -52,6 +57,31 @@ from app.ui.typography import apply_matplotlib_fonts, tk_font
 POP_FOUNDERS_PI_TOP_N = 20
 
 
+def _open_exported_file(path: str | Path) -> None:
+    """Otwiera zapisany plik w domyślnej aplikacji systemowej (macOS / Windows / Linux)."""
+    p = Path(path)
+    if not p.is_file():
+        return
+    sp = str(p.resolve())
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(
+                ["open", sp],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        elif sys.platform.startswith("win"):
+            os.startfile(sp)  # type: ignore[attr-defined]
+        elif sys.platform.startswith("linux"):
+            subprocess.Popen(
+                ["xdg-open", sp],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except Exception:
+        pass
+
+
 def _clear_frame(frame: ttk.Frame) -> None:
     for w in frame.winfo_children():
         w.destroy()
@@ -76,6 +106,8 @@ def _save_figure_as_jpeg(fig, *, default_basename: str = "wykres") -> None:
         fig.savefig(filename, format="jpeg", dpi=200, bbox_inches="tight")
     except Exception as e:
         messagebox.showerror("Błąd", f"Nie mogę zapisać wykresu: {e}")
+        return
+    _open_exported_file(filename)
 
 
 def render_birth_decade_charts(
@@ -915,11 +947,36 @@ def run_tk_pro() -> None:
 
     header_actions = ttk.Frame(header)
     header_actions.pack(side=tk.RIGHT, padx=(12, 0))
+
+    def on_save_methods_guide_pdf() -> None:
+        from app.ui.methods_guide_pdf import write_methods_guide_pdf
+
+        filename = filedialog.asksaveasfilename(
+            title="Zapisz przewodnik metod (PDF)",
+            defaultextension=".pdf",
+            initialfile="WisentPedigree_Pro_przewodnik_metod_2026.pdf",
+            filetypes=[("PDF", "*.pdf"), ("Wszystkie pliki", "*.*")],
+        )
+        if not filename:
+            return
+        try:
+            write_methods_guide_pdf(filename)
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się utworzyć PDF: {e}")
+            return
+        _set_status(f"Zapisano przewodnik metod: {filename}")
+        _open_exported_file(filename)
+
+    ttk.Button(
+        header_actions,
+        text="Przewodnik metod (PDF)",
+        command=on_save_methods_guide_pdf,
+    ).pack(side=tk.LEFT, padx=(0, 8))
     ttk.Button(
         header_actions,
         text="Pomoc (parametry i wykresy)",
         command=lambda: show_help_window(root, "WisentPedigree Pro+ — pomoc", hc.FULL_HELP_DOCUMENT),
-    ).pack(side=tk.RIGHT)
+    ).pack(side=tk.LEFT)
 
     logo_path = Path(__file__).resolve().parents[2] / "logo.png"
     logo_img = None
@@ -1089,7 +1146,6 @@ def run_tk_pro() -> None:
 
     # Ustawienia domyślne dla raportów (konfigurowane w zakładce Ustawienia).
     rep_default_include_plots_var = tk.BooleanVar(value=True)
-    rep_auto_preview_pdf_var = tk.BooleanVar(value=True)
     rep_include_plots_export_var = tk.BooleanVar(value=bool(rep_default_include_plots_var.get()))
 
     rep_output_text = tk.Text(tab_reports, height=18, wrap="word")
@@ -1339,6 +1395,7 @@ def run_tk_pro() -> None:
                 doc.add_paragraph("Wykresy nie zostały dołączone (wg wyboru użytkownika).")
             doc.save(filename)
             _set_rep_status(f"Zapisano: {Path(filename).name}")
+            _open_exported_file(filename)
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie udało się zapisać DOCX: {e}")
 
@@ -1405,23 +1462,7 @@ def run_tk_pro() -> None:
                         plt.close(f)
 
             _set_rep_status(f"Zapisano: {Path(filename).name}")
-            # Auto-podgląd zapisanego PDF-a w domyślnej aplikacji.
-            if bool(rep_auto_preview_pdf_var.get()):
-                try:
-                    import subprocess
-                    import sys
-                    import os
-
-                    if Path(filename).exists():
-                        if sys.platform == "darwin":
-                            subprocess.Popen(["open", filename])
-                        elif sys.platform.startswith("win"):
-                            os.startfile(filename)  # type: ignore[name-defined]
-                        else:
-                            subprocess.Popen(["xdg-open", filename])
-                except Exception:
-                    # Nie psujemy zapisu, jeśli nie da się otworzyć podglądu.
-                    pass
+            _open_exported_file(filename)
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie udało się zapisać PDF: {e}")
 
@@ -2143,11 +2184,6 @@ def run_tk_pro() -> None:
         text="Domyślnie: dołączaj wykresy w eksporcie raportu (DOCX/PDF)",
         variable=rep_default_include_plots_var,
     ).pack(anchor="w", pady=(6, 0))
-    ttk.Checkbutton(
-        tab_settings,
-        text="Domyślnie: automatyczny podgląd pliku PDF po zapisie",
-        variable=rep_auto_preview_pdf_var,
-    ).pack(anchor="w", pady=(6, 0))
 
     settings_divider5 = ttk.Separator(tab_settings, orient="horizontal")
     settings_divider5.pack(fill=tk.X, pady=(14, 10))
@@ -2294,7 +2330,11 @@ def run_tk_pro() -> None:
         command=lambda: show_help_window(
             root,
             "Populacja — interpretacja",
-            hc.SECTION_POPULATION + "\n\n---\n\n" + hc.all_charts_text(),
+            hc.SECTION_POPULATION
+            + "\n\n---\n\n"
+            + hc.SECTION_REFERENCES
+            + "\n\n---\n\n"
+            + hc.all_charts_text(),
         ),
     ).pack(side=tk.RIGHT)
     pop_basic_grid = ttk.Frame(pop_frame)
@@ -2796,9 +2836,41 @@ def run_tk_pro() -> None:
     ttk.Label(loading_frame, textvariable=mapping_note_var, foreground=colors.TEXT, wraplength=900).pack(anchor="w", pady=(4, 10))
 
     validation_var = tk.StringVar(value="Walidacja bazy: -")
-    ttk.Label(loading_frame, textvariable=validation_var, foreground=colors.MUTED, wraplength=900, justify="left").pack(
-        anchor="w", pady=(0, 10)
+
+    def on_export_validation_issues_csv() -> None:
+        rep = state.get("validation_report")
+        if rep is None:
+            messagebox.showinfo("Info", "Brak raportu walidacji. Wczytaj najpierw bazę.")
+            return
+        filename = filedialog.asksaveasfilename(
+            title="Eksport problemów walidacji (CSV)",
+            defaultextension=".csv",
+            filetypes=[("CSV", "*.csv"), ("Wszystkie pliki", "*.*")],
+        )
+        if not filename:
+            return
+        try:
+            with open(filename, "w", encoding="utf-8-sig", newline="") as f:
+                f.write(rep.to_csv_string())
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się zapisać pliku: {e}")
+            return
+        n = len(rep.export_rows)
+        _set_status(f"Zapisano CSV walidacji ({n} wierszy z problemami): {filename}")
+        _open_exported_file(filename)
+
+    validation_block = ttk.Frame(loading_frame)
+    validation_block.pack(anchor="w", fill=tk.X, pady=(0, 10))
+    ttk.Label(validation_block, textvariable=validation_var, foreground=colors.MUTED, wraplength=900, justify="left").pack(
+        anchor="w"
     )
+    validation_export_btn = ttk.Button(
+        validation_block,
+        text="Eksport problemów walidacji do CSV (id, typ, szczegóły)…",
+        command=on_export_validation_issues_csv,
+        state="disabled",
+    )
+    validation_export_btn.pack(anchor="w", pady=(6, 0))
 
     internet_lf = ttk.LabelFrame(loading_frame, text="Pobieranie z internetu (EBPB)")
     internet_lf.pack(side=tk.TOP, fill=tk.BOTH, expand=False, pady=(0, 10), padx=0)
@@ -3467,8 +3539,16 @@ def run_tk_pro() -> None:
     mating_female_limit_entry = ttk.Entry(mating_limits_frame, textvariable=mating_female_limit_var, width=8, state="disabled")
     mating_female_limit_entry.grid(row=1, column=1, sticky="w", pady=(0, 10))
 
-    mating_calc_btn = ttk.Button(tab_mating, text="Oblicz ranking kojarzeń (TOP 36)", state="disabled")
-    mating_calc_btn.pack(anchor="w", pady=(0, 8))
+    mating_btn_row = ttk.Frame(tab_mating)
+    mating_btn_row.pack(anchor="w", pady=(0, 8))
+    mating_calc_btn = ttk.Button(mating_btn_row, text="Oblicz ranking kojarzeń (TOP 36)", state="disabled")
+    mating_calc_btn.pack(side=tk.LEFT)
+    mating_export_phi_btn = ttk.Button(
+        mating_btn_row,
+        text="Eksport macierzy Φ do CSV (ostatnie liczenie)",
+        state="disabled",
+    )
+    mating_export_phi_btn.pack(side=tk.LEFT, padx=(10, 0))
 
     mating_output = tk.Text(tab_mating, height=16, wrap="word")
     mating_output.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
@@ -3477,6 +3557,33 @@ def run_tk_pro() -> None:
     mating_pair_stats_var = tk.StringVar(value="")
     ttk.Label(tab_mating, textvariable=mating_pair_stats_var, foreground=colors.MUTED, wraplength=900).pack(
         anchor="w", pady=(6, 0)
+    )
+
+    kinship_lf = ttk.LabelFrame(tab_mating, text="Kinship — dowolna para (Φ, R)")
+    kinship_lf.pack(anchor="w", fill=tk.X, pady=(10, 0))
+    ttk.Label(
+        kinship_lf,
+        text="Φ = współzgodność (coancestry); R = 2Φ = relacja Wrighta. Dla kojarzenia A×B: F potomka = Φ (przy tych samych ustawieniach głębokości).",
+        foreground=colors.MUTED,
+        wraplength=880,
+    ).grid(row=0, column=0, columnspan=4, sticky="w", padx=10, pady=(8, 4))
+    mating_kin_a_var = tk.StringVar(value="")
+    mating_kin_b_var = tk.StringVar(value="")
+    ttk.Label(kinship_lf, text="Osobnik A:").grid(row=1, column=0, sticky="w", padx=(10, 6), pady=(0, 8))
+    mating_kin_a_cb = ttk.Combobox(
+        kinship_lf, width=24, state="readonly", textvariable=mating_kin_a_var
+    )
+    mating_kin_a_cb.grid(row=1, column=1, sticky="w", pady=(0, 8))
+    ttk.Label(kinship_lf, text="Osobnik B:").grid(row=1, column=2, sticky="w", padx=(12, 6), pady=(0, 8))
+    mating_kin_b_cb = ttk.Combobox(
+        kinship_lf, width=24, state="readonly", textvariable=mating_kin_b_var
+    )
+    mating_kin_b_cb.grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(0, 8))
+    mating_kinship_btn = ttk.Button(kinship_lf, text="Oblicz Φ i R", state="disabled")
+    mating_kinship_btn.grid(row=2, column=0, sticky="w", padx=(10, 0), pady=(0, 10))
+    mating_kin_result_var = tk.StringVar(value="")
+    ttk.Label(kinship_lf, textvariable=mating_kin_result_var, foreground=colors.TEXT, wraplength=860).grid(
+        row=2, column=1, columnspan=3, sticky="w", pady=(0, 10)
     )
 
     def _sync_mating_depth_state() -> None:
@@ -3511,7 +3618,7 @@ def run_tk_pro() -> None:
         cutoff_birth_year = current_year - mating_age_limit_years
         mating_current_year_note_var.set(
             f"Filtr wieku: wiek <= {mating_age_limit_years} lat => birth_year >= {cutoff_birth_year} (rok {current_year}). "
-            f"Ranking: do {mating_ranking_top_n} par (najmniejsze F); w liście każdy osobnik (jako sire lub dam) "
+            f"Ranking: do {mating_ranking_top_n} par (najmniejsze Φ=F potomka); R=2Φ; w liście każdy osobnik (jako sire lub dam) "
             f"maks. {mating_ranking_max_uses_per_id} razy."
         )
 
@@ -3560,6 +3667,8 @@ def run_tk_pro() -> None:
             max_generations_back = depth
 
         mating_calc_btn.configure(state="disabled")
+        state.pop("mating_phi_matrix", None)
+        mating_export_phi_btn.configure(state="disabled")
         try:
             mating_output.configure(state="normal")
             mating_output.delete("1.0", tk.END)
@@ -3578,11 +3687,19 @@ def run_tk_pro() -> None:
                 max_generations_back=max_generations_back,
             )
 
+            state["mating_phi_matrix"] = {
+                "males": list(males),
+                "females": list(females),
+                "phi_row_major": [float(x) for x in Fs],
+                "max_generations_back": max_generations_back,
+            }
+            mating_export_phi_btn.configure(state="normal")
+
             ranked = [
                 (float(Fs[i]), parent_pairs[i][0], parent_pairs[i][1])
                 for i in range(len(parent_pairs))
             ]
-            ranked.sort(key=lambda t: t[0])  # smallest F first
+            ranked.sort(key=lambda t: t[0])  # smallest Phi first
             use_count: dict[str, int] = {}
             top: list[tuple[float, str, str]] = []
             for F_val, sire_id, dam_id in ranked:
@@ -3596,28 +3713,99 @@ def run_tk_pro() -> None:
                 use_count[sire_id] = use_count.get(sire_id, 0) + 1
                 use_count[dam_id] = use_count.get(dam_id, 0) + 1
 
-            mating_output.configure(state="normal")
-            mating_output.delete("1.0", tk.END)
-            mating_output.insert(
-                "1.0",
-                f"Wybrane {len(top)} par (cel do {mating_ranking_top_n}, najmniejsze F potomka; "
-                f"każdy ID max {mating_ranking_max_uses_per_id}× w tej liście):\n\n",
-            )
-            for idx, (F_val, sire_id, dam_id) in enumerate(top, start=1):
+            lines: list[str] = [
+                f"Wybrane {len(top)} par (cel do {mating_ranking_top_n}, najmniejsze Φ = F potomka; "
+                f"każdy ID max {mating_ranking_max_uses_per_id}× w tej liście).\n\n",
+                "Φ — współczynnik współzgodności (kinship) między sire a dam; F hipotetycznego potomka = Φ. "
+                "R = 2Φ — współczynnik relacji Wrighta.\n\n",
+            ]
+            for idx, (phi_val, sire_id, dam_id) in enumerate(top, start=1):
+                R_val = 2.0 * phi_val
                 sire_nm = getattr(people.get(sire_id), "name", None) if people.get(sire_id) else None
                 dam_nm = getattr(people.get(dam_id), "name", None) if people.get(dam_id) else None
                 sire_lbl = f"{sire_id}" + (f" ({sire_nm})" if sire_nm else "")
                 dam_lbl = f"{dam_id}" + (f" ({dam_nm})" if dam_nm else "")
-                mating_output.insert("1.0", f"{idx}. F={F_val:.6f}  |  sire={sire_lbl}  x  dam={dam_lbl}\n")
+                lines.append(
+                    f"{idx}. Φ=F={phi_val:.6f}  R={R_val:.6f}  |  sire={sire_lbl}  x  dam={dam_lbl}\n"
+                )
+
+            mating_output.configure(state="normal")
+            mating_output.delete("1.0", tk.END)
+            mating_output.insert("1.0", "".join(lines))
             mating_output.configure(state="disabled")
 
             _set_status("Gotowe: ranking mating policzony.")
         except Exception as e:
+            state.pop("mating_phi_matrix", None)
+            mating_export_phi_btn.configure(state="disabled")
             messagebox.showerror("Błąd", f"Nie udało się policzyć rankingu mating: {e}")
         finally:
-            mating_calc_btn.configure(state="normal" if bool(state.get('people')) else "disabled")
+            mating_calc_btn.configure(state="normal" if bool(state.get("people")) else "disabled")
+
+    def on_export_mating_phi_matrix() -> None:
+        m = state.get("mating_phi_matrix")
+        if not m:
+            messagebox.showinfo("Info", "Najpierw oblicz ranking kojarzeń — macierz Φ pochodzi z ostatniego liczenia.")
+            return
+        filename = filedialog.asksaveasfilename(
+            title="Zapis macierzy Φ (CSV)",
+            defaultextension=".csv",
+            filetypes=[("CSV", "*.csv"), ("Wszystkie pliki", "*.*")],
+        )
+        if not filename:
+            return
+        males_m = m["males"]
+        females_m = m["females"]
+        phis = m["phi_row_major"]
+        nf = len(females_m)
+        try:
+            with open(filename, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f, delimiter=";")
+                w.writerow(["sire_id"] + [str(x) for x in females_m])
+                for i, mid in enumerate(males_m):
+                    row = [str(mid)] + [f"{phis[i * nf + j]:.10g}" for j in range(nf)]
+                    w.writerow(row)
+        except Exception as ex:
+            messagebox.showerror("Błąd", f"Nie udało się zapisać pliku: {ex}")
+            return
+        _set_status(f"Zapisano macierz Φ: {filename}")
+        _open_exported_file(filename)
+
+    def on_kinship_pair() -> None:
+        people = state.get("people")
+        if not people:
+            messagebox.showinfo("Info", "Najpierw wczytaj bazę.")
+            return
+        a_id = str(mating_kin_a_var.get() or "").strip()
+        b_id = str(mating_kin_b_var.get() or "").strip()
+        if not a_id or not b_id:
+            messagebox.showinfo("Info", "Wybierz dwa ID z list.")
+            return
+        if a_id not in people or b_id not in people:
+            messagebox.showinfo("Info", "Oba ID muszą istnieć w wczytanej bazie.")
+            return
+        if bool(mating_unbounded_var.get()):
+            max_generations_back: int | None = None
+        else:
+            try:
+                depth = int(str(mating_depth_var.get()).strip())
+            except Exception:
+                depth = 4
+            max_generations_back = max(0, min(30, depth))
+        try:
+            phi_v, r_v = wright_kinship_phi_and_relationship_R(
+                a_id, b_id, people, max_generations_back=max_generations_back
+            )
+            mating_kin_result_var.set(
+                f"Φ(A,B) = {phi_v:.6f}  |  R = 2Φ = {r_v:.6f}  |  F potomka z A×B = Φ = {phi_v:.6f} "
+                f"(głębokość jak przy kojarzeniach: {'bez limitu' if max_generations_back is None else f'max {max_generations_back} pok.'})"
+            )
+        except Exception as ex:
+            messagebox.showerror("Błąd", f"Nie udało się policzyć kinship: {ex}")
 
     mating_calc_btn.configure(command=on_calc_mating_ranking)
+    mating_export_phi_btn.configure(command=on_export_mating_phi_matrix)
+    mating_kinship_btn.configure(command=on_kinship_pair)
 
     # Obszar na wykresy statystyk populacyjnych (poukrywane na zakładkach).
     pop_plots_frame = ttk.Frame(tab_pop)
@@ -3671,7 +3859,12 @@ def run_tk_pro() -> None:
         mating_male_limit_entry.configure(state=st)
         mating_female_limit_entry.configure(state=st)
         mating_calc_btn.configure(state=st)
+        mating_kinship_btn.configure(state=st)
         mating_output.configure(state="disabled")
+        if enabled and state.get("mating_phi_matrix"):
+            mating_export_phi_btn.configure(state="normal")
+        else:
+            mating_export_phi_btn.configure(state="disabled")
 
         mating_depth_state = "disabled" if bool(mating_unbounded_var.get()) else st
         mating_depth_entry.configure(state=mating_depth_state)
@@ -3747,6 +3940,10 @@ def run_tk_pro() -> None:
             plan_goal_max_enabled_var.set(bool(settings_plan_goal_max_enabled_var.get()))
             plan_goal_max_F_var.set(str(settings_plan_goal_max_f_var.get()).strip() or "0.10")
             rep_include_plots_export_var.set(bool(rep_default_include_plots_var.get()))
+
+        validation_export_btn.configure(
+            state="normal" if enabled and state.get("validation_report") is not None else "disabled"
+        )
 
         # Po zmianie unbounded/depth z konfiguracji trace bywa opóźniony — wymuszamy stan pól głębokości.
         _sync_anc_depth_state()
@@ -4033,6 +4230,17 @@ def run_tk_pro() -> None:
     def _apply_dataset(df_std, people, source: str) -> None:
         state["df_std"] = df_std
         state["people"] = people
+        state.pop("mating_phi_matrix", None)
+        mating_export_phi_btn.configure(state="disabled")
+        mating_kin_result_var.set("")
+        try:
+            id_sorted = sorted({str(x) for x in df_std["id"].tolist()}, key=_id_sort_key)
+            mating_kin_a_cb.configure(values=id_sorted)
+            mating_kin_b_cb.configure(values=id_sorted)
+            mating_kin_a_var.set("")
+            mating_kin_b_var.set("")
+        except Exception:
+            pass
         # Precompute line memberships for quick display in "Osobniki" and "Rodowód".
         ids = [str(x) for x in df_std["id"].tolist()]
         try:
@@ -4047,9 +4255,12 @@ def run_tk_pro() -> None:
             report = validate_loaded_dataset(df_std=df_std, people=people, current_year=datetime.now().year)
             state["validation_report"] = report
             validation_var.set(report.ui_summary())
+            if controls_enabled_ref[0]:
+                validation_export_btn.configure(state="normal")
         except Exception:
             state["validation_report"] = None
             validation_var.set("Walidacja bazy: nie udało się przeprowadzić walidacji.")
+            validation_export_btn.configure(state="disabled")
 
         ids = df_std["id"].dropna().astype(str)
         if len(ids) > 0:
@@ -4730,6 +4941,10 @@ def run_tk_pro() -> None:
     menu_help.add_command(
         label="Pełna dokumentacja (tekst)",
         command=lambda: show_help_window(root, "WisentPedigree Pro+ — pomoc", hc.FULL_HELP_DOCUMENT),
+    )
+    menu_help.add_command(
+        label="Przewodnik metod (PDF — cytowania)",
+        command=on_save_methods_guide_pdf,
     )
     menu_help.add_separator()
     menu_help.add_command(label="O aplikacji", command=_show_about_app)

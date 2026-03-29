@@ -5,8 +5,10 @@ i czy relacje rodzic–dziecko mają sens — stąd komunikaty ostrzegawcze.
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from io import StringIO
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -21,9 +23,20 @@ class ValidationIssue:
 
 
 @dataclass(frozen=True)
+class ValidationExportRow:
+    """Jeden wiersz do CSV: ID rekordu (osobnika) + typ problemu — do poprawy w Excelu."""
+
+    record_id: str
+    severity: str  # ERROR | WARN
+    problem_type: str
+    details: str = ""
+
+
+@dataclass(frozen=True)
 class ValidationReport:
     total_rows: int
     issues: List[ValidationIssue]
+    export_rows: Tuple[ValidationExportRow, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -67,6 +80,19 @@ class ValidationReport:
             else:
                 lines.append(f"- {issue.severity}: {issue.title}")
         return "\n".join(lines)
+
+    def to_csv_string(self, *, delimiter: str = ";") -> str:
+        """Nagłówek + wiersze (id, waga, typ_problemu, szczegoly) — np. do Excela (CSV UTF-8)."""
+        buf = StringIO()
+        w = csv.writer(buf, delimiter=delimiter)
+        w.writerow(["id", "waga", "typ_problemu", "szczegoly"])
+        for r in self.export_rows:
+            w.writerow([r.record_id, r.severity, r.problem_type, r.details])
+        return buf.getvalue()
+
+    @property
+    def has_export_rows(self) -> bool:
+        return len(self.export_rows) > 0
 
 
 def _norm_sex(v: object) -> Optional[str]:
@@ -120,10 +146,15 @@ def validate_loaded_dataset(
     father_id, mother_id, birth_year oraz opcjonalnie: father_line, mother_line).
     """
     issues: List[ValidationIssue] = []
+    export_rows: List[ValidationExportRow] = []
     total_rows = int(len(df_std.index))
 
     if df_std is None or getattr(df_std, "empty", True):
-        return ValidationReport(total_rows=0, issues=[ValidationIssue("ERROR", "Brak danych do walidacji")])
+        return ValidationReport(
+            total_rows=0,
+            issues=[ValidationIssue("ERROR", "Brak danych do walidacji")],
+            export_rows=(),
+        )
 
     if current_year is None:
         from datetime import datetime
@@ -142,6 +173,18 @@ def validate_loaded_dataset(
                         details=f"duplikaty={dup_count} (id powinno być unikalne w bazie)",
                     )
                 )
+                dup_mask = df_std.duplicated(subset=["id"], keep=False)
+                for _, row in df_std.loc[dup_mask].iterrows():
+                    rid = str(row.get("id", "")).strip()
+                    if rid:
+                        export_rows.append(
+                            ValidationExportRow(
+                                rid,
+                                "ERROR",
+                                "Duplikat ID",
+                                "To samo id w wielu wierszach — zostaw jeden rekord lub zmień id.",
+                            )
+                        )
             else:
                 issues.append(ValidationIssue("OK", "Unikalność ID (duplikaty=0)"))
         except Exception:
@@ -161,10 +204,26 @@ def validate_loaded_dataset(
                     fa_s = str(fa).strip()
                     if fa_s and fa_s != "None" and fa_s not in people:
                         father_missing += 1
+                        export_rows.append(
+                            ValidationExportRow(
+                                cid,
+                                "WARN",
+                                "Brak rekordu ojca w bazie",
+                                f"father_id={fa_s} (brak tego id w people)",
+                            )
+                        )
                 if mo is not None and mo == mo:
                     mo_s = str(mo).strip()
                     if mo_s and mo_s != "None" and mo_s not in people:
                         mother_missing += 1
+                        export_rows.append(
+                            ValidationExportRow(
+                                cid,
+                                "WARN",
+                                "Brak rekordu matki w bazie",
+                                f"mother_id={mo_s} (brak tego id w people)",
+                            )
+                        )
         except Exception:
             # walidacja nie może wywalić aplikacji
             issues.append(ValidationIssue("WARN", "Nie udało się sprawdzić braków rodziców"))
@@ -216,6 +275,14 @@ def validate_loaded_dataset(
 
         if cycle_nodes:
             issues.append(ValidationIssue("ERROR", "Wykryto cykl w rodowodzie", details=f"sample_nodes={cycle_nodes}"))
+            export_rows.append(
+                ValidationExportRow(
+                    "_GLOBAL_",
+                    "ERROR",
+                    "Cykl w rodowodzie",
+                    f"Dotyczy całej bazy — przykładowe węzły na cyklu: {cycle_nodes}",
+                )
+            )
         else:
             issues.append(ValidationIssue("OK", "Rodowód: brak cykli"))
     except Exception:
@@ -235,8 +302,24 @@ def validate_loaded_dataset(
 
                 if fa is not None and fa == fa and str(fa).strip() == cid_s:
                     self_parent += 1
+                    export_rows.append(
+                        ValidationExportRow(
+                            cid_s,
+                            "ERROR",
+                            "Self-parent (ojciec)",
+                            "father_id wskazuje na ten sam id co osobnik",
+                        )
+                    )
                 if mo is not None and mo == mo and str(mo).strip() == cid_s:
                     self_parent += 1
+                    export_rows.append(
+                        ValidationExportRow(
+                            cid_s,
+                            "ERROR",
+                            "Self-parent (matka)",
+                            "mother_id wskazuje na ten sam id co osobnik",
+                        )
+                    )
         except Exception:
             issues.append(ValidationIssue("WARN", "Nie udało się sprawdzić self-parent"))
         else:
@@ -252,6 +335,21 @@ def validate_loaded_dataset(
             # if sex was something unexpected, norm becomes None but original wasn't NaN
             if invalid_sex > 0:
                 issues.append(ValidationIssue("WARN", "Niepoprawne wartości `sex` w pliku (zestandaryzowano do None)", details=f"count={invalid_sex}"))
+                for _, row in df_std.iterrows():
+                    raw = row.get("sex")
+                    if raw is None or (isinstance(raw, float) and raw != raw):
+                        continue
+                    if _norm_sex(raw) is None:
+                        rid = str(row.get("id", "")).strip()
+                        if rid:
+                            export_rows.append(
+                                ValidationExportRow(
+                                    rid,
+                                    "WARN",
+                                    "Niepoprawna płeć (sex)",
+                                    f"Oczekiwane M/F lub puste; wartość={raw!r}",
+                                )
+                            )
             else:
                 issues.append(ValidationIssue("OK", "Płeć: wartości w M/F lub puste"))
         except Exception:
@@ -275,6 +373,15 @@ def validate_loaded_dataset(
                 child_year = _parse_year(row.get("birth_year"))
                 if child_year is not None and (child_year < year_min or child_year > year_max):
                     out_of_range_birth += 1
+                    if child_s:
+                        export_rows.append(
+                            ValidationExportRow(
+                                child_s,
+                                "WARN",
+                                "birth_year poza zakresem",
+                                f"rok={child_year}, dopuszczalnie {year_min}–{year_max}",
+                            )
+                        )
 
                 fa = row.get("father_id")
                 mo = row.get("mother_id")
@@ -288,6 +395,15 @@ def validate_loaded_dataset(
                         age = child_year - fa_y
                         if age < 0 or age > 80:
                             parent_age_outliers += 1
+                            if child_s:
+                                export_rows.append(
+                                    ValidationExportRow(
+                                        child_s,
+                                        "WARN",
+                                        "Wiek ojca przy urodzeniu potomka poza 0–80 lat",
+                                        f"różnica lat potomek–ojciec={age}, father_id={fa_s}",
+                                    )
+                                )
 
                 if mo is not None and mo == mo:
                     mo_s = str(mo).strip()
@@ -296,6 +412,15 @@ def validate_loaded_dataset(
                         age = child_year - mo_y
                         if age < 0 or age > 80:
                             parent_age_outliers += 1
+                            if child_s:
+                                export_rows.append(
+                                    ValidationExportRow(
+                                        child_s,
+                                        "WARN",
+                                        "Wiek matki przy urodzeniu potomka poza 0–80 lat",
+                                        f"różnica lat potomek–matka={age}, mother_id={mo_s}",
+                                    )
+                                )
         except Exception:
             issues.append(ValidationIssue("WARN", "Nie udało się wykonać sanity lat/age dla rodziców"))
         else:
@@ -326,6 +451,16 @@ def validate_loaded_dataset(
                         compared_f += 1
                         if _norm_line(getattr(fa_rec, "line", None)) != _norm_line(fa_line):
                             mismatch_f += 1
+                            cid_s = str(cid).strip() if cid is not None else ""
+                            if cid_s:
+                                export_rows.append(
+                                    ValidationExportRow(
+                                        cid_s,
+                                        "WARN",
+                                        "Niespójność father_line z linią ojca w bazie",
+                                        f"wiersz father_line={_norm_line(fa_line)}, rekord ojca line={_norm_line(getattr(fa_rec, 'line', None))}, father_id={fa_s}",
+                                    )
+                                )
 
                 mo = row.get("mother_id")
                 mo_line = row.get("mother_line")
@@ -336,6 +471,16 @@ def validate_loaded_dataset(
                         compared_m += 1
                         if _norm_line(getattr(mo_rec, "line", None)) != _norm_line(mo_line):
                             mismatch_m += 1
+                            cid_s = str(cid).strip() if cid is not None else ""
+                            if cid_s:
+                                export_rows.append(
+                                    ValidationExportRow(
+                                        cid_s,
+                                        "WARN",
+                                        "Niespójność mother_line z linią matki w bazie",
+                                        f"wiersz mother_line={_norm_line(mo_line)}, rekord matki line={_norm_line(getattr(mo_rec, 'line', None))}, mother_id={mo_s}",
+                                    )
+                                )
         except Exception:
             issues.append(ValidationIssue("WARN", "Nie udało się sprawdzić spójności `father_line/mother_line`"))
         else:
@@ -362,5 +507,5 @@ def validate_loaded_dataset(
                 else:
                     issues.append(ValidationIssue("OK", "mother_line vs line rodzica: spójne"))
 
-    return ValidationReport(total_rows=total_rows, issues=issues)
+    return ValidationReport(total_rows=total_rows, issues=issues, export_rows=tuple(export_rows))
 
