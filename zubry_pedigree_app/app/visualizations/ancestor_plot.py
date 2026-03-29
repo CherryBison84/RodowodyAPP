@@ -30,6 +30,9 @@ import numpy as np
 from matplotlib.lines import Line2D
 
 from app.pedigree.ancestor_pedigree import Person
+from app.ui.typography import apply_matplotlib_fonts
+
+apply_matplotlib_fonts()
 
 
 def _node_color(sex: Optional[str]) -> str:

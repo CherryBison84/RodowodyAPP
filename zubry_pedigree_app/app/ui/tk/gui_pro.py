@@ -4,6 +4,9 @@ Pełne okno programu na pulpicie: wszystkie zakładki, wykresy populacji, analiz
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -30,8 +33,7 @@ from app.analytics.line_membership import (
     compute_all_line_memberships,
     get_line_membership,
 )
-from app.analytics.population_genetics import TEST_ID, compute_population_genetics_stats
-from app.analytics.population_gi import compute_gi_and_family_data
+from app.analytics.population_genetics import TEST_ID, compute_gi_and_family_data, compute_population_genetics_stats
 from app.data.validator import validate_loaded_dataset
 from app.ui.tk.breeding_helpers import suggest_pairs_with_constraints
 from app.ui.tk.report_helpers import (
@@ -40,14 +42,9 @@ from app.ui.tk.report_helpers import (
     write_text_pages_to_pdf,
 )
 from app.ui.tk.theme import setup_theme
-from app.ui.tk.population_charts_tk import (
-    render_birth_decade_charts,
-    render_founders_pi_chart,
-    render_gi_and_family_charts,
-    render_inbreeding_year_trends,
-)
 from app.ui.help_dialog import show_help_window
 from app.ui import help_content as hc
+from app.ui.typography import apply_matplotlib_fonts, tk_font
 
 
 def _clear_frame(frame: ttk.Frame) -> None:
@@ -76,7 +73,829 @@ def _save_figure_as_jpeg(fig, *, default_basename: str = "wykres") -> None:
         messagebox.showerror("Błąd", f"Nie mogę zapisać wykresu: {e}")
 
 
+def render_birth_decade_charts(
+    df_use: Any,
+    *,
+    state: dict[str, Any],
+    colors: Any,
+    save_figure_fn: Callable[..., None],
+    pop_birth_sex_plot_area: ttk.Frame,
+    pop_birth_line_plot_area: ttk.Frame,
+    pop_birth_ratio_plot_area: ttk.Frame,
+    pop_comp_sex_plot_area: ttk.Frame,
+    pop_comp_line_plot_area: ttk.Frame,
+) -> None:
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        from datetime import datetime
+
+        from pandas import isna  # type: ignore[import-not-found]
+
+        now_year = datetime.now().year
+        min_dec = (1881 // 10) * 10  # 1880
+        max_dec = (now_year // 10) * 10
+        decades = list(range(min_dec, max_dec + 1, 10))
+        decade_labels = [f"{d}-{d+9}" for d in decades]
+
+        if df_use is None or getattr(df_use, "empty", True):
+            return
+        if "birth_year" not in df_use.columns:
+            return
+
+        def _parse_birth_year(v: object) -> int | None:
+            if v is None:
+                return None
+            try:
+                if isinstance(v, float) and v != v:
+                    return None
+            except Exception:
+                pass
+            if isna(v):
+                return None
+            try:
+                y_int = int(float(v))
+            except Exception:
+                return None
+            if y_int < 1881 or y_int > now_year:
+                return None
+            return y_int
+
+        birth_int = df_use["birth_year"].apply(_parse_birth_year)
+        dfc = df_use.copy()
+        dfc["_birth_int"] = birth_int
+        dfc = dfc.dropna(subset=["_birth_int"])
+        if dfc.empty:
+            return
+        dfc["_birth_int"] = dfc["_birth_int"].astype(int)
+        dfc["decade"] = (dfc["_birth_int"] // 10) * 10
+
+        # --- Sex split ---
+        def _norm_sex(v: object) -> str | None:
+            if v is None:
+                return None
+            s = str(v).strip().upper()
+            if s == "M":
+                return "M"
+            if s == "F":
+                return "F"
+            return None
+
+        sex_norm = dfc["sex"].apply(_norm_sex) if "sex" in dfc.columns else None
+        m_counts: dict[int, int] = {}
+        f_counts: dict[int, int] = {}
+        if sex_norm is not None:
+            vc_m = (
+                dfc[sex_norm == "M"].groupby("decade").size().to_dict()
+                if not dfc.empty
+                else {}
+            )
+            vc_f = (
+                dfc[sex_norm == "F"].groupby("decade").size().to_dict()
+                if not dfc.empty
+                else {}
+            )
+            m_counts = vc_m
+            f_counts = vc_f
+
+        _clear_frame(pop_birth_sex_plot_area)
+        fig1 = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+        ax1 = fig1.add_subplot(1, 1, 1)
+        x = list(range(len(decades)))
+        w = 0.38
+        m_vals = [m_counts.get(d, 0) for d in decades]
+        f_vals = [f_counts.get(d, 0) for d in decades]
+        ax1.bar([i - w / 2 for i in x], m_vals, width=w, color="#9ecbff", edgecolor=colors.ACCENT, label="M")
+        ax1.bar([i + w / 2 for i in x], f_vals, width=w, color="#ffb4c1", edgecolor=colors.ACCENT, label="F")
+        ax1.set_title("Urodzenia w dekadach (płeć)")
+        ax1.set_xlabel("dekada")
+        ax1.set_ylabel("liczba urodzeń")
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=8)
+        ax1.legend(fontsize=8)
+        fig1.tight_layout()
+        ttk.Button(
+            pop_birth_sex_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig1: save_figure_fn(f, default_basename="pop_urodzenia_plec"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas1 = FigureCanvasTkAgg(fig1, master=pop_birth_sex_plot_area)
+        canvas1.draw()
+        canvas1.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # --- Line split (LB vs LC) ---
+        def _norm_line(v: object) -> str | None:
+            if v is None:
+                return None
+            s = str(v).strip().upper()
+            if s == "LB":
+                return "LB"
+            if s == "LC":
+                return "LC"
+            return None
+
+        line_norm = dfc["line"].apply(_norm_line) if "line" in dfc.columns else None
+        lb_counts: dict[int, int] = {}
+        lc_counts: dict[int, int] = {}
+        if line_norm is not None:
+            vc_lb = (
+                dfc[line_norm == "LB"].groupby("decade").size().to_dict()
+                if not dfc.empty
+                else {}
+            )
+            vc_lc = (
+                dfc[line_norm == "LC"].groupby("decade").size().to_dict()
+                if not dfc.empty
+                else {}
+            )
+            lb_counts = vc_lb
+            lc_counts = vc_lc
+
+        _clear_frame(pop_birth_line_plot_area)
+        fig2 = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+        ax2 = fig2.add_subplot(1, 1, 1)
+        lb_vals = [lb_counts.get(d, 0) for d in decades]
+        lc_vals = [lc_counts.get(d, 0) for d in decades]
+        ax2.bar([i - w / 2 for i in x], lc_vals, width=w, color="#2e8b57", edgecolor=colors.ACCENT, label="LC")
+        ax2.bar([i + w / 2 for i in x], lb_vals, width=w, color="#d64545", edgecolor=colors.ACCENT, label="LB")
+        ax2.set_title("Urodzenia w dekadach (LC vs LB)")
+        ax2.set_xlabel("dekada")
+        ax2.set_ylabel("liczba urodzeń")
+        ax2.set_xticks(x)
+        ax2.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=8)
+        ax2.legend(fontsize=8)
+        fig2.tight_layout()
+        ttk.Button(
+            pop_birth_line_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig2: save_figure_fn(f, default_basename="pop_urodzenia_linie"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas2 = FigureCanvasTkAgg(fig2, master=pop_birth_line_plot_area)
+        canvas2.draw()
+        canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # --- Ratio F/M od 1900 (po dekadach) ---
+        ratio_decades = [d for d in decades if d >= 1900]
+        ratio_labels = [f"{d}-{d+9}" for d in ratio_decades]
+
+        ratio_m = m_counts
+        ratio_f = f_counts
+
+        ratio_vals: list[float] = []
+        for d in ratio_decades:
+            m = ratio_m.get(d, 0)
+            f = ratio_f.get(d, 0)
+            if m <= 0:
+                ratio_vals.append(float("nan"))
+            else:
+                ratio_vals.append(float(f) / float(m))
+
+        _clear_frame(pop_birth_ratio_plot_area)
+        fig3 = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+        ax3 = fig3.add_subplot(1, 1, 1)
+        xs3 = list(range(len(ratio_decades)))
+        ax3.plot(xs3, ratio_vals, marker="o", linewidth=2, color=colors.MUTED)
+        ax3.axhline(1.0, color=colors.ACCENT, linewidth=1, alpha=0.8)
+        ax3.set_title("Female/Male ratio w dekadach (F/M) od 1900")
+        ax3.set_xlabel("dekada")
+        ax3.set_ylabel("F/M")
+        ax3.set_xticks(xs3)
+        ax3.set_xticklabels(ratio_labels, rotation=45, ha="right", fontsize=8)
+        fig3.tight_layout()
+        ttk.Button(
+            pop_birth_ratio_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig3: save_figure_fn(f, default_basename="pop_urodzenia_ratio_FM"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas3 = FigureCanvasTkAgg(fig3, master=pop_birth_ratio_plot_area)
+        canvas3.draw()
+        canvas3.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # --- Kompletnosc rodowodu (MG/CG/EG) wg płci oraz linii ---
+        people = state.get("people")
+        if people:
+            # bierzemy tylko rekordy, które istnieją w `people`
+            dfc = df_use.copy()
+            dfc["id"] = dfc["id"].astype(str)
+            dfc = dfc[dfc["id"].isin(set(people.keys()))].reset_index(drop=True)
+
+            # liczymy MG/CG/EG per osobnik (memo)
+            pid_list = dfc["id"].tolist() if "id" in dfc.columns else []
+            unique_pids = sorted(set(pid_list))
+
+            comp_memo: dict[str, tuple[int, int, float]] = {}
+
+            for pid in unique_pids:
+                levels = get_ancestor_levels_unbounded(person_id=pid, people=people)
+                by_gen: dict[int, int] = {}
+                for _, lvl in levels.items():
+                    if lvl is None or lvl <= 0:
+                        continue
+                    by_gen[lvl] = by_gen.get(lvl, 0) + 1
+
+                if not by_gen:
+                    comp_memo[pid] = (0, 0, 0.0)
+                    continue
+
+                MG = int(max(by_gen.keys()))
+                CG = 0
+                EG = 0.0
+                for g, a_g in by_gen.items():
+                    pcl_g = float(a_g) / float(2**g)
+                    EG += pcl_g
+                    if pcl_g >= 0.999999:
+                        CG += 1
+                comp_memo[pid] = (MG, CG, EG)
+
+            def _norm_sex_comp(v: object) -> str:
+                if v is None:
+                    return "NA"
+                s = str(v).strip().upper()
+                return s if s in {"M", "F"} else "NA"
+
+            def _norm_line_comp(v: object) -> str:
+                if v is None:
+                    return "NA"
+                s = str(v).strip().upper()
+                return s if s in {"LB", "LC"} else "NA"
+
+            dfc["sex_norm"] = dfc["sex"].apply(_norm_sex_comp) if "sex" in dfc.columns else "NA"
+            dfc["line_norm"] = dfc["line"].apply(_norm_line_comp) if "line" in dfc.columns else "NA"
+
+            def _group_means(group_col: str, categories: list[str]) -> dict[str, tuple[float, float, float]]:
+                out: dict[str, tuple[float, float, float]] = {}
+                for cat in categories:
+                    pids = dfc[dfc[group_col] == cat]["id"].tolist()
+                    if not pids:
+                        out[cat] = (0.0, 0.0, 0.0)
+                        continue
+                    MGs = [float(comp_memo[pid][0]) for pid in pids if pid in comp_memo]
+                    CGs = [float(comp_memo[pid][1]) for pid in pids if pid in comp_memo]
+                    EGs = [float(comp_memo[pid][2]) for pid in pids if pid in comp_memo]
+                    if not MGs:
+                        out[cat] = (0.0, 0.0, 0.0)
+                        continue
+                    out[cat] = (
+                        float(sum(MGs)) / float(len(MGs)),
+                        float(sum(CGs)) / float(len(CGs)),
+                        float(sum(EGs)) / float(len(EGs)),
+                    )
+                return out
+
+            sex_means = _group_means("sex_norm", ["M", "F"])
+            line_means = _group_means("line_norm", ["LB", "LC", "NA"])
+
+            # --- wykres płci ---
+            _clear_frame(pop_comp_sex_plot_area)
+            cats = ["M", "F"]
+            MGv = [sex_means[c][0] for c in cats]
+            CGv = [sex_means[c][1] for c in cats]
+            EGv = [sex_means[c][2] for c in cats]
+
+            fig_c = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+            ax_c = fig_c.add_subplot(1, 1, 1)
+            xs = list(range(len(cats)))
+            ww = 0.26
+            ax_c.bar([i - ww for i in xs], MGv, width=ww, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT, label="MG (max)")
+            ax_c.bar([i for i in xs], CGv, width=ww, color=colors.BUTTON_BG, edgecolor=colors.ACCENT, label="CG (kompletne)")
+            ax_c.bar([i + ww for i in xs], EGv, width=ww, color="#6b5b4d", edgecolor=colors.ACCENT, label="EG (równoważne)")
+            ax_c.set_title("Kompletność: MG/CG/EG wg płci")
+            ax_c.set_xlabel("płeć")
+            ax_c.set_ylabel("wartość (średnia)")
+            ax_c.set_xticks(xs)
+            ax_c.set_xticklabels(cats, fontsize=9)
+            ax_c.legend(fontsize=8)
+            fig_c.tight_layout()
+            ttk.Button(
+                pop_comp_sex_plot_area,
+                text="Zapis wykresu (jpeg)",
+                command=lambda f=fig_c: save_figure_fn(f, default_basename="pop_kompletnosc_plec"),
+            ).pack(anchor="w", pady=(0, 6))
+            canvas_c = FigureCanvasTkAgg(fig_c, master=pop_comp_sex_plot_area)
+            canvas_c.draw()
+            canvas_c.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            # --- wykres linii ---
+            _clear_frame(pop_comp_line_plot_area)
+            cats2 = ["LB", "LC", "NA"]
+            MGv2 = [line_means[c][0] for c in cats2]
+            CGv2 = [line_means[c][1] for c in cats2]
+            EGv2 = [line_means[c][2] for c in cats2]
+
+            fig_l = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+            ax_l = fig_l.add_subplot(1, 1, 1)
+            xs2 = list(range(len(cats2)))
+            ww2 = 0.22
+            ax_l.bar([i - ww2 for i in xs2], MGv2, width=ww2, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT, label="MG (max)")
+            ax_l.bar([i for i in xs2], CGv2, width=ww2, color=colors.BUTTON_BG, edgecolor=colors.ACCENT, label="CG (kompletne)")
+            ax_l.bar([i + ww2 for i in xs2], EGv2, width=ww2, color="#6b5b4d", edgecolor=colors.ACCENT, label="EG (równoważne)")
+            ax_l.set_title("Kompletność: MG/CG/EG wg linii")
+            ax_l.set_xlabel("linia")
+            ax_l.set_ylabel("wartość (średnia)")
+            ax_l.set_xticks(xs2)
+            ax_l.set_xticklabels(cats2, fontsize=9)
+            ax_l.legend(fontsize=8)
+            fig_l.tight_layout()
+            ttk.Button(
+                pop_comp_line_plot_area,
+                text="Zapis wykresu (jpeg)",
+                command=lambda f=fig_l: save_figure_fn(f, default_basename="pop_kompletnosc_linie"),
+            ).pack(anchor="w", pady=(0, 6))
+            canvas_l = FigureCanvasTkAgg(fig_l, master=pop_comp_line_plot_area)
+            canvas_l.draw()
+            canvas_l.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    except Exception:
+        return
+
+
+def render_inbreeding_year_trends(
+    df_use: Any,
+    *,
+    state: dict[str, Any],
+    pop_depth_inb_var: tk.StringVar,
+    pop_unbounded_inb_var: tk.BooleanVar | tk.StringVar,
+    pop_inb_year_sex_plot_area: ttk.Frame,
+    pop_inb_year_line_plot_area: ttk.Frame,
+    pop_ria_overall_var: tk.StringVar,
+    pop_ne_var: tk.StringVar,
+    save_figure_fn: Callable[..., None],
+) -> None:
+    """
+    Average F oraz Rate of Inbred Animals (RIA, %) w czasie (TP),
+    osobno dla:
+    - płci (M/F)
+    - linii (LB/LC)
+    """
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        from datetime import datetime
+
+        people = state.get("people")
+        if not people:
+            return
+
+        if df_use is None or getattr(df_use, "empty", True):
+            return
+        if "birth_year" not in df_use.columns:
+            return
+
+        now_year = datetime.now().year
+
+        def _parse_birth_year(v: object) -> int | None:
+            if v is None:
+                return None
+            try:
+                if isinstance(v, float) and v != v:
+                    return None
+            except Exception:
+                pass
+            try:
+                y_int = int(float(v))
+            except Exception:
+                return None
+            if y_int < 1900 or y_int > now_year:
+                return None
+            return y_int
+
+        dfc = df_use.copy()
+        dfc["id"] = dfc["id"].astype(str)
+        dfc["birth_year_int"] = dfc["birth_year"].apply(_parse_birth_year)
+        dfc = dfc.dropna(subset=["birth_year_int"]).reset_index(drop=True)
+        if dfc.empty:
+            return
+        dfc["birth_year_int"] = dfc["birth_year_int"].astype(int)
+
+        # Limit pokoleń dla obliczeń F:
+        try:
+            depth = int(str(pop_depth_inb_var.get()).strip())
+        except Exception:
+            depth = 4
+        if depth < 0:
+            depth = 0
+        depth = min(depth, 30)
+        max_generations_back = None if bool(pop_unbounded_inb_var.get()) else depth
+
+        unique_ids = sorted(set(dfc["id"].tolist()))
+        f_map: dict[str, float] = {}
+        for pid in unique_ids:
+            if pid not in people:
+                continue
+            try:
+                f_map[pid] = float(
+                    wright_inbreeding_F(
+                        person_id=pid,
+                        people=people,  # type: ignore[arg-type]
+                        max_generations_back=max_generations_back,
+                    ).F
+                )
+            except Exception:
+                f_map[pid] = float("nan")
+
+        dfc["_F"] = dfc["id"].apply(lambda pid: f_map.get(str(pid), float("nan")))
+        dfc = dfc.dropna(subset=["_F"]).reset_index(drop=True)
+        if dfc.empty:
+            return
+
+        years = sorted(set(dfc["birth_year_int"].tolist()))
+
+        eps_inbred = 1e-15  # F>0 (w sensie numerycznym)
+
+        try:
+            f_vals = dfc["_F"].tolist() if "_F" in dfc.columns else []
+            if f_vals:
+                ria_overall = 100.0 * float(sum(1 for v in f_vals if v > eps_inbred)) / float(len(f_vals))
+                pop_ria_overall_var.set(f"- RIA ogółem (F>0): {ria_overall:.1f}%")
+        except Exception:
+            pass
+
+        # --- Wykres wg płci ---
+        _clear_frame(pop_inb_year_sex_plot_area)
+        cats_sex = ["M", "F"]
+        colors_sex = {"M": "#9ecbff", "F": "#ffb4c1"}
+
+        fig = plt.Figure(figsize=(9, 6), dpi=100)
+        ax_avg = fig.add_subplot(2, 1, 1)
+        ax_ria = fig.add_subplot(2, 1, 2)
+
+        for cat in cats_sex:
+            dfc_cat = dfc.copy()
+            sex_col = dfc_cat["sex"] if "sex" in dfc_cat.columns else None
+            if sex_col is None:
+                continue
+            mask_cat = dfc_cat["sex"].astype(str).str.strip().str.upper() == cat
+            avgF: list[float] = []
+            ria: list[float] = []
+            for y in years:
+                g = dfc_cat[(dfc_cat["birth_year_int"] == y) & mask_cat]
+                if g.empty:
+                    avgF.append(float("nan"))
+                    ria.append(float("nan"))
+                    continue
+                vals = g["_F"].tolist()
+                avgF.append(float(sum(vals)) / float(len(vals)))
+                ria.append(100.0 * float(sum(1 for v in vals if v > eps_inbred)) / float(len(vals)))
+            ax_avg.plot(years, avgF, marker="o", markersize=2, linewidth=2, color=colors_sex[cat], label=f"{cat}")
+            ax_ria.plot(years, ria, marker="o", markersize=2, linewidth=2, color=colors_sex[cat], label=f"{cat}")
+
+        ax_avg.set_title("Average Inbreeding Coefficient (F) w TP — wg płci")
+        ax_avg.set_xlabel("rok urodzenia")
+        ax_avg.set_ylabel("średnie F")
+        ax_avg.grid(True, alpha=0.25)
+        ax_avg.legend(fontsize=8)
+
+        ax_ria.set_title("Rate of Inbred Animals (RIA) w TP — wg płci")
+        ax_ria.set_xlabel("rok urodzenia")
+        ax_ria.set_ylabel("RIA (%) — F>0")
+        ax_ria.grid(True, alpha=0.25)
+        ax_ria.legend(fontsize=8)
+
+        if len(years) > 15:
+            step = 5
+            ticks = [y for i, y in enumerate(years) if i % step == 0]
+            ax_avg.set_xticks(ticks)
+            ax_ria.set_xticks(ticks)
+        fig.tight_layout()
+
+        ttk.Button(
+            pop_inb_year_sex_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig: save_figure_fn(f, default_basename="pop_inbred_trend_plec"),
+        ).pack(anchor="w", pady=(0, 6))
+
+        canvas = FigureCanvasTkAgg(fig, master=pop_inb_year_sex_plot_area)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # --- Wykres wg linii ---
+        _clear_frame(pop_inb_year_line_plot_area)
+        cats_line = ["LB", "LC", "NA"]
+        colors_line = {"LB": "#d64545", "LC": "#2e8b57", "NA": "#d6d0c4"}
+
+        fig2 = plt.Figure(figsize=(9, 6), dpi=100)
+        ax_avg2 = fig2.add_subplot(2, 1, 1)
+        ax_ria2 = fig2.add_subplot(2, 1, 2)
+
+        line_col = dfc["line"] if "line" in dfc.columns else None
+        if line_col is None:
+            return
+
+        line_norm = dfc["line"].astype(str).str.strip().str.upper()
+        for cat in cats_line:
+            mask_cat = line_norm == cat
+            avgF2: list[float] = []
+            ria2: list[float] = []
+            for y in years:
+                g = dfc[(dfc["birth_year_int"] == y) & mask_cat]
+                if g.empty:
+                    avgF2.append(float("nan"))
+                    ria2.append(float("nan"))
+                    continue
+                vals = g["_F"].tolist()
+                avgF2.append(float(sum(vals)) / float(len(vals)))
+                ria2.append(100.0 * float(sum(1 for v in vals if v > eps_inbred)) / float(len(vals)))
+            ax_avg2.plot(years, avgF2, marker="o", markersize=2, linewidth=2, color=colors_line[cat], label=f"{cat}")
+            ax_ria2.plot(years, ria2, marker="o", markersize=2, linewidth=2, color=colors_line[cat], label=f"{cat}")
+
+        ax_avg2.set_title("Average Inbreeding Coefficient (F) w TP — wg linii")
+        ax_avg2.set_xlabel("rok urodzenia")
+        ax_avg2.set_ylabel("średnie F")
+        ax_avg2.grid(True, alpha=0.25)
+        ax_avg2.legend(fontsize=8)
+
+        ax_ria2.set_title("Rate of Inbred Animals (RIA) w TP — wg linii")
+        ax_ria2.set_xlabel("rok urodzenia")
+        ax_ria2.set_ylabel("RIA (%) — F>0")
+        ax_ria2.grid(True, alpha=0.25)
+        ax_ria2.legend(fontsize=8)
+
+        if len(years) > 15:
+            step = 5
+            ticks2 = [y for i, y in enumerate(years) if i % step == 0]
+            ax_avg2.set_xticks(ticks2)
+            ax_ria2.set_xticks(ticks2)
+        fig2.tight_layout()
+
+        ttk.Button(
+            pop_inb_year_line_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig2: save_figure_fn(f, default_basename="pop_inbred_trend_linie"),
+        ).pack(anchor="w", pady=(0, 6))
+
+        canvas2 = FigureCanvasTkAgg(fig2, master=pop_inb_year_line_plot_area)
+        canvas2.draw()
+        canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # --- N_e (efektywna wielkość populacji) z trendu F ---
+        try:
+            import numpy as np
+
+            avgF_all: list[float] = []
+            for y in years:
+                g_all = dfc[dfc["birth_year_int"] == y]
+                if g_all.empty:
+                    avgF_all.append(float("nan"))
+                else:
+                    vals_all = g_all["_F"].tolist()
+                    avgF_all.append(float(sum(vals_all)) / float(len(vals_all)))
+
+            xs: list[float] = []
+            ys: list[float] = []
+            for y, v in zip(years, avgF_all):
+                if v == v and y == y:  # nan-safe
+                    xs.append(float(y))
+                    ys.append(float(v))
+
+            if len(xs) >= 2:
+                slope_per_year = float(np.polyfit(xs, ys, 1)[0])  # dF/dyear
+                gi_mean = state.get("population_gi_mean")
+                if gi_mean is not None and gi_mean > 0 and slope_per_year == slope_per_year:
+                    deltaF_per_gen = slope_per_year * float(gi_mean)
+                    if deltaF_per_gen > 0:
+                        ne = 1.0 / (2.0 * deltaF_per_gen)
+                        pop_ne_var.set(f"- N_e (efektywna wielkość populacji, z trendu F): {ne:.1f}")
+                    else:
+                        pop_ne_var.set("- N_e: brak wzrostu F (ΔF<=0)")
+        except Exception:
+            pass
+
+    except Exception:
+        return
+
+
+def render_founders_pi_chart(
+    *,
+    state: dict[str, Any],
+    colors: Any,
+    people: dict[str, Any] | None,
+    save_figure_fn: Callable[..., None],
+    pop_founders_plot_area: ttk.Frame,
+) -> None:
+    """Top założycieli (p_i) w zakładce populacji."""
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        _clear_frame(pop_founders_plot_area)
+
+        contribs = state.get("population_founder_contributions") or {}
+        founder_items: list[tuple[Any, Any]] = []
+        if isinstance(contribs, dict):
+            try:
+                founder_items = sorted(contribs.items(), key=lambda kv: kv[1], reverse=True)
+            except Exception:
+                founder_items = []
+
+        top_k = min(10, len(founder_items))
+        fig_fe = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+        ax_fe = fig_fe.add_subplot(1, 1, 1)
+
+        if top_k > 0:
+            top_items = founder_items[:top_k]
+            vals = [float(v) for _, v in top_items]
+            ids = [str(fid) for fid, _ in top_items]
+
+            ax_fe.bar(range(len(top_items)), vals, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
+            ax_fe.set_title(f"Top {top_k} założycieli (p_i)")
+            ax_fe.set_xlabel("założyciel (ID + imię)")
+            ax_fe.set_ylabel("p_i (udział)")
+            ax_fe.set_xticks(range(len(top_items)))
+
+            labels: list[str] = []
+            for fid in ids:
+                p = people.get(fid) if people else None
+                nm = getattr(p, "name", None) if p else None
+                labels.append(f"{fid} ({nm})" if nm else fid)
+            ax_fe.set_xticklabels(labels, rotation=60, ha="right", fontsize=8)
+        else:
+            ax_fe.text(0.5, 0.5, "Brak danych founder contributions", ha="center", va="center")
+            ax_fe.axis("off")
+
+        fig_fe.tight_layout()
+        ttk.Button(
+            pop_founders_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig_fe: save_figure_fn(f, default_basename="pop_founders_pi"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas_fe = FigureCanvasTkAgg(fig_fe, master=pop_founders_plot_area)
+        canvas_fe.draw()
+        canvas_fe.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    except Exception:
+        pass
+
+
+def render_gi_and_family_charts(
+    *,
+    colors: Any,
+    save_figure_fn: Callable[..., None],
+    people: dict[str, Any] | None,
+    gi_data: dict[str, Any],
+    pop_gi_plot_area: ttk.Frame,
+    pop_gi_trend_plot_area: ttk.Frame,
+    pop_family_plot_area: ttk.Frame,
+) -> None:
+    """Średnie GI, trend GI po dekadach, histogram wielkości rodzin pełnego rodzeństwa."""
+    if not people:
+        return
+
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        from collections import Counter
+
+        gi_decades: dict[str, dict[int, list[float]]] = gi_data.get("gi_decades") or {
+            "FS": {},
+            "FD": {},
+            "MS": {},
+            "MD": {},
+        }
+
+        # GI bar chart
+        _clear_frame(pop_gi_plot_area)
+        gi_vals = [
+            gi_data.get("gi_fs"),
+            gi_data.get("gi_fd"),
+            gi_data.get("gi_ms"),
+            gi_data.get("gi_md"),
+        ]
+        gi_labels = ["Ojciec→Syn", "Ojciec→Córka", "Matka→Syn", "Matka→Córka"]
+        fig_gi = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+        ax_gi = fig_gi.add_subplot(1, 1, 1)
+        x = list(range(len(gi_labels)))
+        bar_colors = [colors.BUTTON_BG2, colors.BUTTON_BG2, colors.BUTTON_BG, colors.BUTTON_BG]
+        shown = [(i, v) for i, v in enumerate(gi_vals) if v is not None]
+        if shown:
+            means = [v if v is not None else 0.0 for v in gi_vals]
+            ax_gi.bar(x, means, color=bar_colors, edgecolor=colors.ACCENT)
+            ax_gi.set_xticks(x)
+            ax_gi.set_xticklabels(gi_labels, rotation=20, ha="right", fontsize=8)
+        else:
+            ax_gi.text(0.5, 0.5, "Brak danych GI", ha="center", va="center")
+            ax_gi.axis("off")
+        ax_gi.set_title("Odstęp międzypokoleniowy (GI)")
+        ax_gi.set_ylabel("GI (lata)")
+        fig_gi.tight_layout()
+        ttk.Button(
+            pop_gi_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig_gi: save_figure_fn(f, default_basename="pop_gi_mean"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas_gi = FigureCanvasTkAgg(fig_gi, master=pop_gi_plot_area)
+        canvas_gi.draw()
+        canvas_gi.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # --- GI trend (w dekadach) ---
+        _clear_frame(pop_gi_trend_plot_area)
+        all_decades = sorted(set().union(*[set(gi_decades[k].keys()) for k in gi_decades.keys()]))
+        if all_decades:
+            decade_labels = [f"{d}-{d+9}" for d in all_decades]
+
+            def _decade_mean(path_key: str, d: int) -> float | None:
+                xs = gi_decades.get(path_key, {}).get(d, [])
+                if not xs:
+                    return None
+                return float(sum(xs)) / float(len(xs))
+
+            gi_fs = [_decade_mean("FS", d) for d in all_decades]
+            gi_fd = [_decade_mean("FD", d) for d in all_decades]
+            gi_ms = [_decade_mean("MS", d) for d in all_decades]
+            gi_md = [_decade_mean("MD", d) for d in all_decades]
+
+            fig_t = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+            ax_t = fig_t.add_subplot(1, 1, 1)
+            x_t = list(range(len(all_decades)))
+
+            def _to_plot(arr: list[float | None]) -> list[float]:
+                return [float(v) if v is not None else float("nan") for v in arr]
+
+            ax_t.plot(x_t, _to_plot(gi_fs), marker="o", linewidth=2, color="#9ecbff", label="Ojciec→Syn")
+            ax_t.plot(x_t, _to_plot(gi_fd), marker="o", linewidth=2, color="#ffb4c1", label="Ojciec→Córka")
+            ax_t.plot(x_t, _to_plot(gi_ms), marker="o", linewidth=2, color="#2e8b57", label="Matka→Syn")
+            ax_t.plot(x_t, _to_plot(gi_md), marker="o", linewidth=2, color="#d64545", label="Matka→Córka")
+
+            ax_t.set_title("GI (trend) — Ojciec/Mak x płeć potomstwa (dekady)")
+            ax_t.set_xlabel("dekada urodzenia potomstwa")
+            ax_t.set_ylabel("średni GI (lata)")
+            ax_t.grid(True, alpha=0.25)
+            ax_t.legend(fontsize=8)
+
+            if len(x_t) > 15:
+                step = 2
+            else:
+                step = 1
+            ticks = [i for i in x_t if i % step == 0]
+            ax_t.set_xticks(ticks)
+            ax_t.set_xticklabels(
+                [decade_labels[i] for i in ticks],
+                rotation=35,
+                ha="right",
+                fontsize=8,
+            )
+            fig_t.tight_layout()
+            ttk.Button(
+                pop_gi_trend_plot_area,
+                text="Zapis wykresu (jpeg)",
+                command=lambda f=fig_t: save_figure_fn(f, default_basename="pop_gi_trend"),
+            ).pack(anchor="w", pady=(0, 6))
+            canvas_t = FigureCanvasTkAgg(fig_t, master=pop_gi_trend_plot_area)
+            canvas_t.draw()
+            canvas_t.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        else:
+            fig_t = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+            ax_t = fig_t.add_subplot(1, 1, 1)
+            ax_t.text(0.5, 0.5, "Brak danych GI w dekadach", ha="center", va="center")
+            ax_t.axis("off")
+            fig_t.tight_layout()
+            ttk.Button(
+                pop_gi_trend_plot_area,
+                text="Zapis wykresu (jpeg)",
+                command=lambda f=fig_t: save_figure_fn(f, default_basename="pop_gi_trend"),
+            ).pack(anchor="w", pady=(0, 6))
+            canvas_t = FigureCanvasTkAgg(fig_t, master=pop_gi_trend_plot_area)
+            canvas_t.draw()
+            canvas_t.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # Family size histogram
+        _clear_frame(pop_family_plot_area)
+        fam_sizes = gi_data.get("family_sizes") or []
+        fig_f = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+        ax_f = fig_f.add_subplot(1, 1, 1)
+        if fam_sizes:
+            c = Counter(int(s) for s in fam_sizes)
+            max_show = 10
+            labels: list[str] = []
+            counts: list[int] = []
+            for s in range(1, max_show + 1):
+                labels.append(str(s))
+                counts.append(int(c.get(s, 0)))
+            labels.append(f"{max_show}+")
+            counts.append(int(sum(v for k, v in c.items() if k > max_show)))
+
+            x2 = list(range(len(labels)))
+            ax_f.bar(x2, counts, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
+            ax_f.set_xticks(x2)
+            ax_f.set_xticklabels(labels, fontsize=8)
+            ax_f.set_title("Rozkład wielkości rodzin pełnego rodzeństwa")
+            ax_f.set_xlabel("wielkość rodziny (liczba rodzeństwa pełnego)")
+            ax_f.set_ylabel("liczba rodzin")
+        else:
+            ax_f.text(0.5, 0.5, "Brak danych rodzin", ha="center", va="center")
+            ax_f.axis("off")
+        fig_f.tight_layout()
+        ttk.Button(
+            pop_family_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig_f: save_figure_fn(f, default_basename="pop_family_sizes"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas_f = FigureCanvasTkAgg(fig_f, master=pop_family_plot_area)
+        canvas_f.draw()
+        canvas_f.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    except Exception:
+        pass
+
+
 def run_tk_pro() -> None:
+    apply_matplotlib_fonts()
     root = tk.Tk()
     root.title("WisentPedigree Pro+")
     root.geometry("1280x860")
@@ -118,10 +937,10 @@ def run_tk_pro() -> None:
     if logo_img is not None:
         ttk.Label(header, image=logo_img).pack(side=tk.LEFT, padx=(0, 12))
 
-    ttk.Label(header, text="WisentPedigree Pro+", font=("TkDefaultFont", 18, "bold")).pack(side=tk.LEFT)
+    ttk.Label(header, text="WisentPedigree Pro+", font=tk_font(18, bold=True)).pack(side=tk.LEFT)
     subtitle = ttk.Label(
         header,
-        text="Wczytywanie bazy i mapowanie kolumn • Analizy osobnika i populacji • Interaktywny rodowód • Plan hodowlany • Walidacja bazy • Raporty DOCX/PDF",
+        text="Wczytywanie bazy i mapowanie kolumn • Analizy (m.in. plan hodowlany) • Interaktywny rodowód • Walidacja bazy • Raporty DOCX/PDF",
         foreground=colors.MUTED,
     )
     subtitle.pack(side=tk.LEFT, padx=(16, 0))
@@ -159,7 +978,6 @@ def run_tk_pro() -> None:
     tab_pedigree = ttk.Frame(notebook, padding=14)
     tab_analysis = ttk.Frame(notebook, padding=14)
     tab_population = ttk.Frame(notebook, padding=14)
-    tab_breeding = ttk.Frame(notebook, padding=14)
     tab_reports = ttk.Frame(notebook, padding=14)
     tab_settings = ttk.Frame(notebook, padding=14)
 
@@ -168,12 +986,23 @@ def run_tk_pro() -> None:
     notebook.add(tab_pedigree, text="Rodowód")
     notebook.add(tab_analysis, text="Analizy")
     notebook.add(tab_population, text="Populacja")
-    notebook.add(tab_breeding, text="Plan hodowlany")
     notebook.add(tab_reports, text="Raporty")
     notebook.add(tab_settings, text="Ustawienia")
 
+    # Wewnętrzny notebook: Inbred (F), Mating, Plan hodowlany.
+    analyses_nb = ttk.Notebook(tab_analysis)
+    analyses_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    tab_inb = ttk.Frame(analyses_nb, padding=10)
+    tab_pop = ttk.Frame(analyses_nb, padding=10)
+    tab_mating = ttk.Frame(analyses_nb, padding=10)
+    tab_breeding = ttk.Frame(analyses_nb, padding=10)
+    analyses_nb.add(tab_inb, text="Inbred (F)")
+    analyses_nb.add(tab_mating, text="Mating")
+    analyses_nb.add(tab_breeding, text="Plan hodowlany")
+
     def _placeholder(tab: ttk.Frame, title: str) -> None:
-        ttk.Label(tab, text=title, font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
+        ttk.Label(tab, text=title, font=tk_font(16, bold=True)).pack(anchor="w")
         ttk.Label(tab, text="Sekcja w przygotowaniu.", foreground=colors.MUTED).pack(anchor="w", pady=(8, 0))
 
     # -------------------------
@@ -965,7 +1794,7 @@ def run_tk_pro() -> None:
     settings_divider.pack(fill=tk.X, pady=(2, 10))
 
     # Rodowód (graf przodków)
-    ttk.Label(tab_settings, text="Rodowód (graf przodków)", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    ttk.Label(tab_settings, text="Rodowód (graf przodków)", font=tk_font(12, bold=True)).pack(anchor="w")
 
     settings_anc_readable_var = tk.BooleanVar(value=True)
     # Domyślnie pokazujemy pole "Max pokoleń" (czyli limit jest aktywny).
@@ -1008,7 +1837,7 @@ def run_tk_pro() -> None:
     settings_divider2.pack(fill=tk.X, pady=(14, 10))
 
     # Analizy: inbred (wybrany osobnik)
-    ttk.Label(tab_settings, text="Analiza indywidualna (Inbred F)", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    ttk.Label(tab_settings, text="Analiza indywidualna (Inbred F)", font=tk_font(12, bold=True)).pack(anchor="w")
     settings_inb_unbounded_var = tk.BooleanVar(value=True)
     settings_inb_depth_var = tk.StringVar(value="4")
 
@@ -1035,7 +1864,7 @@ def run_tk_pro() -> None:
     settings_divider3.pack(fill=tk.X, pady=(14, 10))
 
     # Populacja: trendy F
-    ttk.Label(tab_settings, text="Populacja (F, trendy w czasie)", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    ttk.Label(tab_settings, text="Populacja (F, trendy w czasie)", font=tk_font(12, bold=True)).pack(anchor="w")
     settings_pop_unbounded_var = tk.BooleanVar(value=False)
     settings_pop_depth_var = tk.StringVar(value="4")
 
@@ -1062,7 +1891,7 @@ def run_tk_pro() -> None:
     settings_divider4.pack(fill=tk.X, pady=(14, 10))
 
     # Raporty
-    ttk.Label(tab_settings, text="Raporty", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    ttk.Label(tab_settings, text="Raporty", font=tk_font(12, bold=True)).pack(anchor="w")
     ttk.Checkbutton(
         tab_settings,
         text="Domyślnie: dołączaj wykresy w eksporcie raportu (DOCX/PDF)",
@@ -1078,7 +1907,7 @@ def run_tk_pro() -> None:
     settings_divider5.pack(fill=tk.X, pady=(14, 10))
 
     # Plan hodowlany
-    ttk.Label(tab_settings, text="Plan hodowlany", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    ttk.Label(tab_settings, text="Plan hodowlany", font=tk_font(12, bold=True)).pack(anchor="w")
 
     settings_plan_unbounded_var = tk.BooleanVar(value=False)
     settings_plan_depth_var = tk.StringVar(value="4")
@@ -1208,7 +2037,7 @@ def run_tk_pro() -> None:
 
     pop_title_row = ttk.Frame(pop_frame)
     pop_title_row.pack(side=tk.TOP, fill=tk.X)
-    ttk.Label(pop_title_row, text="Podstawowe statystyki:", foreground=colors.TEXT, font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(pop_title_row, text="Podstawowe statystyki:", foreground=colors.TEXT, font=tk_font(12, bold=True)).pack(
         side=tk.LEFT, anchor="w"
     )
     ttk.Button(
@@ -1240,7 +2069,7 @@ def run_tk_pro() -> None:
         pop_inb_param_frame,
         text="Parametry F (dla wykresów populacyjnych):",
         foreground=colors.TEXT,
-        font=("TkDefaultFont", 12, "bold"),
+        font=tk_font(12, bold=True),
     ).pack(anchor="w")
 
     pop_unbounded_inb_cb = ttk.Checkbutton(
@@ -1268,7 +2097,7 @@ def run_tk_pro() -> None:
         pop_frame,
         text="Wskaźniki genetyczne i demograficzne:",
         foreground=colors.TEXT,
-        font=("TkDefaultFont", 12, "bold"),
+        font=tk_font(12, bold=True),
     ).pack(anchor="w", pady=(12, 0))
 
     pop_meta_grid = ttk.Frame(pop_frame)
@@ -1307,13 +2136,13 @@ def run_tk_pro() -> None:
 
     # Urodzenia (płeć)
     tab_birth_sex = _plot_tab("Urodzenia: płeć")
-    ttk.Label(tab_birth_sex, text="Liczba osobników urodzonych w dekadach (płeć)", font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(tab_birth_sex, text="Liczba osobników urodzonych w dekadach (płeć)", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
     ttk.Label(
         tab_birth_sex,
         text="Interpretacja: " + hc.CHART_BIRTH_SEX,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1323,13 +2152,13 @@ def run_tk_pro() -> None:
 
     # Urodzenia (linie)
     tab_birth_line = _plot_tab("Urodzenia: LB/LC")
-    ttk.Label(tab_birth_line, text="Liczba osobników urodzonych w dekadach (LB vs LC)", font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(tab_birth_line, text="Liczba osobników urodzonych w dekadach (LB vs LC)", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
     ttk.Label(
         tab_birth_line,
         text="Interpretacja: " + hc.CHART_BIRTH_LINE,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1339,13 +2168,13 @@ def run_tk_pro() -> None:
 
     # Female/Male ratio
     tab_birth_ratio = _plot_tab("Female/Male (1900+)")
-    ttk.Label(tab_birth_ratio, text="Female/Male ratio urodzeń od 1900 roku", font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(tab_birth_ratio, text="Female/Male ratio urodzeń od 1900 roku", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
     ttk.Label(
         tab_birth_ratio,
         text="Interpretacja: " + hc.CHART_FM_RATIO,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1355,13 +2184,13 @@ def run_tk_pro() -> None:
 
     # GI (bar)
     tab_gi = _plot_tab("GI (średni)")
-    ttk.Label(tab_gi, text="Odstęp międzypokoleniowy (GI) — średni wiek rodziców", font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(tab_gi, text="Odstęp międzypokoleniowy (GI) — średni wiek rodziców", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
     ttk.Label(
         tab_gi,
         text="Interpretacja: " + hc.CHART_GI_BAR,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1371,13 +2200,13 @@ def run_tk_pro() -> None:
 
     # GI trend
     tab_gi_trend = _plot_tab("GI trend (dekady)")
-    ttk.Label(tab_gi_trend, text="GI w czasie (trend) — dekady i 4 ścieżki", font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(tab_gi_trend, text="GI w czasie (trend) — dekady i 4 ścieżki", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
     ttk.Label(
         tab_gi_trend,
         text="Interpretacja: " + hc.CHART_GI_TREND,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1387,11 +2216,11 @@ def run_tk_pro() -> None:
 
     # Rodziny pełne
     tab_family = _plot_tab("Rodziny pełne")
-    ttk.Label(tab_family, text="Struktura rodzin pełnego rodzeństwa", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    ttk.Label(tab_family, text="Struktura rodzin pełnego rodzeństwa", font=tk_font(12, bold=True)).pack(anchor="w")
     ttk.Label(
         tab_family,
         text="Interpretacja: " + hc.CHART_FAMILY,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1401,13 +2230,13 @@ def run_tk_pro() -> None:
 
     # Kompletność (płeć)
     tab_comp_sex = _plot_tab("Kompletność: płeć")
-    ttk.Label(tab_comp_sex, text="Kompletność rodowodu: MG / CG / EG wg płci", font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(tab_comp_sex, text="Kompletność rodowodu: MG / CG / EG wg płci", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
     ttk.Label(
         tab_comp_sex,
         text="Interpretacja: " + hc.CHART_COMP_SEX,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1417,13 +2246,13 @@ def run_tk_pro() -> None:
 
     # Kompletność (linie)
     tab_comp_line = _plot_tab("Kompletność: LB/LC")
-    ttk.Label(tab_comp_line, text="Kompletność rodowodu: MG / CG / EG wg linii LB / LC", font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(tab_comp_line, text="Kompletność rodowodu: MG / CG / EG wg linii LB / LC", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
     ttk.Label(
         tab_comp_line,
         text="Interpretacja: " + hc.CHART_COMP_LINE,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1433,13 +2262,13 @@ def run_tk_pro() -> None:
 
     # Inbred TP (płeć)
     tab_inb_year_sex = _plot_tab("Inbred TP: płeć")
-    ttk.Label(tab_inb_year_sex, text="Average F i RIA (%) w czasie — wg płci", font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(tab_inb_year_sex, text="Average F i RIA (%) w czasie — wg płci", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
     ttk.Label(
         tab_inb_year_sex,
         text="Interpretacja: " + hc.CHART_INBRED_TP_SEX,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1449,13 +2278,13 @@ def run_tk_pro() -> None:
 
     # Inbred TP (linie)
     tab_inb_year_line = _plot_tab("Inbred TP: LB/LC")
-    ttk.Label(tab_inb_year_line, text="Average F i RIA (%) w czasie — wg linii LB/LC", font=("TkDefaultFont", 12, "bold")).pack(
+    ttk.Label(tab_inb_year_line, text="Average F i RIA (%) w czasie — wg linii LB/LC", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
     ttk.Label(
         tab_inb_year_line,
         text="Interpretacja: " + hc.CHART_INBRED_TP_LINE,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -1465,11 +2294,11 @@ def run_tk_pro() -> None:
 
     # Founder contributions
     tab_founders = _plot_tab("Założyciele: p_i")
-    ttk.Label(tab_founders, text="Wkład genetyczny założycieli (top p_i)", font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+    ttk.Label(tab_founders, text="Wkład genetyczny założycieli (top p_i)", font=tk_font(12, bold=True)).pack(anchor="w")
     ttk.Label(
         tab_founders,
         text="Interpretacja: " + hc.CHART_FOUNDERS_PI,
-        font=("TkDefaultFont", 8),
+        font=tk_font(8),
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -2130,9 +2959,39 @@ def run_tk_pro() -> None:
     id_anc_entry.grid(row=0, column=1, sticky="w", padx=(8, 16))
 
     ttk.Label(rod_header, text="Max pokoleń:").grid(row=0, column=2, sticky="w")
-    depth_anc_var = tk.StringVar(value="4")
-    depth_anc_entry = ttk.Entry(rod_header, textvariable=depth_anc_var, width=10, state="disabled")
-    depth_anc_entry.grid(row=0, column=3, sticky="w", padx=(8, 16))
+    depth_anc_intvar = tk.IntVar(value=4)
+    depth_anc_display = tk.StringVar(value="4")
+
+    def _sync_anc_depth_display(*_args: object) -> None:
+        try:
+            depth_anc_display.set(str(int(depth_anc_intvar.get())))
+        except Exception:
+            depth_anc_display.set("4")
+
+    depth_anc_intvar.trace_add("write", lambda *_a: _sync_anc_depth_display())
+
+    def _clamp_anc_scale(_v: str) -> None:
+        try:
+            n = int(round(float(_v)))
+        except Exception:
+            return
+        n = max(0, min(30, n))
+        if int(depth_anc_intvar.get()) != n:
+            depth_anc_intvar.set(n)
+
+    depth_anc_controls = ttk.Frame(rod_header)
+    depth_anc_controls.grid(row=0, column=3, sticky="w", padx=(8, 16))
+    depth_anc_scale = ttk.Scale(
+        depth_anc_controls,
+        from_=0,
+        to=30,
+        orient=tk.HORIZONTAL,
+        variable=depth_anc_intvar,
+        length=220,
+        command=_clamp_anc_scale,
+    )
+    depth_anc_scale.pack(side=tk.LEFT)
+    ttk.Label(depth_anc_controls, textvariable=depth_anc_display, width=4).pack(side=tk.LEFT, padx=(10, 0))
 
     readable_anc_var = tk.BooleanVar(value=True)
     readable_anc_cb = ttk.Checkbutton(
@@ -2174,7 +3033,7 @@ def run_tk_pro() -> None:
         anc_enabled = readable_anc_cb.cget("state") == "normal"
         st = "normal" if anc_enabled else "disabled"
         depth_state = "disabled" if bool(unbounded_anc_var.get()) else st
-        depth_anc_entry.configure(state=depth_state)
+        depth_anc_scale.configure(state=depth_state)
 
     _sync_anc_depth_state()
     unbounded_anc_var.trace_add("write", lambda *_args: _sync_anc_depth_state())
@@ -2189,7 +3048,7 @@ def run_tk_pro() -> None:
     rod_canvas_container.pack(fill=tk.BOTH, expand=True, pady=(14, 0))
     rod_title_var = tk.StringVar(value="Wykres przodków")
     ttk.Label(rod_canvas_container, textvariable=rod_title_var, foreground=colors.MUTED).pack(anchor="w")
-    ttk.Label(rod_canvas_container, text="Linie (sire/dam):", foreground=colors.MUTED, font=("TkDefaultFont", 11, "bold")).pack(
+    ttk.Label(rod_canvas_container, text="Linie (sire/dam):", foreground=colors.MUTED, font=tk_font(11, bold=True)).pack(
         anchor="w", pady=(4, 0)
     )
 
@@ -2229,16 +3088,8 @@ def run_tk_pro() -> None:
     rod_plot_frame.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
 
     # -------------------------
-    # Analyses tab (inbreeding)
+    # Analyses tab — Inbred (F) (analyses_nb utworzony wyżej wraz z Mating i Planem)
     # -------------------------
-    analyses_nb = ttk.Notebook(tab_analysis)
-    analyses_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-    tab_inb = ttk.Frame(analyses_nb, padding=10)
-    tab_pop = ttk.Frame(analyses_nb, padding=10)
-    tab_mating = ttk.Frame(analyses_nb, padding=10)
-    analyses_nb.add(tab_inb, text="Inbred (F)")
-    analyses_nb.add(tab_mating, text="Mating")
     # Ogólne parametry populacyjne pokazujemy w zakładce "Populacja" (nie w "Analizy").
 
     ana_header = ttk.Frame(tab_inb)
@@ -2270,7 +3121,7 @@ def run_tk_pro() -> None:
     )
 
     inb_result_var = tk.StringVar(value="F = -")
-    ttk.Label(tab_inb, textvariable=inb_result_var, font=("TkDefaultFont", 16, "bold")).pack(anchor="w", pady=(14, 0))
+    ttk.Label(tab_inb, textvariable=inb_result_var, font=tk_font(16, bold=True)).pack(anchor="w", pady=(14, 0))
     inb_note_var = tk.StringVar(value="")
     # Zamiast jednej długiej etykiety używamy siatki (3-4 kolumny),
     # żeby treść była czytelniejsza i nie zajmowała całej szerokości.
@@ -2350,6 +3201,8 @@ def run_tk_pro() -> None:
     mating_note_lbl.pack(anchor="w", pady=(2, 8))
 
     mating_age_limit_years = 15  # fixed by requirement
+    mating_ranking_top_n = 36
+    mating_ranking_max_uses_per_id = 3  # sire i dam liczone osobno w liście wynikowej
 
     mating_unbounded_var = tk.BooleanVar(value=False)
     mating_unbounded_cb = ttk.Checkbutton(
@@ -2379,7 +3232,7 @@ def run_tk_pro() -> None:
     mating_female_limit_entry = ttk.Entry(mating_limits_frame, textvariable=mating_female_limit_var, width=8, state="disabled")
     mating_female_limit_entry.grid(row=1, column=1, sticky="w", pady=(0, 10))
 
-    mating_calc_btn = ttk.Button(tab_mating, text="Policz ranking mating (top 10)", state="disabled")
+    mating_calc_btn = ttk.Button(tab_mating, text="Policz ranking mating (top 36)", state="disabled")
     mating_calc_btn.pack(anchor="w", pady=(0, 8))
 
     mating_output = tk.Text(tab_mating, height=16, wrap="word")
@@ -2423,7 +3276,9 @@ def run_tk_pro() -> None:
         current_year = datetime.now().year
         cutoff_birth_year = current_year - mating_age_limit_years
         mating_current_year_note_var.set(
-            f"Filtr wieku: wiek <= {mating_age_limit_years} lat => birth_year >= {cutoff_birth_year} (rok {current_year})."
+            f"Filtr wieku: wiek <= {mating_age_limit_years} lat => birth_year >= {cutoff_birth_year} (rok {current_year}). "
+            f"Ranking: do {mating_ranking_top_n} par (najmniejsze F); w liście każdy osobnik (jako sire lub dam) "
+            f"maks. {mating_ranking_max_uses_per_id} razy."
         )
 
         # Standardowy DataFrame po loaderze ma już id/sex/father_id/mother_id, więc filtrujemy po birth_year + sex.
@@ -2494,12 +3349,26 @@ def run_tk_pro() -> None:
                 for i in range(len(parent_pairs))
             ]
             ranked.sort(key=lambda t: t[0])  # smallest F first
-            top_k = min(10, len(ranked))
-            top = ranked[:top_k]
+            use_count: dict[str, int] = {}
+            top: list[tuple[float, str, str]] = []
+            for F_val, sire_id, dam_id in ranked:
+                if len(top) >= mating_ranking_top_n:
+                    break
+                if use_count.get(sire_id, 0) >= mating_ranking_max_uses_per_id:
+                    continue
+                if use_count.get(dam_id, 0) >= mating_ranking_max_uses_per_id:
+                    continue
+                top.append((F_val, sire_id, dam_id))
+                use_count[sire_id] = use_count.get(sire_id, 0) + 1
+                use_count[dam_id] = use_count.get(dam_id, 0) + 1
 
             mating_output.configure(state="normal")
             mating_output.delete("1.0", tk.END)
-            mating_output.insert("1.0", f"Top {top_k} par (najmniejsze F potomka):\n\n")
+            mating_output.insert(
+                "1.0",
+                f"Wybrane {len(top)} par (cel do {mating_ranking_top_n}, najmniejsze F potomka; "
+                f"każdy ID max {mating_ranking_max_uses_per_id}× w tej liście):\n\n",
+            )
             for idx, (F_val, sire_id, dam_id) in enumerate(top, start=1):
                 sire_nm = getattr(people.get(sire_id), "name", None) if people.get(sire_id) else None
                 dam_nm = getattr(people.get(dam_id), "name", None) if people.get(dam_id) else None
@@ -2552,9 +3421,9 @@ def run_tk_pro() -> None:
     def set_controls_enabled(enabled: bool) -> None:
         st = "normal" if enabled else "disabled"
         id_anc_entry.configure(state=st)
-        # Gdy bez limitu jest włączone, blokujemy wpis max pokoleń.
+        # Gdy bez limitu jest włączone, blokujemy suwak max pokoleń.
         depth_state = "disabled" if bool(unbounded_anc_var.get()) else st
-        depth_anc_entry.configure(state=depth_state)
+        depth_anc_scale.configure(state=depth_state)
         readable_anc_cb.configure(state=st)
         anc_line_radio_sire.configure(state=st)
         anc_line_radio_dam.configure(state=st)
@@ -2609,7 +3478,11 @@ def run_tk_pro() -> None:
             # Ustaw wartości domyślne z zakładki "Ustawienia".
             readable_anc_var.set(bool(settings_anc_readable_var.get()))
             unbounded_anc_var.set(bool(settings_anc_unbounded_var.get()))
-            depth_anc_var.set(str(settings_anc_depth_var.get()).strip() or "4")
+            try:
+                _danc = int(str(settings_anc_depth_var.get()).strip() or "4")
+            except Exception:
+                _danc = 4
+            depth_anc_intvar.set(max(0, min(30, _danc)))
 
             unbounded_inb_var.set(bool(settings_inb_unbounded_var.get()))
             depth_inb_var.set(str(settings_inb_depth_var.get()).strip() or "4")
@@ -2771,7 +3644,7 @@ def run_tk_pro() -> None:
                 ttk.Label(
                     pop_tab_f,
                     text="Wykres F (Wright) dla całej populacji: pokazuje rozkład inbredu wywołanego wspólnymi przodkami.",
-                    font=("TkDefaultFont", 8),
+                    font=tk_font(8),
                     foreground=colors.MUTED,
                     wraplength=900,
                     justify="left",
@@ -2802,7 +3675,7 @@ def run_tk_pro() -> None:
                 ttk.Label(
                     pop_tab_comp,
                     text="Kompletność rodowodu: EG to suma wkładów przodków (1/2)^pokolenie, a PCI jest uśrednioną jakością kompletności po pokoleniach.",
-                    font=("TkDefaultFont", 8),
+                    font=tk_font(8),
                     foreground=colors.MUTED,
                     wraplength=900,
                     justify="left",
@@ -2847,7 +3720,7 @@ def run_tk_pro() -> None:
                 ttk.Label(
                     pop_tab_founders,
                     text="Wkład założycieli (p_i) wyliczony z founder-stop: pokazuje, którzy przodkowie odpowiadają za największą część różnorodności genetycznej.",
-                    font=("TkDefaultFont", 8),
+                    font=tk_font(8),
                     foreground=colors.MUTED,
                     wraplength=900,
                     justify="left",
@@ -2878,7 +3751,7 @@ def run_tk_pro() -> None:
                 ttk.Label(
                     pop_tab_lines,
                     text="Rozkład przynależności do linii (LB/LC) dla ocenianej populacji. Kolumna `line` pochodzi z pliku Excela.",
-                    font=("TkDefaultFont", 8),
+                    font=tk_font(8),
                     foreground=colors.MUTED,
                     wraplength=900,
                     justify="left",
@@ -3097,14 +3970,10 @@ def run_tk_pro() -> None:
         depth: int | None = None
         if not unbounded:
             try:
-                depth = int(str(depth_anc_var.get()).strip())
+                depth = int(depth_anc_intvar.get())
             except Exception:
-                messagebox.showerror("Błąd", "Max pokoleń musi być liczbą całkowitą.")
-                return
-            if depth < 0:
-                messagebox.showerror("Błąd", "Max pokoleń nie może być ujemne.")
-                return
-            depth = min(depth, 30)
+                depth = 4
+            depth = max(0, min(30, depth))
 
         # Budujemy `levels` i `edges` w zależności od trybu linii.
         def _build_levels_edges_line(follow: str) -> tuple[dict[str, int], list[tuple[str, str]]]:
@@ -3189,6 +4058,10 @@ def run_tk_pro() -> None:
                 id_inb_var.set(nid)
                 try:
                     notebook.select(tab_analysis)
+                except Exception:
+                    pass
+                try:
+                    analyses_nb.select(tab_inb)
                 except Exception:
                     pass
                 try:
@@ -3529,7 +4402,7 @@ def run_tk_pro() -> None:
         ttk.Label(
             comp_frame,
             text="PCL (Pedigree Completeness Level) pokazuje, w którym pokoleniu wstecz mamy ilu przodków względem maksimum (2^g).",
-            font=("TkDefaultFont", 8),
+            font=tk_font(8),
             foreground=colors.MUTED,
             wraplength=900,
             justify="left",
@@ -3546,6 +4419,13 @@ def run_tk_pro() -> None:
         except Exception:
             pass
 
+    def _go_to_plan_hodowlany() -> None:
+        _go_to_tab(tab_analysis)
+        try:
+            analyses_nb.select(tab_breeding)
+        except Exception:
+            pass
+
     def _show_about_app() -> None:
         about_text = (
             "WisentPedigree Pro+\n\n"
@@ -3556,7 +4436,7 @@ def run_tk_pro() -> None:
             "- Analizy osobnika (Wright F, kompletność rodowodu, linie),\n"
             "- Analizy populacyjne i wizualizacje,\n"
             "- Interaktywny graf rodowodowy,\n"
-            "- Plan hodowlany (dobór par i ryzyko inbredu potomstwa),\n"
+            "- Plan hodowlany w zakładce Analizy (dobór par i ryzyko inbredu potomstwa),\n"
             "- Raporty DOCX/PDF (opcjonalnie z wykresami).\n\n"
             "Autor: Magdalena Perlinska-Teresiak\n"
             "Rok: 2026"
@@ -3582,7 +4462,7 @@ def run_tk_pro() -> None:
 
     menu_analysis = tk.Menu(menubar, tearoff=0)
     menu_analysis.add_command(label="Analizy osobnika", command=lambda: _go_to_tab(tab_analysis))
-    menu_analysis.add_command(label="Plan hodowlany", command=lambda: _go_to_tab(tab_breeding))
+    menu_analysis.add_command(label="Plan hodowlany", command=_go_to_plan_hodowlany)
     menu_analysis.add_command(label="Analizy populacji", command=lambda: _go_to_tab(tab_population))
     menubar.add_cascade(label="Analiza", menu=menu_analysis)
 

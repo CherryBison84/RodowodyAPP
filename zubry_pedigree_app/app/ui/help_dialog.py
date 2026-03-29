@@ -5,6 +5,8 @@ Małe okno z przewijanym tekstem pomocy — wyświetlane z poziomu wersji na pul
 from __future__ import annotations
 
 import tkinter as tk
+
+from app.ui.typography import tk_font
 from tkinter import ttk, scrolledtext
 
 
@@ -25,7 +27,7 @@ def show_help_window(
     txt = scrolledtext.ScrolledText(
         win,
         wrap="word",
-        font=("TkDefaultFont", 10),
+        font=tk_font(10),
         padx=10,
         pady=10,
     )

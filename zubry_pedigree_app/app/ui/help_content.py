@@ -104,7 +104,7 @@ SECTION_MATING = """
 ## Mating (ranking par)
 
 - Dla par **samiec × samica** z populacji (po filtrze wieku) liczone jest **F hipotetycznego potomka** przy tych samych zasadach co F w rodowodzie.
-- **TOP 10** — pary z **najmniejszym** F (najmniejsze oczekiwane inbred u potomka przy tym modelu).
+- **Do 36 par** — wszystkie pary są sortowane po **najmniejszym** F, a następnie wybierane **zachłannie** kolejne najlepsze pary z ograniczeniem: **ten sam osobnik** (jako ojciec lub matka) może pojawić się w liście wynikowej **co najwyżej 3 razy**. Dzięki temu ranking nie składa się z wielokrotnych powtórzeń tych samych reproduktorów.
 - Limity liczby samców/samic i limit pokoleń wpływają na czas obliczeń i zakres przeszukania — to nie jest pełna enumeracja całej populacji, jeśli limity są niskie.
 """
 
@@ -132,6 +132,8 @@ SECTION_REPORTS = """
 
 SECTION_BREEDING = """
 ## Plan hodowlany (Tk)
+
+W głównym oknie: **Analizy → Plan hodowlany** (podzakładka obok Inbred i Mating).
 
 Moduł wspiera **dobór par** z ograniczeniami (wiek, linia, limity użyć reproduktorów, cele F średniej/maks.). Wyniki zależą od kompletności rodowodów i parametrów ryzyka inbredu (głębokość liczenia F dla hipotetycznego potomka).
 

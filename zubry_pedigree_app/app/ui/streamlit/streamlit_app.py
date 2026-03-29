@@ -10,7 +10,7 @@ from pathlib import Path
 import streamlit as st
 
 from app.ui.streamlit import common as sc
-from app.ui.streamlit.sections import (
+from app.ui.streamlit.pages import (
     section_analysis_inbred,
     section_analysis_mating,
     section_breeding_placeholder,
@@ -61,7 +61,7 @@ def run_streamlit_direct() -> None:
             st.markdown(sc.SECTION_VALIDATION)
 
     st.markdown(
-        f'<p style="color:{sc.THEME.MUTED};font-size:0.95rem;margin-top:0;">'
+        f'<p style="color:{sc.THEME.MUTED};font-family:{sc.FONT_FAMILY_CSS};font-size:0.95rem;margin-top:0;">'
         "Wczytywanie i mapowanie • Analizy • Rodowód • Populacja • Raporty • Walidacja"
         "</p>",
         unsafe_allow_html=True,

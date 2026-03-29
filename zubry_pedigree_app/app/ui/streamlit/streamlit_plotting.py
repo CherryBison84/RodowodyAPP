@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from pandas import isna
 
+from app.ui.typography import apply_matplotlib_fonts
 from app.analytics.inbreeding_wright import wright_inbreeding_F
 from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
 
@@ -22,6 +23,8 @@ ACCENT = "#caa86e"
 MUTED = "#2c6a4e"
 BUTTON_BG = "#dff4e3"
 BUTTON_BG2 = "#c8ead4"
+
+apply_matplotlib_fonts()
 
 
 def _parse_birth_year(v: object, *, lo: int = 1881, hi: int | None = None) -> int | None:
@@ -371,7 +374,7 @@ def fig_histogram_f(f_values: List[float]) -> plt.Figure:
 
 
 # --- GI, rodziny, trendy F (jak w gui_pro) ---
-# compute_gi_and_family_data: app.analytics.population_gi
+# compute_gi_and_family_data: app.analytics.population_genetics
 
 
 def fig_gi_mean_bar(gi_data: Dict[str, Any]) -> plt.Figure:

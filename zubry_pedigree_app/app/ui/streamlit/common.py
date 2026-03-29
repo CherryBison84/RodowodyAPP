@@ -15,6 +15,7 @@ from app.data.dataset_loader import load_default_bison_report
 from app.data.validator import validate_loaded_dataset
 from app.ui import help_content as hc
 from app.ui.tk.theme import Theme
+from app.ui.typography import apply_matplotlib_fonts, css_font_family
 
 THEME = Theme()
 
@@ -27,9 +28,16 @@ def help_expander(title: str, body: str, *, expanded: bool = False) -> None:
 
 def apply_page_style() -> None:
     """CSS: jasne tło + ciemny tekst (kontrast)."""
+    apply_matplotlib_fonts()
+    ff = css_font_family()
     st.markdown(
         f"""
         <style>
+        html, body, .stApp,
+        .stApp [data-testid="stMarkdownContainer"],
+        .stApp button, .stApp input, .stApp textarea, .stApp select {{
+            font-family: {ff} !important;
+        }}
         .stApp {{
             background-color: {THEME.APP_BG};
             color: {THEME.TEXT};
@@ -125,6 +133,9 @@ def fmt_line_block(mem: object) -> str:
         f"Damline: {mem.dam_founder_id} ({mem.dam_founder_name or 'NA'}) [steps={mem.dam_steps}]"
     )
 
+
+# Ta sama rodzina co w CSS (np. do inline HTML w streamlit_app)
+FONT_FAMILY_CSS = css_font_family()
 
 # Eksport help_content dla sekcji (sidebar)
 GLOSSARY = hc.GLOSSARY

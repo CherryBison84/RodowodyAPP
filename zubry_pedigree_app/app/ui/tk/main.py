@@ -17,6 +17,7 @@ from app.pedigree.ancestor_pedigree import (
     get_ancestor_levels_and_edges,
 )
 from app.visualizations.ancestor_plot import plot_ancestor_pedigree
+from app.ui.typography import tk_font
 from app.analytics.inbreeding_wright import wright_inbreeding_F
 
 
@@ -201,7 +202,7 @@ def run_tk() -> None:
     calc_inb_btn.grid(row=0, column=4, sticky="w")
 
     inb_result_var = tk.StringVar(value="F = -")
-    ttk.Label(tab_inb, textvariable=inb_result_var, font=("TkDefaultFont", 12, "bold")).grid(
+    ttk.Label(tab_inb, textvariable=inb_result_var, font=tk_font(12, bold=True)).grid(
         row=2, column=0, columnspan=5, sticky="w", pady=(14, 0)
     )
     inb_method_var = tk.StringVar(
