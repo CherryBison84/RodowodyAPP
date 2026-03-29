@@ -28,3 +28,7 @@ def test_phi_matches_offspring_f_and_r_is_twice_phi() -> None:
     assert abs(r - 2.0 * phi) < 1e-9
     # Rodzeństwo pełne: F potomka rodziców-rodzeństwa = 0.25
     assert abs(phi - 0.25) < 1e-6
+    # Kolejność argumentów Φ nie zmienia wyniku (symetria Malecota).
+    phi_rev, r_rev = wright_kinship_phi_and_relationship_R("D", "S", people, max_generations_back=max_back)
+    assert abs(phi - phi_rev) < 1e-9
+    assert abs(r - r_rev) < 1e-9

@@ -8,7 +8,6 @@ Dodatkowo: odstępy międzypokoleniowe (GI) i wielkości rodzin pełnego rodzeń
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
 from statistics import mean, median
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -19,6 +18,54 @@ from app.pedigree.ancestor_pedigree import Person, get_ancestor_levels_unbounded
 
 
 TEST_ID = "99999"
+
+
+class FounderContributionComputer:
+    """
+    Wkłady genów od założycieli (founder-stop: brak ojca lub matki = koniec gałęzi),
+    spójnie z `wright_inbreeding_F`. Wynik dla osobnika sumuje się do 1.0.
+    """
+
+    def __init__(self, people: Mapping[str, Person]):
+        self._people = people
+        self._memo: Dict[str, Dict[str, float]] = {}
+
+    def contributions_for(self, person_id: str) -> Dict[str, float]:
+        pid = _safe_str_id(person_id)
+        if pid is None or pid not in self._people:
+            return {}
+        if pid in self._memo:
+            return self._memo[pid]
+
+        p = self._people.get(pid)
+        if p is None:
+            out = {pid: 1.0}
+        elif p.father_id is None or p.mother_id is None:
+            out = {pid: 1.0}
+        else:
+            fa = p.father_id
+            mo = p.mother_id
+            if fa not in self._people:
+                fa_contrib = {fa: 1.0}
+            else:
+                fa_contrib = self.contributions_for(fa)
+            if mo not in self._people:
+                mo_contrib = {mo: 1.0}
+            else:
+                mo_contrib = self.contributions_for(mo)
+            out: Dict[str, float] = {}
+            for k, v in fa_contrib.items():
+                out[k] = out.get(k, 0.0) + 0.5 * float(v)
+            for k, v in mo_contrib.items():
+                out[k] = out.get(k, 0.0) + 0.5 * float(v)
+
+        self._memo[pid] = out
+        return out
+
+
+def compute_individual_founder_contributions(person_id: str, people: Mapping[str, Person]) -> Dict[str, float]:
+    """Słownik założyciel_id → udział (0–1), suma = 1.0 przy pełnej rozwiązywalności gałęzi."""
+    return FounderContributionComputer(people).contributions_for(person_id)
 
 
 @dataclass(frozen=True)
@@ -198,37 +245,10 @@ def compute_population_genetics_stats(
         # Zakładamy, że wkład dla osobnika traktuje brak ojca lub matki jak founder stop,
         # analogicznie do F: cała gałąź kończy się i nie schodzimy dalej.
 
-        @lru_cache(maxsize=None)
-        def contributions_to_founders(pid: str) -> Dict[str, float]:
-            p = people.get(pid)
-            if p is None:
-                return {pid: 1.0}
-            if p.father_id is None or p.mother_id is None:
-                return {pid: 1.0}
-
-            fa = p.father_id
-            mo = p.mother_id
-
-            if fa not in people:
-                fa_contrib = {fa: 1.0}
-            else:
-                fa_contrib = contributions_to_founders(fa)
-
-            if mo not in people:
-                mo_contrib = {mo: 1.0}
-            else:
-                mo_contrib = contributions_to_founders(mo)
-
-            out: Dict[str, float] = {}
-            for k, v in fa_contrib.items():
-                out[k] = out.get(k, 0.0) + 0.5 * float(v)
-            for k, v in mo_contrib.items():
-                out[k] = out.get(k, 0.0) + 0.5 * float(v)
-            return out
-
+        fc = FounderContributionComputer(people)
         founder_totals: Dict[str, float] = {}
         for pid in ids:
-            contribs = contributions_to_founders(pid)
+            contribs = fc.contributions_for(pid)
             for founder_id, v in contribs.items():
                 founder_totals[founder_id] = founder_totals.get(founder_id, 0.0) + float(v)
 

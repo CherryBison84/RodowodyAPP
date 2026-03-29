@@ -40,7 +40,13 @@ from app.analytics.line_membership import (
     compute_all_line_memberships,
     get_line_membership,
 )
-from app.analytics.population_genetics import TEST_ID, compute_gi_and_family_data, compute_population_genetics_stats
+from app.analytics.kinship_decomposition import close_kinship_note, explain_pair_kinship
+from app.analytics.population_genetics import (
+    TEST_ID,
+    FounderContributionComputer,
+    compute_gi_and_family_data,
+    compute_population_genetics_stats,
+)
 from app.data.validator import validate_loaded_dataset
 from app.ui.tk.breeding_helpers import suggest_pairs_with_constraints
 from app.ui.tk.report_helpers import (
@@ -1002,7 +1008,7 @@ def run_tk_pro() -> None:
     ttk.Label(header, text="WisentPedigree Pro+", font=tk_font(18, bold=True)).pack(side=tk.LEFT)
     subtitle = ttk.Label(
         header,
-        text="Import i walidacja • Analityka hodowlana i plan kojarzeń • Graf pedigree • Raportowanie DOCX/PDF",
+        text="Import → walidacja → rejestr → analiza osobnika / par → populacja → raport (DOCX/PDF)",
         foreground=colors.MUTED,
     )
     subtitle.pack(side=tk.LEFT, padx=(16, 0))
@@ -1036,6 +1042,7 @@ def run_tk_pro() -> None:
     notebook.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     tab_loading = ttk.Frame(notebook, padding=14)
+    tab_validation = ttk.Frame(notebook, padding=14)
     tab_persons = ttk.Frame(notebook, padding=14)
     tab_pedigree = ttk.Frame(notebook, padding=14)
     tab_analysis = ttk.Frame(notebook, padding=14)
@@ -1043,10 +1050,11 @@ def run_tk_pro() -> None:
     tab_reports = ttk.Frame(notebook, padding=14)
     tab_settings = ttk.Frame(notebook, padding=14)
 
-    notebook.add(tab_loading, text="Import i walidacja")
+    notebook.add(tab_loading, text="Import danych")
+    notebook.add(tab_validation, text="Walidacja bazy")
     notebook.add(tab_persons, text="Rejestr osobników")
     notebook.add(tab_pedigree, text="Graf pedigree")
-    notebook.add(tab_analysis, text="Analityka hodowlana")
+    notebook.add(tab_analysis, text="Analiza: osobnik / para / ranking")
     notebook.add(tab_population, text="Metryki populacji")
     notebook.add(tab_reports, text="Raportowanie")
     notebook.add(tab_settings, text="Konfiguracja")
@@ -1057,10 +1065,12 @@ def run_tk_pro() -> None:
 
     tab_inb = ttk.Frame(analyses_nb, padding=10)
     tab_pop = ttk.Frame(analyses_nb, padding=10)
+    tab_kpair = ttk.Frame(analyses_nb, padding=10)
     tab_mating = ttk.Frame(analyses_nb, padding=10)
     tab_breeding = ttk.Frame(analyses_nb, padding=10)
-    analyses_nb.add(tab_inb, text="Inbred — współczynnik F")
-    analyses_nb.add(tab_mating, text="Optymalizacja kojarzeń")
+    analyses_nb.add(tab_inb, text="Osobnik — F (Wright)")
+    analyses_nb.add(tab_kpair, text="Para — Φ i wyjaśnienie")
+    analyses_nb.add(tab_mating, text="Ranking kojarzeń")
     analyses_nb.add(tab_breeding, text="Plan hodowli")
 
     def _placeholder(tab: ttk.Frame, title: str) -> None:
@@ -2783,6 +2793,17 @@ def run_tk_pro() -> None:
     # -------------------------
     persons_controls = ttk.Frame(tab_persons)
     persons_controls.pack(side=tk.TOP, fill=tk.X)
+
+    persons_left = ttk.Frame(persons_controls)
+    persons_left.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    persons_search_var = tk.StringVar(value="")
+    ttk.Label(persons_left, text="Szukaj ID:", foreground=colors.MUTED).pack(side=tk.LEFT, padx=(0, 6))
+    persons_search_entry = ttk.Entry(persons_left, textvariable=persons_search_var, width=18, state="disabled")
+    persons_search_entry.pack(side=tk.LEFT)
+    find_person_btn = ttk.Button(persons_left, text="Znajdź", state="disabled")
+    find_person_btn.pack(side=tk.LEFT, padx=(8, 0))
+
     ttk.Button(
         persons_controls,
         text="Pomoc: lista osobników",
@@ -2818,10 +2839,10 @@ def run_tk_pro() -> None:
 
     ttk.Button(
         loading_frame,
-        text="Pomoc: wczytywanie i walidacja",
+        text="Pomoc: import danych",
         command=lambda: show_help_window(
             root,
-            "Wczytywanie i walidacja",
+            "Import danych",
             hc.SECTION_LOADING + "\n\n" + hc.SECTION_VALIDATION,
         ),
     ).pack(anchor="w", pady=(4, 0))
@@ -2836,6 +2857,22 @@ def run_tk_pro() -> None:
     ttk.Label(loading_frame, textvariable=mapping_note_var, foreground=colors.TEXT, wraplength=900).pack(anchor="w", pady=(4, 10))
 
     validation_var = tk.StringVar(value="Walidacja bazy: -")
+
+    ttk.Label(
+        tab_validation,
+        text=(
+            "Podsumowanie walidacji wczytanej bazy. Po sprawdzeniu przejdź do rejestru lub grafu pedigree.\n"
+            "Przepływ: import → walidacja → rejestr → analiza osobnika / par → populacja → raport."
+        ),
+        foreground=colors.MUTED,
+        wraplength=920,
+        justify="left",
+    ).pack(anchor="w", pady=(0, 10))
+    ttk.Button(
+        tab_validation,
+        text="Pomoc: walidacja bazy",
+        command=lambda: show_help_window(root, "Walidacja bazy", hc.SECTION_VALIDATION),
+    ).pack(anchor="w", pady=(0, 8))
 
     def on_export_validation_issues_csv() -> None:
         rep = state.get("validation_report")
@@ -2859,7 +2896,7 @@ def run_tk_pro() -> None:
         _set_status(f"Zapisano CSV walidacji ({n} wierszy z problemami): {filename}")
         _open_exported_file(filename)
 
-    validation_block = ttk.Frame(loading_frame)
+    validation_block = ttk.Frame(tab_validation)
     validation_block.pack(anchor="w", fill=tk.X, pady=(0, 10))
     ttk.Label(validation_block, textvariable=validation_var, foreground=colors.MUTED, wraplength=900, justify="left").pack(
         anchor="w"
@@ -3040,7 +3077,7 @@ def run_tk_pro() -> None:
                 people=people,
                 source=f"Wczytano (mapowanie): {state.get('raw_filename')}",
             )
-            notebook.select(tab_persons)
+            notebook.select(tab_validation)
         except Exception as e:
             messagebox.showerror("Błąd mapowania", str(e))
             _set_status(f"Błąd mapowania: {e}")
@@ -3050,7 +3087,7 @@ def run_tk_pro() -> None:
             df_std, _info = load_default_bison_report()
             people = _build_people_map(df_std)
             _apply_dataset(df_std=df_std, people=people, source="Wczytano domyślną bazę")
-            notebook.select(tab_persons)
+            notebook.select(tab_validation)
             raw_file_var.set("Wczytano domyślną bazę (bez mapowania).")
             mapping_note_var.set("Domyślna baza została wczytana automatycznie.")
             _set_mapping_ready(False)
@@ -3069,7 +3106,7 @@ def run_tk_pro() -> None:
             df_std, _info = load_dataset_from_url(url)
             people = _build_people_map(df_std)
             _apply_dataset(df_std=df_std, people=people, source=f"Pobrano z internetu: {url}")
-            notebook.select(tab_persons)
+            notebook.select(tab_validation)
             state["df_raw"] = None
             state["raw_filename"] = "ebpb_download"
             raw_file_var.set("Pobrano z EBPB i wczytano automatycznie.")
@@ -3121,7 +3158,7 @@ def run_tk_pro() -> None:
             df_std, _info = load_dataset_from_path(path)
             people = _build_people_map(df_std)
             _apply_dataset(df_std=df_std, people=people, source=f"Wczytano: {Path(path).name}")
-            notebook.select(tab_persons)
+            notebook.select(tab_validation)
             state["df_raw"] = None
             state["raw_filename"] = Path(path).name
             raw_file_var.set(f"Wczytano automatycznie: {Path(path).name}")
@@ -3179,7 +3216,7 @@ def run_tk_pro() -> None:
     ttk.Button(loading_top_btns, text="Wczytaj domyślną bazę", command=on_load_default).pack(side=tk.LEFT)
 
     dataset_range_var = tk.StringVar(value="")
-    ttk.Label(persons_controls, textvariable=dataset_range_var, foreground=colors.MUTED).pack(side=tk.LEFT, padx=(16, 0))
+    ttk.Label(persons_left, textvariable=dataset_range_var, foreground=colors.MUTED).pack(side=tk.LEFT, padx=(20, 0))
 
     persons_tree_frame = ttk.Frame(tab_persons)
     persons_tree_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(14, 0))
@@ -3271,6 +3308,120 @@ def run_tk_pro() -> None:
     tree.configure(yscrollcommand=vsb.set)
     tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+    persons_detail_lf = ttk.LabelFrame(
+        tab_persons,
+        text="Szczegóły osobnika — udział założycieli w genach (founder-stop, jak przy F)",
+    )
+    persons_detail_lf.pack(fill=tk.BOTH, expand=False, pady=(10, 0))
+    persons_detail_text = tk.Text(
+        persons_detail_lf,
+        height=11,
+        wrap="word",
+        state="disabled",
+        bg=colors.ENTRY_BG,
+        fg=colors.TEXT,
+        insertbackground=colors.TEXT,
+    )
+    persons_detail_scroll = ttk.Scrollbar(persons_detail_lf, orient="vertical", command=persons_detail_text.yview)
+    persons_detail_text.configure(yscrollcommand=persons_detail_scroll.set)
+    persons_detail_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0), pady=8)
+    persons_detail_scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=8, padx=(0, 8))
+
+    PERSONS_FOUNDER_TOP_N = 30
+
+    def _set_persons_detail_text(content: str) -> None:
+        persons_detail_text.configure(state="normal")
+        persons_detail_text.delete("1.0", tk.END)
+        persons_detail_text.insert("1.0", content)
+        persons_detail_text.configure(state="disabled")
+
+    def _fill_person_detail(person_id: str) -> None:
+        pid = str(person_id).strip()
+        people = state.get("people") or {}
+        if not pid:
+            _set_persons_detail_text("Zaznacz wiersz w tabeli lub użyj pola Szukaj ID.")
+            return
+        if pid not in people:
+            _set_persons_detail_text(f"Brak osobnika o ID „{pid}” w wczytanej bazie.")
+            return
+        p = people[pid]
+        lines: list[str] = [
+            f"ID: {pid}",
+            f"Imię: {p.name or '—'}",
+            f"Płeć: {getattr(p, 'sex', None) or '—'}  •  Linia (kolumna): {getattr(p, 'line', None) or '—'}",
+            f"Rok ur.: {getattr(p, 'birth_year', None) or '—'}",
+            f"Ojciec: {p.father_id or '—'}  •  Matka: {p.mother_id or '—'}",
+            "",
+            "Udział genów od założycieli (suma 100 % przy pełnym drzewie w modelu founder-stop):",
+            "",
+        ]
+        comp = FounderContributionComputer(people)
+        contribs = comp.contributions_for(pid)
+        if not contribs:
+            lines.append("— brak rozkładu —")
+        else:
+            items = sorted(contribs.items(), key=lambda kv: kv[1], reverse=True)
+            for fid, share in items[:PERSONS_FOUNDER_TOP_N]:
+                fp = people.get(fid)
+                fn = (fp.name if fp and fp.name else None) or "—"
+                lines.append(f"  {fid}  ({fn}):  {share * 100.0:.4f} %")
+            if len(items) > PERSONS_FOUNDER_TOP_N:
+                lines.append(f"  … (+{len(items) - PERSONS_FOUNDER_TOP_N} kolejnych założycieli z mniejszym udziałem)")
+        lm = (state.get("line_memberships") or {}).get(pid)
+        if lm is not None:
+            lines.extend(
+                [
+                    "",
+                    "Linie hodowlane (sire / dam):",
+                    f"  Sire: założyciel {lm.sire_founder_id or 'NA'}, kroki {lm.sire_steps}",
+                    f"  Dam:  założyciel {lm.dam_founder_id or 'NA'}, kroki {lm.dam_steps}",
+                ]
+            )
+        _set_persons_detail_text("\n".join(lines))
+
+    def on_person_tree_select(_event: tk.Event | None = None) -> None:
+        sel = tree.selection()
+        if not sel:
+            return
+        vals = tree.item(sel[0], "values")
+        if not vals:
+            return
+        _fill_person_detail(str(vals[0]))
+
+    def on_find_person_in_tree() -> None:
+        q = str(persons_search_var.get()).strip()
+        if not q:
+            messagebox.showinfo("Szukaj ID", "Wpisz pełne ID lub fragment (np. początek numeru).")
+            return
+        items = tree.get_children()
+        if not items:
+            messagebox.showinfo("Szukaj ID", "Najpierw wczytaj bazę.")
+            return
+        exact: str | None = None
+        starts: list[str] = []
+        contains: list[str] = []
+        for it in items:
+            iid = str(tree.set(it, "id"))
+            if iid == q:
+                exact = it
+                break
+            if iid.startswith(q):
+                starts.append(it)
+            elif q.lower() in iid.lower():
+                contains.append(it)
+        chosen = exact or (starts[0] if starts else None) or (contains[0] if contains else None)
+        if not chosen:
+            messagebox.showinfo("Szukaj ID", f"Brak wiersza pasującego do „{q}”.")
+            return
+        tree.selection_set(chosen)
+        tree.focus(chosen)
+        tree.see(chosen)
+        _fill_person_detail(str(tree.set(chosen, "id")))
+
+    find_person_btn.configure(command=on_find_person_in_tree)
+    persons_search_entry.bind("<Return>", lambda _e: on_find_person_in_tree())
+    tree.bind("<<TreeviewSelect>>", on_person_tree_select, add="+")
 
     # -------------------------
     # Rodowód tab controls
@@ -3550,20 +3701,31 @@ def run_tk_pro() -> None:
     )
     mating_export_phi_btn.pack(side=tk.LEFT, padx=(10, 0))
 
-    mating_output = tk.Text(tab_mating, height=16, wrap="word")
-    mating_output.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-    mating_output.configure(state="disabled", bg=colors.ENTRY_BG, fg=colors.TEXT, insertbackground=colors.TEXT)
-
     mating_pair_stats_var = tk.StringVar(value="")
     ttk.Label(tab_mating, textvariable=mating_pair_stats_var, foreground=colors.MUTED, wraplength=900).pack(
         anchor="w", pady=(6, 0)
     )
 
-    kinship_lf = ttk.LabelFrame(tab_mating, text="Kinship — dowolna para (Φ, R)")
+    mating_output = tk.Text(tab_mating, height=16, wrap="word")
+    mating_output.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+    mating_output.configure(state="disabled", bg=colors.ENTRY_BG, fg=colors.TEXT, insertbackground=colors.TEXT)
+
+    ttk.Label(
+        tab_kpair,
+        text="Ustawienia max pokoleń / bez limitu są wspólne z zakładką „Ranking kojarzeń”.",
+        foreground=colors.MUTED,
+        wraplength=900,
+        justify="left",
+    ).pack(anchor="w", pady=(0, 6))
+
+    kinship_lf = ttk.LabelFrame(tab_kpair, text="Kinship — dowolna para (Φ, R, F potomka, wyjaśnienie)")
     kinship_lf.pack(anchor="w", fill=tk.X, pady=(10, 0))
     ttk.Label(
         kinship_lf,
-        text="Φ = współzgodność (coancestry); R = 2Φ = relacja Wrighta. Dla kojarzenia A×B: F potomka = Φ (przy tych samych ustawieniach głębokości).",
+        text=(
+            "Φ jest symetryczne względem A i B (Malecot / Wright). R = 2Φ. F potomka z kojarzenia A×B = Φ. "
+            "Poniżej: „dlaczego taki wynik” — top wspólni przodkowie, wkład do Φ (skalowany do rekurencji), liczba par ścieżek."
+        ),
         foreground=colors.MUTED,
         wraplength=880,
     ).grid(row=0, column=0, columnspan=4, sticky="w", padx=10, pady=(8, 4))
@@ -3579,12 +3741,28 @@ def run_tk_pro() -> None:
         kinship_lf, width=24, state="readonly", textvariable=mating_kin_b_var
     )
     mating_kin_b_cb.grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(0, 8))
-    mating_kinship_btn = ttk.Button(kinship_lf, text="Oblicz Φ i R", state="disabled")
+    mating_kinship_btn = ttk.Button(kinship_lf, text="Oblicz Φ, R i wyjaśnienie", state="disabled")
     mating_kinship_btn.grid(row=2, column=0, sticky="w", padx=(10, 0), pady=(0, 10))
     mating_kin_result_var = tk.StringVar(value="")
     ttk.Label(kinship_lf, textvariable=mating_kin_result_var, foreground=colors.TEXT, wraplength=860).grid(
         row=2, column=1, columnspan=3, sticky="w", pady=(0, 10)
     )
+
+    kpair_explain_frame = ttk.LabelFrame(tab_kpair, text="Dlaczego ta para ma taki wynik? (wspólni przodkowie, ścieżki)")
+    kpair_explain_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+    kpair_explain_text = tk.Text(
+        kpair_explain_frame,
+        height=14,
+        wrap="word",
+        state="disabled",
+        bg=colors.ENTRY_BG,
+        fg=colors.TEXT,
+        insertbackground=colors.TEXT,
+    )
+    kpair_explain_scroll = ttk.Scrollbar(kpair_explain_frame, orient="vertical", command=kpair_explain_text.yview)
+    kpair_explain_text.configure(yscrollcommand=kpair_explain_scroll.set)
+    kpair_explain_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0), pady=8)
+    kpair_explain_scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=8, padx=(0, 8))
 
     def _sync_mating_depth_state() -> None:
         base = "normal" if controls_enabled_ref[0] else "disabled"
@@ -3796,10 +3974,46 @@ def run_tk_pro() -> None:
             phi_v, r_v = wright_kinship_phi_and_relationship_R(
                 a_id, b_id, people, max_generations_back=max_generations_back
             )
-            mating_kin_result_var.set(
-                f"Φ(A,B) = {phi_v:.6f}  |  R = 2Φ = {r_v:.6f}  |  F potomka z A×B = Φ = {phi_v:.6f} "
-                f"(głębokość jak przy kojarzeniach: {'bez limitu' if max_generations_back is None else f'max {max_generations_back} pok.'})"
+            f_pot = wright_offspring_inbreeding_F_from_parents(
+                a_id, b_id, people, max_generations_back=max_generations_back
             )
+            mating_kin_result_var.set(
+                f"Φ = {phi_v:.6f}  |  R = 2Φ = {r_v:.6f}  |  F potomka (A×B) = {f_pot:.6f} "
+                f"({'bez limitu' if max_generations_back is None else f'max {max_generations_back} pok.'})"
+            )
+            ex = explain_pair_kinship(a_id, b_id, people, max_generations_back=max_generations_back)
+            warn = close_kinship_note(phi_v)
+            lines: list[str] = []
+            if warn:
+                lines.append("Ostrzeżenie (hodowlane): " + warn)
+                lines.append("")
+            lines.extend(
+                [
+                    f"Φ z rekurencji (wzorzec Wrighta / Malecot, symetryczne): {ex.phi_recursive:.8f}",
+                    f"Suma surowych wyrazów ścieżkowych: {ex.phi_path_sum_raw:.8f}  |  skala do Φ: {ex.path_scale:.6f}",
+                    f"Liczba par ścieżek (kombinacje ścieżek do wspólnych przodków): {ex.n_path_pairs}",
+                    f"Wspólnych węzłów z niezerowym wkładem: {ex.n_distinct_common_ancestors}",
+                    "",
+                    "Top wspólni przodkowie (wkład do Φ, % z Φ, liczba par ścieżek, suma surowa):",
+                ]
+            )
+            for aid, to_phi, raw_v, npair in ex.by_ancestor[:28]:
+                ap = people.get(aid)
+                nm = (ap.name if ap and ap.name else "-")[:40]
+                pct = (100.0 * to_phi / ex.phi_recursive) if ex.phi_recursive > 1e-15 else 0.0
+                lines.append(f"  • {aid}  ({nm})  Φ={to_phi:.6f}  ({pct:.2f}%)  |  pary={npair}  |  surowe={raw_v:.6f}")
+            lines.append("")
+            lines.append("Najsilniejsze pary ścieżek (skrót):")
+            for d in ex.path_pairs[:12]:
+                pa = "→".join(d.path_a) if d.path_a else "·"
+                pb = "→".join(d.path_b) if d.path_b else "·"
+                lines.append(
+                    f"  {d.ancestor_id}: krawędzie {d.n_edges_a}+{d.n_edges_b}, wkład Φ={d.contribution_to_phi:.6f}  |  {pa}  ||  {pb}"
+                )
+            kpair_explain_text.configure(state="normal")
+            kpair_explain_text.delete("1.0", tk.END)
+            kpair_explain_text.insert("1.0", "\n".join(lines))
+            kpair_explain_text.configure(state="disabled")
         except Exception as ex:
             messagebox.showerror("Błąd", f"Nie udało się policzyć kinship: {ex}")
 
@@ -3843,6 +4057,10 @@ def run_tk_pro() -> None:
     def set_controls_enabled(enabled: bool) -> None:
         controls_enabled_ref[0] = bool(enabled)
         st = "normal" if enabled else "disabled"
+        find_person_btn.configure(state=st)
+        persons_search_entry.configure(state=st)
+        if not enabled:
+            _set_persons_detail_text("Wczytaj bazę, aby zobaczyć rejestr i szczegóły osobnika.")
         id_anc_entry.configure(state=st)
         readable_anc_cb.configure(state=st)
         anc_line_radio_sire.configure(state=st)
@@ -4233,6 +4451,12 @@ def run_tk_pro() -> None:
         state.pop("mating_phi_matrix", None)
         mating_export_phi_btn.configure(state="disabled")
         mating_kin_result_var.set("")
+        try:
+            kpair_explain_text.configure(state="normal")
+            kpair_explain_text.delete("1.0", tk.END)
+            kpair_explain_text.configure(state="disabled")
+        except Exception:
+            pass
         try:
             id_sorted = sorted({str(x) for x in df_std["id"].tolist()}, key=_id_sort_key)
             mating_kin_a_cb.configure(values=id_sorted)
@@ -4898,7 +5122,7 @@ def run_tk_pro() -> None:
     menubar = tk.Menu(root)
 
     menu_file = tk.Menu(menubar, tearoff=0)
-    menu_file.add_command(label="Import i walidacja", command=lambda: _go_to_tab(tab_loading))
+    menu_file.add_command(label="Import danych", command=lambda: _go_to_tab(tab_loading))
     menu_file.add_command(label="Wczytaj domyslna baze", command=on_load_default)
     menu_file.add_command(label="Wybierz plik...", command=on_choose_file)
     menu_file.add_separator()
@@ -4906,21 +5130,28 @@ def run_tk_pro() -> None:
     menubar.add_cascade(label="Plik", menu=menu_file)
 
     menu_data = tk.Menu(menubar, tearoff=0)
+    menu_data.add_command(label="Import danych", command=lambda: _go_to_tab(tab_loading))
+    menu_data.add_command(label="Walidacja bazy", command=lambda: _go_to_tab(tab_validation))
     menu_data.add_command(label="Rejestr osobników", command=lambda: _go_to_tab(tab_persons))
     menu_data.add_command(label="Graf pedigree", command=lambda: _go_to_tab(tab_pedigree))
-    menu_data.add_command(label="Import i walidacja", command=lambda: _go_to_tab(tab_loading))
     menu_data.add_command(label="Metryki populacji", command=lambda: _go_to_tab(tab_population))
     menubar.add_cascade(label="Dane", menu=menu_data)
 
     menu_analysis = tk.Menu(menubar, tearoff=0)
-    menu_analysis.add_command(label="Analityka hodowlana", command=lambda: _go_to_tab(tab_analysis))
+    menu_analysis.add_command(
+        label="Analiza: osobnik / para / ranking",
+        command=lambda: _go_to_tab(tab_analysis),
+    )
     menu_analysis.add_command(label="Plan hodowli", command=_go_to_plan_hodowlany)
     menu_analysis.add_command(label="Metryki populacji", command=lambda: _go_to_tab(tab_population))
     menubar.add_cascade(label="Analiza", menu=menu_analysis)
 
     menu_viz = tk.Menu(menubar, tearoff=0)
     menu_viz.add_command(label="Graf pedigree", command=lambda: _go_to_tab(tab_pedigree))
-    menu_viz.add_command(label="Analityka hodowlana", command=lambda: _go_to_tab(tab_analysis))
+    menu_viz.add_command(
+        label="Analiza: osobnik / para / ranking",
+        command=lambda: _go_to_tab(tab_analysis),
+    )
     menu_viz.add_command(label="Metryki populacji", command=lambda: _go_to_tab(tab_population))
     menubar.add_cascade(label="Wizualizacja", menu=menu_viz)
 

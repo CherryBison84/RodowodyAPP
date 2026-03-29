@@ -5,9 +5,10 @@ na podstawie drzewa rodowego.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Dict, Optional
+from typing import Dict, FrozenSet, Optional, Set
 
 from app.pedigree.ancestor_pedigree import Person
 
@@ -28,6 +29,33 @@ def _get_parents(people: Dict[str, Person], person_id: str) -> tuple[Optional[st
     if p is None:
         return None, None
     return p.father_id, p.mother_id
+
+
+def _strict_ancestor_ids(person_id: str, people: Dict[str, Person], *, max_nodes: int = 100_000) -> FrozenSet[str]:
+    """
+    Zbiór identyfikatorów ścisłych przodków (w górę po ojcu/matce), bez samego `person_id`.
+    """
+    out: Set[str] = set()
+    q = deque([person_id])
+    visited: Set[str] = set()
+    n = 0
+    while q:
+        cur = q.popleft()
+        if cur in visited:
+            continue
+        visited.add(cur)
+        p = people.get(cur)
+        if p is None:
+            continue
+        for par in (p.father_id, p.mother_id):
+            if par is None:
+                continue
+            out.add(par)
+            q.append(par)
+            n += 1
+            if n > max_nodes:
+                break
+    return frozenset(out)
 
 
 def _sanitize_depth(max_generations_back: int | None) -> int | None:
@@ -84,36 +112,72 @@ def _resolve_batch_offspring_depth(
 
 
 def _build_phi_f(people: Dict[str, Person]):
+    """
+    Jednostronne rozwinięcie Malecota względem drugiego argumentu oraz symetryzacja Φ(a,b)=Φ(b,a)
+    przez uśrednienie dwóch kolejności (stabilne przy skończonej głębokości).
+    """
+
     @lru_cache(maxsize=None)
-    def phi(a: str, b: str, remaining: int) -> float:
+    def phi_directed(a: str, b: str, remaining: int) -> float:
         if remaining < 0:
             return 0.0
 
         if a == b:
-            return (1.0 + F(a, remaining)) / 2.0
+            return (1.0 + F(x=a, remaining=remaining)) / 2.0
 
         if remaining == 0:
             return 0.0
 
         sire_a, dam_a = _get_parents(people, a)
-        if sire_a is None and dam_a is None:
-            sire_b, dam_b = _get_parents(people, b)
-            t1 = phi(a, sire_b, remaining - 1) if sire_b is not None else 0.0
-            t2 = phi(a, dam_b, remaining - 1) if dam_b is not None else 0.0
-            return 0.5 * (t1 + t2)
+        sire_b, dam_b = _get_parents(people, b)
 
-        t1 = phi(sire_a, b, remaining - 1) if sire_a is not None else 0.0
-        t2 = phi(dam_a, b, remaining - 1) if dam_a is not None else 0.0
-        return 0.5 * (t1 + t2)
+        if sire_b is not None and dam_b is not None:
+            return 0.5 * (
+                phi_directed(a, sire_b, remaining - 1) + phi_directed(a, dam_b, remaining - 1)
+            )
+        if sire_b is not None and dam_b is None:
+            return phi_directed(a, sire_b, remaining - 1)
+        if sire_b is None and dam_b is not None:
+            return phi_directed(a, dam_b, remaining - 1)
+
+        if sire_a is not None and dam_a is not None:
+            return 0.5 * (
+                phi_directed(sire_a, b, remaining - 1) + phi_directed(dam_a, b, remaining - 1)
+            )
+        if sire_a is not None and dam_a is None:
+            return phi_directed(sire_a, b, remaining - 1)
+        if sire_a is None and dam_a is not None:
+            return phi_directed(dam_a, b, remaining - 1)
+
+        return 0.0
 
     @lru_cache(maxsize=None)
-    def F(x: str, remaining: int) -> float:
+    def F(*, x: str, remaining: int) -> float:
         if remaining < 1:
             return 0.0
         sire_x, dam_x = _get_parents(people, x)
         if sire_x is None or dam_x is None:
             return 0.0
         return phi(sire_x, dam_x, remaining - 1)
+
+    anc_memo: Dict[str, FrozenSet[str]] = {}
+
+    def _anc(pid: str) -> FrozenSet[str]:
+        if pid not in anc_memo:
+            anc_memo[pid] = _strict_ancestor_ids(pid, people)
+        return anc_memo[pid]
+
+    @lru_cache(maxsize=None)
+    def phi(a: str, b: str, remaining: int) -> float:
+        if a == b:
+            return (1.0 + F(x=a, remaining=remaining)) / 2.0
+        # Kanoniczny kierunek: jeśli jeden jest ścisłym przodkiem drugiego, rozwijamy potomka
+        # (Malecot względem „głębszego” osobnika) — wtedy Φ(a,b)=Φ(b,a).
+        if a in _anc(b):
+            return phi_directed(a, b, remaining)
+        if b in _anc(a):
+            return phi_directed(b, a, remaining)
+        return 0.5 * (phi_directed(a, b, remaining) + phi_directed(b, a, remaining))
 
     return phi, F
 
@@ -152,7 +216,7 @@ def wright_inbreeding_F(
     if mother_id is not None and mother_id in people:
         mother_name = people[mother_id].name
 
-    F_val = F(person_id, depth)
+    F_val = F(x=person_id, remaining=depth)
     # Stabilizacja numeryczna (rekurencje z 0.5)
     if abs(F_val) < 1e-15:
         F_val = 0.0

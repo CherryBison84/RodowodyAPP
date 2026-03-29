@@ -64,7 +64,7 @@ SECTION_LOADING = """
 2. **Adres URL** — pobranie pliku z sieci i takie samo mapowanie jak z dysku.
 3. **Rekord testowy** — ID **99999** jest traktowane technicznie i **nie wchodzi** do statystyk populacji.
 
-Po wczytaniu zobaczysz **krótki wynik walidacji** (np. liczba błędów) oraz **wypunktowanie**, co dokładnie nie gra. Możesz też pobrać **CSV z listą problemów** (id, typ, szczegóły) do poprawy w Excelu oraz pełny raport tekstowy tam, gdzie aplikacja to oferuje.
+**Kolejny krok:** w wersji przeglądarkowej i na pulpicie po imporcie przejdź do **Walidacja bazy** — tam jest **krótki wynik** (np. liczba błędów), **wypunktowanie** problemów, **CSV** z listą (id, typ, szczegóły) do poprawy w Excelu oraz pełny raport tekstowy.
 """
 
 
@@ -85,7 +85,11 @@ Status **OK** znaczy: **nie znaleziono błędów krytycznych**. **Ostrzeżenia**
 SECTION_PERSONS = """
 ## Osobniki (tabela)
 
-Widzisz listę rekordów z możliwością sortowania. Kolumna z **linią (ojciec/matka)** to skrót: **skąd pochodzi linia** po stronie ojca i matki w drzewie — bez otwierania wykresu rodowodu możesz szybko zobaczyć strukturę kojarzeń w stadzie.
+Widzisz listę rekordów z możliwością sortowania. **Szukaj po ID** (pełne lub fragment) szybko zawęża listę; w wersji na pulpicie jest też przycisk **Znajdź**, który zaznacza pierwszy pasujący wiersz w tabeli.
+
+Kolumna z **linią (ojciec/matka)** to skrót: **skąd pochodzi linia** po stronie ojca i matki w drzewie — bez otwierania wykresu rodowodu możesz szybko zobaczyć strukturę kojarzeń w stadzie.
+
+**Udział założycieli** w szczegółach osobnika to rozkład genów w modelu **founder-stop** (jak przy F): brak ojca lub matki kończy gałąź; wartości procentowe sumują się do 100 % przy pełnym opisie przodków w bazie.
 """
 
 
@@ -115,7 +119,8 @@ SECTION_MATING = """
 - Dla par **samiec × samica** (po filtrze wieku) liczone jest **F hipotetycznego potomka** — w tej metodyce jest ono równe **Φ** (współczynnik współzgodności, *kinship* / coancestry) między ojcem a matką. **R = 2Φ** to klasyczny **współczynnik relacji Wrighta** (autosomy). W rankingu i w panelu „Kinship” widać obie wartości.
 - Lista pokazuje **do 36 par**, posortowanych od **najmniejszego Φ** (= F potomka). Ten sam osobnik może być w liście **co najwyżej 3 razy** (jako sire lub dam).
 - **Macierz Φ**: po obliczeniu rankingu możesz zapisać tabelę **wszystkich par sire×dam** z aktualnego zestawu kandydatów (CSV) — wiersze = samce, kolumny = samice, komórka = Φ.
-- **Kinship dowolnej pary**: dwa wybrane ID z bazy — **Φ** i **R** przy tych samych ustawieniach głębokości co ranking (Wright 1922; podręcznikowo Falconer & Mackay — patrz sekcja Literatura).
+- **Kinship dowolnej pary**: dwa wybrane ID z bazy — **Φ** i **R**; **Φ(A,B) = Φ(B,A)** (symetria współzgodności Malecota). **F potomka** z hipotetycznego kojarzenia tych osobników jako rodziców jest równe **Φ**.
+- **Dlaczego taki wynik?** (Streamlit / zakładka „Para” w Tk): rozkład na **wspólnych przodków**, **wkład do Φ** (w tym skalowanie do wartości z rekurencji, gdy suma surowych ścieżek przekracza Φ przez nakładanie się dróg genów) oraz **liczba par niezależnych ścieżek** w grafie rodowym.
 - **Limity** liczby samców, samic i pokoleń **skracają czas** i nie muszą obejmować całej populacji.
 """
 
@@ -126,6 +131,12 @@ SECTION_POPULATION = """
 - **n** — ile osobników jest w analizie (bez rekordu testowego).
 - **Średnie F** — średnia F po osobnikach przy wybranym limicie dla populacji.
 - **f_e, f_a** — miary związane z **założycielami** i różnorodnością genów (patrz słownik).
+- **RIA % (globalna)** — odsetek osobników z F > 0 przy tym samym limicie pokoleń co reszta sekcji.
+- **f_ge** — liczba odrębnych identyfikatorów założycielskich w modelu wkładów (founder-stop), tj. rozmiar listy średnich wkładów p_i.
+- **% braków rodziców** — albo odsetek **rekordów** z brakiem ojca lub matki, albo odsetek **pustych slotów** (ojciec+matka) względem 2n.
+- **Kohorta aktywna** — osobnicy urodzeni w ostatnich X latach (rok ur.); **reproduktorzy** — unikalne ID ojca/matki przy urodzeniach potomstwa w tym samym oknie; wersja „w koh.” ogranicza do płci zgodnej z kohortą.
+- **Koncentracja ojców** — jaki udział potomstwa z **znanym ojcem** przypada na 5 lub 10 najczęściej używanych ojców.
+- Zakładka **Okresy, ryzyko…** — porównanie urodzeń 1950–1980 / 1981–2000 / 2001–dziś, uproszczony ranking „ryzyka” dla linii LB i LC oraz wykresy trendu reproduktorów i udziału linii w czasie.
 - **Założyciele (brak ojca lub matki)** — ile rekordów ma **dziurę** po jednej ze stron rodziców — ważne przy interpretacji F i metryk potomstwa.
 - Ustawienia **F** (z limitem lub bez) wpływają też na histogram F i trendy **F / RIA**.
 

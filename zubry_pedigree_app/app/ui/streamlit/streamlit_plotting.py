@@ -16,6 +16,7 @@ from pandas import isna
 
 from app.ui.typography import apply_matplotlib_fonts
 from app.analytics.inbreeding_wright import wright_inbreeding_F
+from app.analytics.population_dashboard import reproducers_by_offspring_decade
 from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
 
 # Kolory zbliżone do theme.py / gui_pro
@@ -733,3 +734,96 @@ def estimate_ne_from_f_trend(
     if delta_f_gen <= 0:
         return None
     return 1.0 / (2.0 * delta_f_gen)
+
+
+def fig_reproducers_by_decade(df: pd.DataFrame) -> plt.Figure:
+    """Unikalni ojcowie i matki (o potomstwie urodzonym w danej dekadzie)."""
+    fig, ax = plt.subplots(figsize=(8.6, 3.6))
+    pr = reproducers_by_offspring_decade(df)
+    if pr is None or pr.empty:
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        ax.axis("off")
+        return fig
+    decades = pr["decade"].astype(int).tolist()
+    xi = list(range(len(decades)))
+    w = 0.38
+    ax.bar([i - w / 2 for i in xi], pr["unikalni_ojcowie"], width=w, color="#4a6fa5", edgecolor=ACCENT, label="ojcowie")
+    ax.bar([i + w / 2 for i in xi], pr["unikalne_matki"], width=w, color="#c45c8a", edgecolor=ACCENT, label="matki")
+    ax.set_title("Efektywni reproduktorzy wg dekady urodzenia potomstwa")
+    ax.set_xlabel("dekada")
+    ax.set_ylabel("liczba unikalnych rodziców")
+    labels = [f"{d}-{d+9}" for d in decades]
+    ax.set_xticks(xi)
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
+    ax.legend(fontsize=8)
+    ax.grid(True, axis="y", alpha=0.25)
+    fig.tight_layout()
+    return fig
+
+
+def fig_line_share_percent_stacked(df: pd.DataFrame) -> plt.Figure:
+    """Udział LB / LC / (pozostałe jako NA) w urodzeniach w dekadzie — 100 %."""
+    now_year = datetime.now().year
+    min_dec = (1881 // 10) * 10
+    max_dec = (now_year // 10) * 10
+    decades = list(range(min_dec, max_dec + 1, 10))
+    x = list(range(len(decades)))
+
+    fig, ax = plt.subplots(figsize=(8.6, 3.8))
+    if df is None or df.empty or "birth_year" not in df.columns:
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        ax.axis("off")
+        return fig
+
+    birth_int = df["birth_year"].apply(lambda v: _parse_birth_year(v, lo=1881))
+    dfc = df.copy()
+    dfc["_birth_int"] = birth_int
+    dfc = dfc.dropna(subset=["_birth_int"])
+    if dfc.empty:
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        ax.axis("off")
+        return fig
+    dfc["_birth_int"] = dfc["_birth_int"].astype(int)
+    dfc["decade"] = (dfc["_birth_int"] // 10) * 10
+
+    def _nl(v: object) -> str:
+        if v is None:
+            return "NA"
+        s = str(v).strip().upper()
+        return s if s in {"LB", "LC"} else "NA"
+
+    if "line" in dfc.columns:
+        dfc["line_n"] = dfc["line"].apply(_nl)
+    else:
+        dfc["line_n"] = pd.Series(["NA"] * len(dfc), index=dfc.index)
+    lb = []
+    lc = []
+    na = []
+    for d in decades:
+        g = dfc[dfc["decade"] == d]
+        n = len(g)
+        if n == 0:
+            lb.append(0.0)
+            lc.append(0.0)
+            na.append(0.0)
+        else:
+            c = g["line_n"].value_counts()
+            lb.append(100.0 * float(c.get("LB", 0)) / n)
+            lc.append(100.0 * float(c.get("LC", 0)) / n)
+            na.append(100.0 * float(c.get("NA", 0)) / n)
+
+    decade_labels = [f"{d}-{d+9}" for d in decades]
+    ax.bar(x, lb, color="#d64545", edgecolor=ACCENT, label="LB")
+    ax.bar(x, lc, bottom=lb, color="#2e8b57", edgecolor=ACCENT, label="LC")
+    bottom2 = [lb[i] + lc[i] for i in range(len(x))]
+    ax.bar(x, na, bottom=bottom2, color="#888888", edgecolor=ACCENT, label="in./NA")
+    ax.set_title("Struktura linii w czasie (udział % urodzeń w dekadzie)")
+    ax.set_ylim(0, 100)
+    ax.set_xlabel("dekada")
+    ax.set_ylabel("udział %")
+    ax.set_xticks(x)
+    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=8)
+    ax.legend(fontsize=8, loc="upper right")
+    ax.grid(True, axis="y", alpha=0.25)
+    fig.tight_layout()
+    return fig

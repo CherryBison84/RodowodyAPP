@@ -11,15 +11,15 @@ import streamlit as st
 
 from app.ui.streamlit import common as sc
 from app.ui.streamlit.pages import (
-    section_analysis_inbred,
-    section_analysis_mating,
+    section_analysis_individual,
+    section_analysis_pairs_and_mating,
     section_breeding_placeholder,
-    section_loading,
-    section_pedigree,
+    section_import,
     section_persons,
     section_population,
     section_reports,
     section_settings,
+    section_validation,
 )
 
 
@@ -49,10 +49,11 @@ def run_streamlit_direct() -> None:
         section = st.radio(
             "Nawigacja",
             [
-                "Import i walidacja",
+                "Import danych",
+                "Walidacja bazy",
                 "Rejestr osobników",
-                "Graf pedigree",
-                "Analityka hodowlana",
+                "Analiza osobnika",
+                "Analiza par i kojarzenia",
                 "Metryki populacji",
                 "Raportowanie",
                 "Plan hodowli",
@@ -60,11 +61,14 @@ def run_streamlit_direct() -> None:
             ],
             label_visibility="collapsed",
         )
+        st.caption(
+            "Przepływ: import → walidacja → rejestr → osobnik → pary → populacja → raport."
+        )
         st.markdown("---")
         st.caption("Autor: Magdalena Perlińska-Teresiak • 2026")
         with st.expander("Słownik parametrów (F, GI, f_e, RIA…)", expanded=False):
             st.markdown(sc.GLOSSARY)
-        with st.expander("Walidacja bazy — skrót", expanded=False):
+        with st.expander("Walidacja — skrót (po imporcie)", expanded=False):
             st.markdown(sc.SECTION_VALIDATION)
         with st.expander("Literatura — źródła metod (F, p_i, N_e…)", expanded=False):
             st.markdown(sc.SECTION_REFERENCES)
@@ -78,31 +82,35 @@ def run_streamlit_direct() -> None:
 
     st.markdown(
         f'<p style="color:{sc.THEME.MUTED};font-family:{sc.FONT_FAMILY_CSS};font-size:1.05rem;line-height:1.5;margin-top:0;">'
-        "Import danych • Analityka • Pedigree • Metryki populacji • Raportowanie"
+        "Import → walidacja → rejestr → analiza osobnika → analiza par → populacja → raport"
         "</p>",
         unsafe_allow_html=True,
     )
 
-    if section == "Import i walidacja":
-        section_loading()
+    if section == "Import danych":
+        section_import()
         return
 
     df_std = st.session_state.get("df_std")
     people = st.session_state.get("people")
+
+    if section == "Walidacja bazy":
+        if df_std is None or people is None or len(df_std) == 0:
+            st.warning("Najpierw wczytaj dane w sekcji **Import danych**.")
+            return
+        section_validation()
+        return
+
     if df_std is None or people is None or len(df_std) == 0:
-        st.warning("Najpierw wczytaj dane w sekcji **Import i walidacja**.")
+        st.warning("Najpierw wczytaj dane w sekcji **Import danych**.")
         return
 
     if section == "Rejestr osobników":
         section_persons(df_std)
-    elif section == "Graf pedigree":
-        section_pedigree(df_std, people)
-    elif section == "Analityka hodowlana":
-        t1, t2 = st.tabs(["Inbred — współczynnik F", "Optymalizacja kojarzeń"])
-        with t1:
-            section_analysis_inbred(people)
-        with t2:
-            section_analysis_mating(df_std, people)
+    elif section == "Analiza osobnika":
+        section_analysis_individual(df_std, people)
+    elif section == "Analiza par i kojarzenia":
+        section_analysis_pairs_and_mating(df_std, people)
     elif section == "Metryki populacji":
         section_population(df_std, people)
     elif section == "Raportowanie":

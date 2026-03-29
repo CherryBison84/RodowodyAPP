@@ -1,0 +1,6 @@
+# Repo root (artefakty lokalne / testów)
+__pycache__/
+*.py[cod]
+.DS_Store
+.mplconfig/
+.cache/
