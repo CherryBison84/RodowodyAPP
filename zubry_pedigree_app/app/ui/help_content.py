@@ -27,7 +27,7 @@ GLOSSARY = """
 - **f_e (efektywna liczba założycieli)** — 1 / Σ p_i², gdzie p_i to uśredniony wkład genów i-tego założyciela (founder-like, zgodnie z founder-stop). Im wyższe f_e, tym bardziej „rozproszony” jest wkład przodków.
 - **f_a** — w tej implementacji liczone spójnie z logiką founder-stop; interpretacja zbliżona do efektywnej liczby przodków w analizowanym schemacie.
 - **Bottleneck f_e / f_a** — stosunek < 1 może sugerować zawężenie materiału genetycznego względem liczby linii przodków (interpretacja jakościowa).
-- **p_i** — udział (znormalizowany) wkładu i-tego założyciela w populacji; słupek „Top 10” pokazuje dominujących przodków.
+- **p_i** — udział (znormalizowany) wkładu i-tego założyciela w populacji; wykres pokazuje **Top 50** dominujących przodków (wg p_i).
 - **Linie LB / LC** — etykiety hodowlane z kolumny `line`; pozostałe trafiaą do **NA**.
 
 ### GI i rodziny
@@ -133,9 +133,11 @@ SECTION_REPORTS = """
 SECTION_BREEDING = """
 ## Plan hodowlany (Tk)
 
-W głównym oknie: **Analizy → Plan hodowlany** (podzakładka obok Inbred i Mating).
+W głównym oknie: **Analityka hodowlana → Plan hodowli** (podzakładka obok Inbredu i optymalizacji kojarzeń).
 
 Moduł wspiera **dobór par** z ograniczeniami (wiek, linia, limity użyć reproduktorów, cele F średniej/maks.). Wyniki zależą od kompletności rodowodów i parametrów ryzyka inbredu (głębokość liczenia F dla hipotetycznego potomka).
+
+Po **zaznaczeniu wiersza** w tabeli propozycji par pokazuje się **uproszczony rodowód** (hipotetyczny potomek + ograniczona liczba pokoleń przodków) oraz **statystyki** (F potomka i rodziców, MG/EG/PCI dla obojga rodziców).
 
 W Streamlit sekcja jest **w rozwoju** — pełna logika jak w Tk będzie dodawana etapami.
 """
@@ -185,7 +187,7 @@ CHART_HIST_F = (
 )
 
 CHART_FOUNDERS_PI = (
-    "**Top 10** założycieli wg **p_i** (udział w puli genów). Wysoki słupek = duży wkład danego przodka w populację — "
+    "**Top 50** założycieli wg **p_i** (udział w puli genów). Wysoki słupek = duży wkład danego przodka w populację — "
     "może wskazywać na silny bottleneck lub dominację kilku linii. Oś Y: wartość p_i po normalizacji."
 )
 

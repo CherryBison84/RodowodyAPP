@@ -35,7 +35,7 @@ from app.visualizations.ancestor_plot import plot_ancestor_pedigree
 
 
 def section_loading() -> None:
-    st.markdown("### Wczytywanie bazy")
+    st.markdown("### Import i walidacja")
     st.caption("Plik CSV/XLSX, URL z mapowaniem kolumn, walidacja spójności.")
     sc.help_expander(
         "Co oznacza wczytywanie i walidacja?",
@@ -131,8 +131,8 @@ def section_loading() -> None:
 
 
 def section_persons(df_std: pd.DataFrame) -> None:
-    st.markdown("### Osobniki")
-    sc.help_expander("Osobniki — jak czytać tabelę", hc.SECTION_PERSONS)
+    st.markdown("### Rejestr osobników")
+    sc.help_expander("Rejestr osobników — jak czytać tabelę", hc.SECTION_PERSONS)
     lm = st.session_state.get("line_memberships") or {}
     base = df_std.copy()
     base["id"] = base["id"].astype(str)
@@ -216,8 +216,8 @@ def _build_pedigree_figure(
 
 
 def section_pedigree(df_std, people: dict) -> None:
-    st.markdown("### Rodowód")
-    sc.help_expander("Rodowód — graf i linie (sire/dam)", hc.SECTION_PEDIGREE)
+    st.markdown("### Graf pedigree")
+    sc.help_expander("Graf pedigree — linie (sire/dam)", hc.SECTION_PEDIGREE)
     lm = st.session_state.get("line_memberships") or {}
     default_id = str(df_std.iloc[0]["id"]) if not df_std.empty else ""
     pid = st.text_input("ID (Number)", value=default_id, key="rod_id")
@@ -271,7 +271,7 @@ def section_pedigree(df_std, people: dict) -> None:
 
 
 def section_analysis_inbred(people: dict) -> None:
-    st.markdown("#### Inbred (Wright F)")
+    st.markdown("#### Inbred — współczynnik F (Wright)")
     sc.help_expander("Inbred F — definicja i wykres diagnostyczny", hc.SECTION_INBRED)
     default_id = str(st.session_state["df_std"].iloc[0]["id"]) if len(st.session_state["df_std"]) else ""
     pid = st.text_input("ID (Number)", value=default_id, key="inb_pid")
@@ -320,8 +320,8 @@ def section_analysis_inbred(people: dict) -> None:
 
 
 def section_analysis_mating(df_std: pd.DataFrame, people: dict) -> None:
-    st.markdown("#### Mating — ranking par (minimalne F potomka)")
-    sc.help_expander("Mating — jak interpretować ranking", hc.SECTION_MATING)
+    st.markdown("#### Optymalizacja kojarzeń (ranking par, minimalne F potomka)")
+    sc.help_expander("Optymalizacja kojarzeń — interpretacja rankingu", hc.SECTION_MATING)
     st.caption(
         "Filtr wieku: ostatnie 15 lat (jak w Tk). Ranking: do 36 par (najmniejsze F), "
         "każdy osobnik w liście wynikowej max 3× (jako sire lub dam). Limity kandydatów ograniczają czas obliczeń."
@@ -339,7 +339,7 @@ def section_analysis_mating(df_std: pd.DataFrame, people: dict) -> None:
     cutoff = cy - 15
     st.caption(f"Rok odniesienia {cy}: używane osobniki z birth_year ≥ {cutoff}.")
 
-    if st.button("Policz ranking TOP 36", type="primary", key="mat_go"):
+    if st.button("Oblicz ranking kojarzeń (TOP 36)", type="primary", key="mat_go"):
         df_tmp = df_std.copy()
         df_tmp["id"] = df_tmp["id"].astype(str)
         df_tmp["birth_year_num"] = pd.to_numeric(df_tmp.get("birth_year"), errors="coerce")
@@ -391,7 +391,7 @@ def _figure_to_jpeg_bytes(fig: plt.Figure) -> bytes:
 
 
 def section_population(df_std: pd.DataFrame, people: dict) -> None:
-    st.markdown("### Populacja")
+    st.markdown("### Metryki populacji")
     verbose = bool(st.session_state.get("st_verbose_pop_captions", True))
     sc.help_expander(
         "Metryki populacji (średnie F, f_e, f_a, GI, N_e…)",
@@ -452,18 +452,18 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
     )
 
     tab_names = [
-        "Urodzenia: płeć",
-        "Urodzenia: LB/LC",
-        "F/M ratio",
-        "Kompletność: płeć",
-        "Kompletność: linie",
-        "Rozkład F",
-        "Założyciele p_i",
-        "GI (średni)",
-        "GI trend",
-        "Rodziny (pełne)",
-        "F/RIA: płeć",
-        "F/RIA: linie",
+        "Urodzenia według płci",
+        "Urodzenia według linii (LB/LC)",
+        "Stosunek płci (ur. ≥ 1900)",
+        "Kompletność rodowodu — płeć",
+        "Kompletność rodowodu — linie",
+        "Rozkład F (Wright)",
+        "Ranking wkładu założycieli (p_i)",
+        "Średni interwał pokoleniowy (GI)",
+        "Trend interwału pokoleniowego",
+        "Kompletność struktury rodzin",
+        "Trend F i RIA — płeć",
+        "Trend F i RIA — linie",
     ]
     tabs = st.tabs(tab_names)
 
@@ -504,7 +504,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         st.pyplot(fig, width="stretch")
 
     with tabs[6]:
-        st.caption("Top 10 wkładu genetycznego założycieli (p_i).")
+        st.caption("Top 50 wkładu genetycznego założycieli (p_i).")
         sc.help_expander("Interpretacja: założyciele p_i", hc.CHART_FOUNDERS_PI, expanded=verbose)
         fig = splt.fig_founder_contributions(stats.founder_contributions or {}, people)
         st.pyplot(fig, width="stretch")
@@ -584,7 +584,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
 
 
 def section_reports() -> None:
-    st.markdown("### Raporty")
+    st.markdown("### Raportowanie")
     sc.help_expander("Raporty — co zawierają", hc.SECTION_REPORTS)
     st.caption("Podgląd tekstowy; pełny eksport DOCX/PDF jest w wersji Tk.")
     df_std = st.session_state.get("df_std")
@@ -616,11 +616,11 @@ def section_reports() -> None:
 
 
 def section_settings() -> None:
-    st.markdown("### Ustawienia (sesja)")
+    st.markdown("### Konfiguracja (sesja)")
     sc.help_expander("Ustawienia sesji Streamlit", hc.SECTION_SETTINGS)
     st.caption("W Streamlit ustawienia są trzymane w tej sesji przeglądarki.")
     st.checkbox(
-        "Domyślnie: rozwinięte bloki „Interpretacja wykresu” w zakładce Populacja",
+        "Domyślnie: rozwinięte bloki „Interpretacja wykresu” w Metrykach populacji",
         value=True,
         key="st_verbose_pop_captions",
     )
@@ -628,6 +628,6 @@ def section_settings() -> None:
 
 def section_breeding_placeholder() -> None:
     st.info(
-        "Plan hodowlany — ta sekcja jest synchronizowana z wersją desktop (Tk) i wymaga dopracowania logiki hodowlanej."
+        "Plan hodowli — sekcja synchronizowana z wersją desktop (Tk); logika hodowlana w rozwoju."
     )
-    sc.help_expander("Plan hodowlany (Tk vs Streamlit)", hc.SECTION_BREEDING)
+    sc.help_expander("Plan hodowli (Tk vs Streamlit)", hc.SECTION_BREEDING)

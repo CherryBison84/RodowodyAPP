@@ -18,6 +18,9 @@ from app.pedigree.ancestor_pedigree import (
 )
 from app.visualizations.ancestor_plot import plot_ancestor_pedigree
 
+# Zgodnie z gui_pro.POP_FOUNDERS_PI_TOP_N (unikamy importu cyklicznego gui_pro → report_helpers).
+_POP_FOUNDERS_PI_TOP_N = 50
+
 
 def write_text_pages_to_pdf(pdf: PdfPages, *, text: str) -> None:
     lines = text.splitlines()
@@ -222,16 +225,18 @@ def build_population_report_figures(
             figs.append(fig)
 
         if stats.founder_contributions:
-            items = sorted(stats.founder_contributions.items(), key=lambda kv: kv[1], reverse=True)[:10]
+            items = sorted(stats.founder_contributions.items(), key=lambda kv: kv[1], reverse=True)[
+                :_POP_FOUNDERS_PI_TOP_N
+            ]
             labels = [str(kv[0]) for kv in items]
             vals = [float(kv[1]) for kv in items]
-            fig_b = plt.subplots(figsize=(8.2, 4.1), dpi=100)[0]
+            fig_b = plt.subplots(figsize=(11.0, 4.2), dpi=100)[0]
             axb = fig_b.gca()
             axb.bar(labels, vals, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
-            axb.set_title("Top p_i — wkład genetyczny założycieli")
+            axb.set_title(f"Top {len(items)} p_i — wkład genetyczny założycieli")
             axb.set_xlabel("ID założyciela")
             axb.set_ylabel("p_i (znorm.)")
-            axb.tick_params(axis="x", labelsize=8, rotation=35)
+            axb.tick_params(axis="x", labelsize=7, rotation=75)
             figs.append(fig_b)
     except Exception:
         pass

@@ -24,6 +24,9 @@ MUTED = "#2c6a4e"
 BUTTON_BG = "#dff4e3"
 BUTTON_BG2 = "#c8ead4"
 
+# Spójnie z gui_pro.POP_FOUNDERS_PI_TOP_N
+POP_FOUNDERS_PI_TOP_N = 50
+
 apply_matplotlib_fonts()
 
 
@@ -337,12 +340,12 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
 
 
 def fig_founder_contributions(contributions: Dict[str, float], people: dict) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(8.6, 3.4))
+    fig, ax = plt.subplots(figsize=(11.0, 4.2))
     if not contributions:
         ax.text(0.5, 0.5, "Brak danych founder contributions", ha="center", va="center")
         ax.axis("off")
         return fig
-    items = sorted(contributions.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    items = sorted(contributions.items(), key=lambda kv: kv[1], reverse=True)[:POP_FOUNDERS_PI_TOP_N]
     vals = [float(v) for _, v in items]
     ids = [str(fid) for fid, _ in items]
     labels: list[str] = []
@@ -351,9 +354,9 @@ def fig_founder_contributions(contributions: Dict[str, float], people: dict) -> 
         nm = getattr(p, "name", None) if p else None
         labels.append(f"{fid} ({nm})" if nm else fid)
     ax.bar(range(len(items)), vals, color=BUTTON_BG2, edgecolor=ACCENT)
-    ax.set_title("Top 10 założycieli (p_i)")
+    ax.set_title(f"Top {len(items)} założycieli (p_i)")
     ax.set_xticks(range(len(items)))
-    ax.set_xticklabels(labels, rotation=60, ha="right", fontsize=8)
+    ax.set_xticklabels(labels, rotation=75, ha="right", fontsize=7)
     ax.set_ylabel("p_i")
     fig.tight_layout()
     return fig

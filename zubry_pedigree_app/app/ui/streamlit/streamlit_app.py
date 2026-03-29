@@ -42,14 +42,14 @@ def run_streamlit_direct() -> None:
         section = st.radio(
             "Nawigacja",
             [
-                "Wczytywanie bazy",
-                "Osobniki",
-                "Rodowód",
-                "Analizy",
-                "Populacja",
-                "Raporty",
-                "Plan hodowlany",
-                "Ustawienia",
+                "Import i walidacja",
+                "Rejestr osobników",
+                "Graf pedigree",
+                "Analityka hodowlana",
+                "Metryki populacji",
+                "Raportowanie",
+                "Plan hodowli",
+                "Konfiguracja",
             ],
             label_visibility="collapsed",
         )
@@ -62,38 +62,38 @@ def run_streamlit_direct() -> None:
 
     st.markdown(
         f'<p style="color:{sc.THEME.MUTED};font-family:{sc.FONT_FAMILY_CSS};font-size:0.95rem;margin-top:0;">'
-        "Wczytywanie i mapowanie • Analizy • Rodowód • Populacja • Raporty • Walidacja"
+        "Import danych • Analityka • Pedigree • Metryki populacji • Raportowanie"
         "</p>",
         unsafe_allow_html=True,
     )
 
-    if section == "Wczytywanie bazy":
+    if section == "Import i walidacja":
         section_loading()
         return
 
     df_std = st.session_state.get("df_std")
     people = st.session_state.get("people")
     if df_std is None or people is None or len(df_std) == 0:
-        st.warning("Najpierw wczytaj bazę w sekcji **Wczytywanie bazy**.")
+        st.warning("Najpierw wczytaj dane w sekcji **Import i walidacja**.")
         return
 
-    if section == "Osobniki":
+    if section == "Rejestr osobników":
         section_persons(df_std)
-    elif section == "Rodowód":
+    elif section == "Graf pedigree":
         section_pedigree(df_std, people)
-    elif section == "Analizy":
-        t1, t2 = st.tabs(["Inbred (F)", "Mating"])
+    elif section == "Analityka hodowlana":
+        t1, t2 = st.tabs(["Inbred — współczynnik F", "Optymalizacja kojarzeń"])
         with t1:
             section_analysis_inbred(people)
         with t2:
             section_analysis_mating(df_std, people)
-    elif section == "Populacja":
+    elif section == "Metryki populacji":
         section_population(df_std, people)
-    elif section == "Raporty":
+    elif section == "Raportowanie":
         section_reports()
-    elif section == "Plan hodowlany":
+    elif section == "Plan hodowli":
         section_breeding_placeholder()
-    elif section == "Ustawienia":
+    elif section == "Konfiguracja":
         section_settings()
 
 
