@@ -14,16 +14,15 @@ from app.ui.streamlit import common as sc
 from app.ui.streamlit.pages import (
     section_analysis_individual,
     section_analysis_pairs_and_mating,
-    section_breeding_placeholder,
+    section_breeding,
     section_import,
     section_persons,
     section_population,
     section_reports,
-    section_settings,
     section_validation,
 )
 
-# Etykiety nawigacji (spójne z nomenklaturą akademicką wersji Tk).
+# Etykiety nawigacji (nomenklatura sekcji aplikacji).
 NAV_IMPORT = "Import i standaryzacja danych"
 NAV_VALIDATION = "Walidacja spójności zbioru"
 NAV_PERSONS = "Rejestr osobniczy populacji"
@@ -32,7 +31,6 @@ NAV_ANALYSIS_PAIRS = "Analiza par i optymalizacja kojarzeń"
 NAV_POPULATION = "Parametry populacyjne i genetyka grupy"
 NAV_REPORTS = "Raporty i eksport wyników"
 NAV_BREEDING = "Scenariusze planu hodowlanego"
-NAV_SETTINGS = "Konfiguracja obliczeń i raportów"
 
 NAV_SECTIONS = [
     NAV_IMPORT,
@@ -43,7 +41,6 @@ NAV_SECTIONS = [
     NAV_POPULATION,
     NAV_REPORTS,
     NAV_BREEDING,
-    NAV_SETTINGS,
 ]
 
 
@@ -68,7 +65,7 @@ def run_streamlit_direct() -> None:
     with st.sidebar:
         _logo_path = Path(__file__).resolve().parents[2] / "logo.png"
         if _logo_path.exists():
-            st.image(str(_logo_path), width=228)
+            st.image(str(_logo_path), use_container_width=True)
         st.caption("Analiza rodowodów żubrów")
         st.markdown(
             f'<p style="margin:0.6rem 0 0.35rem 0;font-size:0.78rem;font-weight:700;'
@@ -82,7 +79,7 @@ def run_streamlit_direct() -> None:
             label_visibility="collapsed",
         )
         st.caption(
-            "Przepływ: import → walidacja → rejestr → analiza osobnicza → pary → populacja → raport."
+            "Przepływ: import → walidacja → rejestr → analiza osobnicza → pary → populacja → plan hodowlany → raport."
         )
         st.markdown("---")
         st.caption("Autor: Magdalena Perlińska-Teresiak • 2026")
@@ -99,8 +96,6 @@ def run_streamlit_direct() -> None:
             mime="application/pdf",
             key="sidebar_methods_pdf",
         )
-
-    sc.render_main_header()
 
     if section == NAV_IMPORT:
         section_import()
@@ -131,9 +126,7 @@ def run_streamlit_direct() -> None:
     elif section == NAV_REPORTS:
         section_reports()
     elif section == NAV_BREEDING:
-        section_breeding_placeholder()
-    elif section == NAV_SETTINGS:
-        section_settings()
+        section_breeding(df_std, people)
 
 
 if __name__ == "__main__":

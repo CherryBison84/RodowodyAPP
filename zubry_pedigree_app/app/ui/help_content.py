@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Zbiór tekstów pomocy (markdown): słownik, zakładki, wykresy — wspólny dla Tk i Streamlit."""
+"""Teksty pomocy (markdown) — wersja przeglądarkowa (Streamlit)."""
 
 from __future__ import annotations
 
-# --- Główny słownik (markdown dla Streamlit, zwykły tekst dla Tk) ---
+# --- Główny słownik (markdown) ---
 
 GLOSSARY = """
 ## Słownik — najczęściej używane pojęcia
@@ -15,7 +15,7 @@ GLOSSARY = """
 - **Limit pokoleń** — możesz ograniczyć, jak głęboko program schodzi wstecz przy liczeniu F. **Bez limitu** schodzi tak daleko, jak pozwalają dane, aż do osób bez dalszych rodziców w bazie.
 - **Wykres F a maksymalna głębokość** — pokazuje, czy wynik F „ustabilizował się”, gdy zwiększasz liczbę pokoleń. Jeśli od pewnego poziomu krzywa się już prawie nie zmienia, dalsze pokolenia niewiele dodają — to częsty znak, że w tym fragmencie rodowodu dane są w miarę pełne.
 
-*(Te pojęcia wywodzą się z prac Sewalla Wrighta z lat 20. XX w.; pełne cytowania: **Pomoc → pełny dokument** albo sekcja **Literatura — źródła metod** w panelu Streamlit.)*
+*(Te pojęcia wywodzą się z prac Sewalla Wrighta z lat 20. XX w.; pełne cytowania: sekcja **Literatura — źródła metod** w panelu bocznym.)*
 
 ### Jak „pełny” jest rodowód u jednego osobnika
 - **MG** — do jakiego **najdalszego poziomu przodków** (pokolenia wstecz) w ogóle coś wiemy w zapisanym drzewie.
@@ -62,7 +62,7 @@ SECTION_LOADING = """
 2. **Adres URL** — pobranie pliku z sieci i takie samo mapowanie jak z dysku.
 3. **Rekord testowy** — ID **99999** jest traktowane technicznie i **nie wchodzi** do statystyk populacji.
 
-**Kolejny krok:** w wersji przeglądarkowej i na pulpicie po imporcie przejdź do **Walidacja spójności zbioru** — tam jest **krótki wynik** (np. liczba błędów), **wypunktowanie** problemów, **CSV** z listą (id, typ, szczegóły) do poprawy w Excelu oraz pełny raport tekstowy.
+**Kolejny krok:** po imporcie przejdź do **Walidacja spójności zbioru** — tam jest **krótki wynik** (np. liczba błędów), **wypunktowanie** problemów, **CSV** z listą (id, typ, szczegóły) do poprawy w Excelu oraz pełny raport tekstowy.
 """
 
 
@@ -76,7 +76,7 @@ SECTION_VALIDATION = """
 
 Status **OK** znaczy: **nie znaleziono błędów krytycznych**. **Ostrzeżenia** warto przejrzeć przed wnioskami hodowlanymi — często da się je zrozumieć po historii danych lub po poprawce pojedynczych pól.
 
-**Mapa braków (walidacja):** poziomy pas pól obok siebie — w każdym **nazwa kolumny** i **% wierszy z luką** (NaN, puste, „nan”), w **kolejności jak w rejestrze**; kolory **leśne** (jasna mgła = mało braków, ciemniejszy mech/kora = więcej).
+**Mapa braków (walidacja):** poziomy pas pól wyłącznie dla **kolumn schematu importu** (model aplikacji / raport), nie dla dodatkowych kolumn z arkusza — najpierw **kolejność jak w Rejestrze osobniczym**, potem pozostałe alfabetycznie. W każdym polu **nazwa kolumny** i **% wierszy z luką** (NaN, puste, „nan”); przy umiarkowanej liczbie kolumn także **(liczba braków / n wierszy)**. Kolory **leśne** (jasna mgła = mało braków, ciemniejszy mech/kora = więcej); pod mapą **pasek skali** 0–100 % braków.
 
 **Eksport CSV:** możesz pobrać listę problemów (**id**, **waga** ERROR/WARN, **typ_problemu**, **szczegoly**) — do filtrowania i poprawy w Excelu. Dla problemów dotyczących całej bazy (np. cykl w rodowodzie) w kolumnie id jest `_GLOBAL_`.
 """
@@ -85,7 +85,7 @@ Status **OK** znaczy: **nie znaleziono błędów krytycznych**. **Ostrzeżenia**
 SECTION_PERSONS = """
 ## Osobniki (tabela)
 
-Widzisz listę rekordów z możliwością sortowania. **Szukaj po ID** (pełne lub fragment) szybko zawęża listę; w wersji na pulpicie jest też przycisk **Znajdź**, który zaznacza pierwszy pasujący wiersz w tabeli.
+Widzisz listę rekordów z możliwością sortowania. **Szukaj po ID** (pełne lub fragment) szybko zawęża listę.
 
 Nowy filtr **Miejsce ur. (birth_location)** zawęża tabelę do wybranej lokalizacji (lub do **NA**, gdy pole jest puste/brak danych).
 
@@ -122,7 +122,7 @@ SECTION_MATING = """
 - Lista pokazuje **do 36 par**, posortowanych od **najmniejszego Φ** (= F potomka). Ten sam osobnik może być w liście **co najwyżej 3 razy** (jako sire lub dam).
 - **Macierz Φ**: po obliczeniu rankingu możesz zapisać tabelę **wszystkich par sire×dam** z aktualnego zestawu kandydatów (CSV) — wiersze = samce, kolumny = samice, komórka = Φ.
 - **Kinship dowolnej pary**: dwa wybrane ID z bazy — **Φ** i **R**; **Φ(A,B) = Φ(B,A)** (symetria współzgodności Malecota). **F potomka** z hipotetycznego kojarzenia tych osobników jako rodziców jest równe **Φ**.
-- **Dlaczego taki wynik?** (Streamlit / panel pokrewieństwa par w Tk): rozkład na **wspólnych przodków**, **wkład do Φ** (w tym skalowanie do wartości z rekurencji, gdy suma surowych ścieżek przekracza Φ przez nakładanie się dróg genów) oraz **liczba par niezależnych ścieżek** w grafie rodowym.
+- **Dlaczego taki wynik?** (sekcja analizy par): rozkład na **wspólnych przodków**, **wkład do Φ** (w tym skalowanie do wartości z rekurencji, gdy suma surowych ścieżek przekracza Φ przez nakładanie się dróg genów) oraz **liczba par niezależnych ścieżek** w grafie rodowym.
 - **Filtr miejsca urodzenia** (birth_location) może dodatkowo zawęzić kandydatów do par — przydatne, gdy chcesz porównywać kojarzenia tylko w wybranej grupie.
 - **Limity** liczby samców, samic i pokoleń **skracają czas** i nie muszą obejmować całej populacji.
 """
@@ -151,31 +151,19 @@ SECTION_POPULATION = """
 SECTION_REPORTS = """
 ## Raporty
 
-- W wersji **na pulpicie (Tk)** raport może zbierać walidację, skrót populacji i dane osobnika oraz eksport do **DOCX/PDF** z wykresami.
-- Raport populacji obejmuje teraz także: **mean kinship (Φ̄, R)**, skrót **GI (4 ścieżki)**, podsumowanie **rodzin pełnego rodzeństwa** oraz **top miejsc urodzenia**.
-- W **Streamlit** masz podgląd tekstowy i zapis **.txt**; zakres metryk został ujednolicony i obejmuje m.in. mean kinship, GI oraz podsumowanie miejsc urodzenia.
+- **Podgląd tekstowy** oraz zapis **.txt** i **.docx**; zakres metryk obejmuje m.in. walidację, skrót populacji, dane osobnika, **mean kinship (Φ̄, R)**, skrót **GI (4 ścieżki)**, podsumowanie **rodzin pełnego rodzeństwa** i **top miejsc urodzenia**.
+- **Pobrania** (PNG, CSV itd.) obsługuje przeglądarka — zapisuj pliki w wybranym folderze.
 """
 
 
 SECTION_BREEDING = """
-## Scenariusze planu hodowlanego (tylko Tk)
+## Scenariusze planu hodowlanego
 
-Ścieżka w module: **Analityka osobnicza i kojarzeń → Scenariusze planu hodowlanego** (obok innych narzędzi analitycznych).
+W **nawigacji bocznej** wybierz **Scenariusze planu hodowlanego**.
 
-Moduł **proponuje pary** przy ograniczeniach: wiek, linia, ile razy można użyć tego samego reproduktora, cele dotyczące średniego lub maksymalnego F. Wynik **zależy od tego, jak dobre są rodowody w bazie** i jak ustawisz liczenie ryzyka inbredu.
+Moduł **proponuje pary** przy ograniczeniach: wiek, linia, miejsce urodzenia, limit kandydatów, ile razy można użyć tej samej samicy / samca, opcjonalny **górny próg F potomka** (oraz informacja, gdy **średnie F** zestawu przekracza wybrany próg — bez dodatkowego filtrowania). Wynik **zależy od kompletności rodowodów** i od ustawień liczenia F (limit pokoleń lub do founderów).
 
-Po **kliknięciu wiersza** w tabeli widać **statystyki** (F potomka i rodziców, MG/EG/PCI rodziców). **Duży graf rodowodu** potomka otwiera się przyciskiem **„Pokaż rodowód potomka w nowym oknie”**; stamtąd można zapisać obraz jako **JPEG**.
-
-W Streamlit odpowiednik modułu jest **w budowie**.
-"""
-
-
-SECTION_SETTINGS = """
-## Ustawienia
-
-- **Tk:** część ustawień (np. domyślna głębokość F, eksport) jest zapamiętywana **w sesji** i używana przy kolejnych krokach.
-- Po zapisie pliku z aplikacji (JPEG, CSV, DOCX, PDF itd.) system próbuje **automatycznie otworzyć** go w domyślnej aplikacji (macOS: `open`, Windows: skojarzony program, Linux: `xdg-open`).
-- **Streamlit:** ustawienia dotyczą **tej samej sesji w przeglądarce** i znikają po zamknięciu karty (nie są zapisywane na dysku jak osobny plik konfiguracyjny). Pobrania plików obsługuje przeglądarka — otwarcie zależy od jej ustawień.
+Po wyborze pozycji na liście widać **statystyki** (F potomka i rodziców, MG/EG/PCI rodziców). **Graf rodowodu hipotetycznego potomka** jest pod szczegółami pary, z możliwością **pobrania PNG**.
 """
 
 
@@ -284,7 +272,7 @@ Zakres obliczeń (skrót)
 — N_e: przybliżenie z trendu średniego F i średniego GI — wyłącznie orientacyjnie.
 — Walidacja: kontrola ID, referencji rodziców, cykli, self-parent, płci, lat, spójności linii.
 
-Pełniejsze objaśnienia: menu Pomoc w aplikacji (wersja na pulpit) lub panel boczny Streamlit.
+Pełniejsze objaśnienia: rozwijane sekcje w **panelu bocznym** (Słownik, Walidacja, Literatura itd.).
 Wersja oprogramowania i parametry obliczeń (limity pokoleń, filtry) należy podać przy cytowaniu
 wyników z konkretnej sesji.
 """.strip()
@@ -315,12 +303,12 @@ Poniżej **klasyczne i często cytowane** pozycje, do których nawiązują poję
 
 *Jeśli cytujesz wyniki z programu w pracy naukowej lub raporcie hodowlanym, opisz proszę wersję oprogramowania, parametry (limity pokoleń, filtry) oraz źródło danych.*
 
-**PDF do cytowań:** w menu **Pomoc** (Tk) lub przycisk pobierania w panelu Streamlit dostępny jest skrócony **Przewodnik metod** w formacie PDF (ten skrót + bibliografia poniżej).
+**PDF do cytowań:** przycisk **Pobierz przewodnik metod (PDF)** w panelu bocznym udostępnia skrócony **Przewodnik metod** (ten skrót + bibliografia poniżej).
 """
 
 
 def all_charts_text() -> str:
-    """Jedna strona ze wszystkimi opisami wykresów (menu Pomoc w Tk)."""
+    """Zbiór opisów wykresów populacji (pełna pomoc / Streamlit)."""
     parts = [
         "## Interpretacja wykresów populacji\n",
         "### Urodzenia: płeć\n",
@@ -378,8 +366,6 @@ FULL_HELP_DOCUMENT = (
     + SECTION_REPORTS
     + "\n\n"
     + SECTION_BREEDING
-    + "\n\n"
-    + SECTION_SETTINGS
     + "\n\n---\n\n"
     + SECTION_REFERENCES
     + "\n\n---\n\n"

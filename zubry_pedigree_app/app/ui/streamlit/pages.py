@@ -1,12 +1,10 @@
 """
-Wszystkie ekrany wersji przeglądarkowej w jednym miejscu (wczytywanie, osobniki, rodowód,
-analizy, populacja, raporty, ustawienia, plan hodowlany).
+Ekrany Streamlit: wczytywanie, rejestr, analizy, populacja, raporty, plan hodowlany.
 """
 
 from __future__ import annotations
 
 import csv
-import io
 from datetime import datetime
 from io import StringIO
 
@@ -14,6 +12,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 
+from app.analytics.breeding_pairs import normalize_line, suggest_pairs_with_constraints
 from app.analytics.inbreeding_wright import (
     batch_offspring_inbreeding_F_from_parent_pairs,
     wright_inbreeding_F,
@@ -38,21 +37,24 @@ from app.analytics.population_genetics import (
     compute_population_genetics_stats,
 )
 from app.data.dataset_loader import (
+    dataframe_app_schema_columns,
     load_dataset_from_bytes,
     load_default_bison_report,
     load_raw_dataframe_from_url,
     standardize_bison_report_dataframe_with_column_mapping,
 )
 from app.config import get_config
-from app.pedigree.ancestor_pedigree import (
-    ensure_people_for_nodes,
-    get_ancestor_levels_and_edges,
-    get_ancestor_levels_unbounded,
-)
+from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
 from app.ui import help_content as hc
 from app.ui.streamlit import common as sc
+from app.ui.streamlit.page_helpers import (
+    breeding_hypo_offspring_figure,
+    build_pedigree_figure,
+    individual_pcl_dataframe,
+    pci_bundle_for_breeding,
+    plan_pedigree_plot_depth,
+)
 import app.ui.streamlit.streamlit_plotting as splt
-from app.visualizations.ancestor_plot import plot_ancestor_pedigree
 
 CFG = get_config()
 
@@ -164,18 +166,20 @@ def section_validation() -> None:
         )
     st.markdown("**Braki danych — heatmapa**")
     st.caption(
-        "Dla każdej kolumny: **% wierszy** z brakiem (NaN, puste lub nieprawidłowy tekst „nan”). "
-        "Kolejność jak w **Rejestrze**. **Mapa braków** — sąsiadujące pola: góra = kolumna, dół = % braków; "
-        "jasna zieleń = mało braków, ciemniejszy mech / kora = więcej."
+        "**Kolumny schematu importu** (jak w modelu aplikacji): kolejność jak w **Rejestrze**, potem pozostałe alfabetycznie. "
+        "**% wierszy** z brakiem (NaN, puste lub „nan”) oraz — przy mniejszej liczbie kolumn — **(braki / n)**. "
+        "Sąsiadujące pola: góra = nazwa, środek = %; pasek pod mapą = skala 0–100 %. "
+        "Jasna zieleń = mało braków, ciemniejszy mech / kora = więcej."
     )
-    fig_miss = splt.fig_column_missing_heatmap(df_std)
+    df_miss = dataframe_app_schema_columns(df_std)
+    fig_miss = splt.fig_column_missing_heatmap(df_miss)
     splt.show_matplotlib_figure_in_streamlit(
         fig_miss,
         download_filename="walidacja_mapa_brakow.png",
         download_key="val_miss_heatmap_png",
     )
-    _miss_raw = splt.column_missing_percentages(df_std).round(2)
-    _miss_ord = splt.registry_tree_only_order(_miss_raw.index)
+    _miss_raw = splt.column_missing_percentages(df_miss).round(2)
+    _miss_ord = splt.registry_like_column_order(_miss_raw.index)
     _miss_pct = _miss_raw.reindex(_miss_ord)
     with st.expander("Tabela % braków (według kolumn)", expanded=False):
         st.dataframe(_miss_pct.to_frame("% braków"), width="stretch")
@@ -231,7 +235,7 @@ def section_persons(df_std: pd.DataFrame) -> None:
     q = str(search_q).strip()
     filtered = base
 
-    # Filtr miejsca urodzenia (birth_location) — wspólny z Tk.
+    # Filtr miejsca urodzenia (birth_location).
     bl_opts: list[str] = ["Bez filtra"]
     if "birth_location" in base.columns:
         bl_norm = base["birth_location"].astype(str).str.strip()
@@ -313,99 +317,6 @@ def section_persons(df_std: pd.DataFrame) -> None:
             )
 
 
-def _build_pedigree_figure(
-    *,
-    person_id: str,
-    people: dict,
-    unbounded: bool,
-    depth: int,
-    readable: bool,
-    click_highlight: bool = False,
-):
-    max_nodes = 280
-    depth_i = max(0, min(30, int(depth)))
-    if unbounded:
-        levels_unc = get_ancestor_levels_unbounded(person_id=person_id, people=people)
-        if len(levels_unc) > max_nodes:
-            levels, edges = get_ancestor_levels_and_edges(
-                person_id=person_id, depth=max(depth_i, 4), people=people
-            )
-            note = f"(graf: limit gęstości, N w pełnym={len(levels_unc)})"
-        else:
-            levels = levels_unc
-            people_all_tmp = ensure_people_for_nodes(levels=levels, people=people)
-            edges = []
-            for child_id in levels.keys():
-                p = people_all_tmp.get(child_id)
-                if not p:
-                    continue
-                if getattr(p, "father_id", None) and p.father_id in levels:
-                    edges.append((p.father_id, child_id))
-                if getattr(p, "mother_id", None) and p.mother_id in levels:
-                    edges.append((p.mother_id, child_id))
-            note = f"(bez limitu pokoleń, N={len(levels)})"
-    else:
-        depth_for = depth_i
-        levels = {}
-        edges = []
-        while depth_for >= 0:
-            levels_try, edges_try = get_ancestor_levels_and_edges(
-                person_id=person_id, depth=depth_for, people=people
-            )
-            if len(levels_try) <= max_nodes or depth_for == 0:
-                levels, edges = levels_try, edges_try
-                break
-            depth_for -= 1
-        note = f"(limit={depth_for}, N={len(levels)})"
-
-    if not levels:
-        return None, "Brak danych do wyświetlenia."
-    people_all = ensure_people_for_nodes(levels=levels, people=people)
-    fig = plot_ancestor_pedigree(
-        person_id=person_id,
-        levels=levels,
-        edges=edges,
-        people=people_all,
-        readable_mode=readable,
-        enable_click_highlight=click_highlight,
-    )
-    try:
-        fig.suptitle(f"Rodowód przodków {note}", fontsize=splt.ST_FS_TITLE, y=0.98)
-    except Exception:
-        pass
-    return fig, None
-
-
-def _individual_pcl_dataframe(person_id: str, people: dict) -> tuple[pd.DataFrame, float, float]:
-    levels = get_ancestor_levels_unbounded(person_id=person_id, people=people)
-    by_gen: dict[int, int] = {}
-    for _aid, lvl in levels.items():
-        if lvl is None or lvl <= 0:
-            continue
-        by_gen[int(lvl)] = by_gen.get(int(lvl), 0) + 1
-    if not by_gen:
-        return pd.DataFrame(), 0.0, 0.0
-    g_max = max(by_gen.keys())
-    rows: list[dict] = []
-    eg = 0.0
-    pcl_sum = 0.0
-    for g in range(1, g_max + 1):
-        a_g = by_gen.get(g, 0)
-        pcl_g = float(a_g) / float(2**g)
-        pcl_sum += pcl_g
-        eg += pcl_g
-        rows.append(
-            {
-                "Pokolenie g": g,
-                "Znani przodkowie a_g": a_g,
-                "Max miejsc 2^g": 2**g,
-                "PCL = a_g/2^g": round(pcl_g, 6),
-            }
-        )
-    pci = pcl_sum / float(g_max)
-    return pd.DataFrame(rows), eg, pci
-
-
 def section_analysis_individual(df_std: pd.DataFrame, people: dict) -> None:
     st.markdown("### Analiza osobnicza: inbred i kompletność")
     st.caption("Graf przodków, F (Wright), kompletność (EG/PCI), linie sire/dam, wspólni przodkowie rodziców.")
@@ -450,7 +361,7 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
             if pid not in people:
                 st.error("Nieprawidłowe ID.")
             else:
-                fig, err = _build_pedigree_figure(
+                fig, err = build_pedigree_figure(
                     person_id=str(pid),
                     people=people,
                     unbounded=unbounded,
@@ -464,6 +375,7 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                         fig,
                         download_filename=f"rodowod_{pid}.png",
                         download_key=f"hub_rod_png_{pid}",
+                        use_container_width=True,
                     )
 
     with st2:
@@ -501,9 +413,9 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                     depths,
                     Fs,
                     marker="o",
-                    markersize=1.65,
+                    markersize=4.0,
                     color=sc.THEME.EDGE_PLOT,
-                    linewidth=1.55,
+                    linewidth=2.0,
                 )
                 ax.set_title(f"Diagnostyka F vs max pokoleń (ID {pid})", fontsize=splt.ST_FS_TITLE)
                 ax.set_xlabel("max pokoleń", fontsize=splt.ST_FS_AXIS)
@@ -519,7 +431,7 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
     with st3:
         st.caption("Kompletność wg poziomów przodków (PCL), EG i PCI — jak w metrykach populacji.")
         if st.button("Przelicz kompletność", key="hub_comp_go"):
-            df_c, eg, pci = _individual_pcl_dataframe(str(pid), people)
+            df_c, eg, pci = individual_pcl_dataframe(str(pid), people)
             if df_c.empty:
                 st.info("Brak poziomów przodków powyżej 0.")
             else:
@@ -743,7 +655,7 @@ def section_mating_ranking(df_std: pd.DataFrame, people: dict) -> None:
     top_n_cfg = int(CFG.mating_ranking_top_n)
     age_limit_cfg = int(CFG.mating_age_limit_years)
     st.caption(
-        f"Filtr wieku: ostatnie {age_limit_cfg} lat (jak w Tk). Ranking: do {top_n_cfg} par (najmniejsze Φ = F potomka), "
+        f"Filtr wieku: ostatnie {age_limit_cfg} lat. Ranking: do {top_n_cfg} par (najmniejsze Φ = F potomka), "
         "R = 2Φ; każdy osobnik w liście wynikowej max 3×. Limity kandydatów ograniczają czas obliczeń."
     )
 
@@ -759,7 +671,7 @@ def section_mating_ranking(df_std: pd.DataFrame, people: dict) -> None:
     cutoff = cy - age_limit_cfg
     st.caption(f"Rok odniesienia {cy}: używane osobniki z birth_year ≥ {cutoff}.")
 
-    # Filtr miejsca urodzenia (spójny z Tk).
+    # Filtr miejsca urodzenia (birth_location).
     bl_opts: list[str] = ["Bez filtra"]
     if "birth_location" in df_std.columns:
         bl_norm = df_std["birth_location"].astype(str).str.strip()
@@ -854,11 +766,15 @@ def section_mating_ranking(df_std: pd.DataFrame, people: dict) -> None:
 
 def section_population(df_std: pd.DataFrame, people: dict) -> None:
     st.markdown("### Parametry populacyjne i genetyka grupy")
-    verbose = bool(st.session_state.get("st_verbose_pop_captions", True))
     sc.help_expander(
         "Parametry populacyjne (średnie F, f_e, f_a, GI, N_e, mean kinship…)",
         hc.SECTION_POPULATION + "\n\n*Pełny słownik skrótów: panel boczny → „Słownik parametrów”.*",
         expanded=False,
+    )
+    verbose = st.checkbox(
+        "Domyślnie rozwinięte bloki „Interpretacja wykresu” przy wykresach populacji",
+        value=True,
+        key="st_verbose_pop_captions",
     )
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -1120,7 +1036,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         )
 
     with tabs[8]:
-        st.caption("Średni odstęp międzypokoleniowy (GI) — ojciec/matka vs syn/córka (jak w Tk).")
+        st.caption("Średni odstęp międzypokoleniowy (GI) — ojciec/matka vs syn/córka.")
         sc.help_expander("Interpretacja: GI (średni)", hc.CHART_GI_BAR, expanded=verbose)
         fig_gi = splt.fig_gi_mean_bar(gi_data)
         splt.show_matplotlib_figure_in_streamlit(
@@ -1305,9 +1221,9 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         fig, ax = plt.subplots(figsize=(splt.ST_FIG_SCATTER_W, splt.ST_FIG_SCATTER_H))
         for grp, sub in df_plot.groupby("Grupa"):
             c = colors_map.get(grp, sc.THEME.EDGE_PLOT)
-            ax.scatter(sub["MG"], sub["PCL_max"], s=12, alpha=0.45, color=c, label=grp)
+            ax.scatter(sub["MG"], sub["PCL_max"], s=28, alpha=0.45, color=c, label=grp)
             by_mg = sub.groupby("MG")["PCL_max"].mean().sort_index()
-            ax.plot(by_mg.index.tolist(), by_mg.values.tolist(), color=c, linewidth=1.55, alpha=0.9)
+            ax.plot(by_mg.index.tolist(), by_mg.values.tolist(), color=c, linewidth=2.0, alpha=0.9)
 
         ax.set_title("PCL_max (a_MG/2^MG) względem MG — ANC vs RP", fontsize=splt.ST_FS_TITLE)
         ax.set_xlabel("MG (maksymalna liczba prześledzonych pokoleń)", fontsize=splt.ST_FS_AXIS)
@@ -1326,7 +1242,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
 def section_reports() -> None:
     st.markdown("### Raporty i eksport wyników")
     sc.help_expander("Raporty — co zawierają", hc.SECTION_REPORTS)
-    st.caption("Podgląd tekstowy; pełny eksport DOCX/PDF jest w wersji Tk.")
+    st.caption("Podgląd poniżej — pobierz raport jako **.txt** lub **.docx**. Wykresy z zakładek populacji możesz zapisać osobno (**Pobierz wykres PNG**).")
     df_std = st.session_state.get("df_std")
     people = st.session_state.get("people")
     rep = st.session_state.get("validation_report")
@@ -1353,7 +1269,7 @@ def section_reports() -> None:
                 f"LB={stats.line_counts.get('LB', 0)}, LC={stats.line_counts.get('LC', 0)}, NA={stats.line_counts.get('NA', 0)}"
             )
 
-            # Mean kinship dla spójności z Tk.
+            # Mean kinship (skrót w raporcie tekstowym).
             try:
                 id_list = [str(x) for x in df_std["id"].tolist()]
                 mk_phi, mk_r, mk_note = mean_kinship_pairwise(
@@ -1405,22 +1321,244 @@ def section_reports() -> None:
             lines.append(f"Błąd metryk: {e}")
     text = "\n".join(lines)
     st.text_area("Podgląd", text, height=320)
-    st.download_button("Pobierz raport (.txt)", data=text, file_name="raport_wisent.txt", mime="text/plain")
+    c_dl1, c_dl2 = st.columns(2)
+    with c_dl1:
+        st.download_button("Pobierz raport (.txt)", data=text, file_name="raport_wisent.txt", mime="text/plain")
+    with c_dl2:
+        try:
+            from app.ui.docx_report import report_plain_text_to_docx_bytes
+
+            docx_bytes = report_plain_text_to_docx_bytes(
+                text,
+                title="WisentPedigree Pro+ — Raport (Streamlit)",
+                footer_note="Raport tekstowy z podglądu (walidacja, skrót populacji). Wykresy dołącz ręcznie z pobranych plików PNG.",
+            )
+        except Exception as e:
+            st.warning(f"Eksport DOCX wymaga pakietu python-docx (`pip install python-docx`). Szczegóły: {e}")
+        else:
+            st.download_button(
+                "Pobierz raport (.docx)",
+                data=docx_bytes,
+                file_name="raport_wisent.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
 
 
-def section_settings() -> None:
-    st.markdown("### Konfiguracja obliczeń i raportów (sesja)")
-    sc.help_expander("Ustawienia sesji Streamlit", hc.SECTION_SETTINGS)
-    st.caption("W Streamlit ustawienia są trzymane w tej sesji przeglądarki.")
-    st.checkbox(
-        "Domyślnie: rozwinięte bloki „Interpretacja wykresu” przy parametrach populacyjnych",
-        value=True,
-        key="st_verbose_pop_captions",
+def section_breeding(df_std: pd.DataFrame, people: dict) -> None:
+    st.markdown("### Scenariusze planu hodowlanego")
+    sc.help_expander("Scenariusze planu hodowlanego — dobieranie par", hc.SECTION_BREEDING)
+    st.caption(
+        "Heurystyczny ranking par przy filtrach wieku, linii i miejsca urodzenia; minimalizacja F potomka "
+        "z limitami użyć samicy/samca i opcjonalnym progiem maks. F."
     )
 
+    df_ids = df_std.copy()
+    df_ids["id"] = df_ids["id"].astype(str)
+    if "sex" in df_ids.columns:
+        sx = df_ids["sex"].astype(str).str.strip().str.upper()
+        male_opts = sorted(df_ids.loc[sx == "M", "id"].drop_duplicates().tolist(), key=sc.id_sort_key)
+        female_opts = sorted(df_ids.loc[sx == "F", "id"].drop_duplicates().tolist(), key=sc.id_sort_key)
+    else:
+        male_opts, female_opts = [], []
 
-def section_breeding_placeholder() -> None:
-    st.info(
-        "Scenariusze planu hodowlanego — sekcja synchronizowana z wersją desktop (Tk); rozwój modułu w toku."
-    )
-    sc.help_expander("Scenariusze planu hodowlanego (Tk vs Streamlit)", hc.SECTION_BREEDING)
+    pr1, pr2 = st.columns(2)
+    with pr1:
+        plan_ub = st.checkbox("Ryzyko inbredu: bez limitu pokoleń (do founderów)", value=False, key="plan_risk_ub")
+    with pr2:
+        plan_d = st.number_input("Max pokoleń (gdy limit)", 0, 30, 4, key="plan_risk_d", disabled=plan_ub)
+
+    def plan_max_back() -> int | None:
+        return None if plan_ub else int(plan_d)
+
+    st.markdown("#### Policz ryzyko dla pojedynczej pary")
+    pc1, pc2 = st.columns(2)
+    with pc1:
+        st.markdown("**Samica (F)**")
+        plan_dam_sel = st.selectbox(
+            "Z listy",
+            [""] + female_opts,
+            key="plan_dam_sel",
+            format_func=lambda x: "— wybierz —" if x == "" else str(x),
+        )
+        plan_dam_txt = st.text_input("Lub ID", "", key="plan_dam_txt", placeholder="np. 123")
+    with pc2:
+        st.markdown("**Samiec (M)**")
+        plan_sire_sel = st.selectbox(
+            "Z listy",
+            [""] + male_opts,
+            key="plan_sire_sel",
+            format_func=lambda x: "— wybierz —" if x == "" else str(x),
+        )
+        plan_sire_txt = st.text_input("Lub ID", "", key="plan_sire_txt", placeholder="np. 456")
+
+    dam_one = (plan_dam_txt or "").strip() or (plan_dam_sel or "").strip()
+    sire_one = (plan_sire_txt or "").strip() or (plan_sire_sel or "").strip()
+    if st.button("Policz ryzyko F potomka", key="plan_calc_one_pair"):
+        if not dam_one or not sire_one:
+            st.error("Podaj ID samicy i samca.")
+        elif dam_one not in people or sire_one not in people:
+            st.error("Oba ID muszą być w wczytanej bazie.")
+        else:
+            pairs = [(sire_one, dam_one)]
+            mb = plan_max_back()
+            try:
+                F_off = batch_offspring_inbreeding_F_from_parent_pairs(pairs, people, max_generations_back=mb)[0]
+            except Exception as e:
+                st.error(str(e))
+            else:
+                dl = normalize_line(getattr(people.get(dam_one), "line", None))
+                sl = normalize_line(getattr(people.get(sire_one), "line", None))
+                st.success(f"**F potomka** = {F_off:.6f}  (samica linia {dl}, samiec linia {sl})")
+
+    st.markdown("#### Podpowiedz pary (TOP-N)")
+    cg1, cg2, cg3 = st.columns(3)
+    with cg1:
+        line_mode = st.selectbox(
+            "Linia (oboje rodzice)",
+            ["Bez filtra", "LB", "LC", "LB+LC", "NA"],
+            key="plan_line_mode",
+        )
+        bl_opts: list[str] = ["Bez filtra"]
+        if "birth_location" in df_std.columns:
+            bl_norm = df_std["birth_location"].astype(str).str.strip()
+            bl_norm = bl_norm.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+            uniq = sorted(set(bl_norm.tolist()) - {"nan", "None"}, key=str.lower)
+            if "NA" in uniq:
+                uniq = [x for x in uniq if x != "NA"]
+                bl_opts = bl_opts + uniq + ["NA"]
+            else:
+                bl_opts = bl_opts + uniq
+        origin_mode = st.selectbox("Miejsce urodzenia (birth_location)", bl_opts, key="plan_origin")
+    with cg2:
+        min_age = st.number_input("Wiek min (lata)", 0, 120, 0, key="plan_min_age")
+        max_age = st.number_input("Wiek max (lata)", 0, 120, 80, key="plan_max_age")
+    with cg3:
+        cand_limit = st.number_input("Limit kandydatów (M i F)", 1, 500, 25, key="plan_cand_lim")
+        top_n = st.number_input("TOP N par", 1, 200, 20, key="plan_top_n")
+
+    with st.expander("Cele różnorodności (progi F, limity użyć)", expanded=False):
+        g1, g2 = st.columns(2)
+        with g1:
+            goal_mean_en = st.checkbox("Uwaga: średnie F zestawu ≤", value=False, key="plan_goal_mean_en")
+            goal_mean_F = st.number_input("próg średniej F", 0.0, 1.0, 0.05, format="%.4f", key="plan_goal_mean_f")
+        with g2:
+            goal_max_en = st.checkbox("Tylko pary z F potomka ≤", value=False, key="plan_goal_max_en")
+            goal_max_F = st.number_input("próg max F", 0.0, 1.0, 0.10, format="%.4f", key="plan_goal_max_f")
+        u1, u2 = st.columns(2)
+        with u1:
+            max_dam_uses = st.number_input("Max użyć tej samej samicy", 1, 50, 3, key="plan_max_dam_u")
+        with u2:
+            max_sire_uses = st.number_input("Max użyć tego samego samca", 1, 50, 3, key="plan_max_sire_u")
+
+    cy = datetime.now().year
+    if st.button("Podpowiedz pary", type="primary", key="plan_suggest_go"):
+        mb = plan_max_back()
+        try:
+            with st.spinner("Liczenie rankingów par…"):
+                pair_result = suggest_pairs_with_constraints(
+                    df_std,
+                    people,  # type: ignore[arg-type]
+                    min_age=int(min_age),
+                    max_age=int(max_age),
+                    line_mode=str(line_mode),
+                    origin_mode=str(origin_mode),
+                    candidate_limit=int(cand_limit),
+                    top_n=int(top_n),
+                    max_generations_back=mb,
+                    max_dam_uses=int(max_dam_uses),
+                    max_sire_uses=int(max_sire_uses),
+                    goal_max_enabled=bool(goal_max_en),
+                    goal_max_F=float(goal_max_F),
+                    current_year=cy,
+                )
+        except Exception as e:
+            st.session_state.pop("breeding_pair_result", None)
+            st.error(f"Nie udało się policzyć rankingów par: {e}")
+        else:
+            st.session_state["breeding_pair_result"] = pair_result
+            accepted = pair_result.suggestions
+            if accepted:
+                mean_f = pair_result.mean_F
+                max_f = pair_result.max_F
+                warn_mean = bool(goal_mean_en) and mean_f > float(goal_mean_F)
+                warn_txt = " **UWAGA:** średnie F przekracza wybrany próg (tylko informacja)." if warn_mean else ""
+                st.session_state["breeding_pair_msg"] = (
+                    f"TOP {len(accepted)}/{int(top_n)} par. Śr. F={mean_f:.6f}, max F={max_f:.6f}. "
+                    f"Kandydatki: {pair_result.female_candidates}, samce: {pair_result.male_candidates}.{warn_txt}"
+                )
+            else:
+                st.session_state["breeding_pair_msg"] = "Brak par spełniających ograniczenia."
+
+    if st.session_state.get("breeding_pair_msg"):
+        st.info(st.session_state["breeding_pair_msg"])
+
+    pair_result = st.session_state.get("breeding_pair_result")
+    if pair_result and pair_result.suggestions:
+        rows = []
+        for r in pair_result.suggestions:
+            rows.append(
+                {
+                    "Samica (ID)": r.dam_id,
+                    "Samica linia": r.dam_line,
+                    "Samica wiek": r.dam_age,
+                    "Samiec (ID)": r.sire_id,
+                    "Samiec linia": r.sire_line,
+                    "Samiec wiek": r.sire_age,
+                    "F potomka": round(r.offspring_F, 6),
+                }
+            )
+        st.dataframe(pd.DataFrame(rows), width="stretch", height=min(420, 60 + 28 * min(len(rows), 12)))
+        labels = [
+            f"{i + 1}. {s.dam_id} × {s.sire_id}  F={s.offspring_F:.6f}" for i, s in enumerate(pair_result.suggestions)
+        ]
+        pick = st.selectbox(
+            "Para — szczegóły i rodowód hipotetycznego potomka",
+            list(range(len(pair_result.suggestions))),
+            format_func=lambda i: labels[int(i)],
+            key="plan_pick_pair",
+        )
+        sel = pair_result.suggestions[int(pick)]
+        dam_id, sire_id = sel.dam_id, sel.sire_id
+        mb = plan_max_back()
+        try:
+            F_off = wright_offspring_inbreeding_F_from_parents(
+                father_id=sire_id, mother_id=dam_id, people=people, max_generations_back=mb
+            )
+        except Exception:
+            F_off = float("nan")
+        try:
+            F_dam = wright_inbreeding_F(person_id=dam_id, people=people, max_generations_back=mb).F
+        except Exception:
+            F_dam = float("nan")
+        try:
+            F_sire = wright_inbreeding_F(person_id=sire_id, people=people, max_generations_back=mb).F
+        except Exception:
+            F_sire = float("nan")
+        MG_d, EG_d, PCI_d = pci_bundle_for_breeding(dam_id, people)
+        MG_s, EG_s, PCI_s = pci_bundle_for_breeding(sire_id, people)
+        d_nm = getattr(people.get(dam_id), "name", None) or "-"
+        s_nm = getattr(people.get(sire_id), "name", None) or "-"
+        mb_note = "bez limitu (do founderów)" if mb is None else f"max {mb} pokoleń"
+        detail_lines = [
+            f"Samica: {dam_id} ({d_nm})  |  linia: {sel.dam_line}  |  wiek: {sel.dam_age}",
+            f"Samiec: {sire_id} ({s_nm})  |  linia: {sel.sire_line}  |  wiek: {sel.sire_age}",
+            "",
+            f"Parametry F jak przy ryzyku ({mb_note}).",
+            f"F potomka Φ(samiec, samica) = {F_off:.6f}  (w tabeli: {sel.offspring_F:.6f})",
+            f"F samicy = {F_dam:.6f}  |  F samca = {F_sire:.6f}",
+            "",
+            f"Kompletność rodowodu (bez limitu) — samica: MG={MG_d}, EG={EG_d:.4f}, PCI={PCI_d:.4f}",
+            f"Kompletność rodowodu (bez limitu) — samiec: MG={MG_s}, EG={EG_s:.4f}, PCI={PCI_s:.4f}",
+        ]
+        st.text("\n".join(detail_lines))
+        pd_depth = plan_pedigree_plot_depth(mb)
+        st.caption(f"Graf poniżej: do {pd_depth} pokoleń wstecz (tryb czytelny dla podglądu w przeglądarce).")
+        fig_h = breeding_hypo_offspring_figure(sire_id, dam_id, people, mb)
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_h,
+            download_filename=f"plan_potomek_{dam_id}_{sire_id}.png",
+            download_key=f"plan_hypo_png_{dam_id}_{sire_id}",
+            use_container_width=True,
+        )
+
+

@@ -7,14 +7,14 @@ Główny kod aplikacji znajduje się w katalogu **`zubry_pedigree_app/`** (uruch
 ```bash
 cd zubry_pedigree_app
 source ../.venv/bin/activate   # lub .venv w tym katalogu
-python run_tk.py
+python run_web.py
 ```
 
-Streamlit:
+Alternatywnie (tylko serwer Streamlit, bez automatycznego otwarcia przeglądarki):
 
 ```bash
 cd zubry_pedigree_app
 python run_streamlit.py
 ```
 
-Z katalogu nadrzędnego (repo root) możesz też użyć skryptów w rootcie: `run_tk.py`, `run_streamlit.py` — dodają one `zubry_pedigree_app` do `PYTHONPATH`.
+Z katalogu nadrzędnego (repo root): `run_streamlit.py` lub `run_tk.py` (alias uruchamiający Streamlit) — dodają `zubry_pedigree_app` do `PYTHONPATH`.

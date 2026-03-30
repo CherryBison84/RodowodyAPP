@@ -1,2 +1,1 @@
-"""Warstwa prezentacji: Qt, Tk, Streamlit (inline + launcher web), pomoc, PDF metod."""
-
+"""Warstwa prezentacji: Streamlit, pomoc (markdown), PDF metod, raporty DOCX."""

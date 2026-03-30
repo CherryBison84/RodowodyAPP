@@ -1,0 +1,9 @@
+# Motyw dopasowany do `app.ui.tk.theme.Theme` — uruchomienie z cwd = katalog projektu (jak w web_launcher).
+
+[theme]
+base = "light"
+primaryColor = "#355d47"
+backgroundColor = "#e8f0eb"
+secondaryBackgroundColor = "#dce8df"
+textColor = "#1e2b24"
+font = "sans serif"

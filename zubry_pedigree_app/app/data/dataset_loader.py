@@ -20,7 +20,39 @@ class DatasetInfo:
     columns: int
 
 
+# Kolumny schematu aplikacji po imporcie (raport EBPB / mapowanie) — bez dodatkowych pól z arkusza.
+STANDARD_BISON_REPORT_COLUMNS: tuple[str, ...] = (
+    "id",
+    "name",
+    "alt_name",
+    "sex",
+    "line",
+    "birth_year",
+    "status",
+    "father_id",
+    "father_name",
+    "father_line",
+    "mother_id",
+    "mother_name",
+    "mother_line",
+    "birth_date",
+    "death_date",
+    "birth_location",
+)
+
+
 _ID_REGEX = re.compile(r"^\d+[A-Za-z]*$")
+
+
+def dataframe_app_schema_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Tylko kolumny importowane do modelu (stała kolejność). Pomija dodatkowe kolumny z pliku.
+    Gdy zbiór nie zawiera żadnej ze standardowych nazw, zwraca kopię bez zmian.
+    """
+    present = [c for c in STANDARD_BISON_REPORT_COLUMNS if c in df.columns]
+    if not present:
+        return df.copy()
+    return df.loc[:, present].copy()
 
 
 def _clean_column_name(col: object) -> object:
@@ -147,7 +179,8 @@ def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df = df[df["id"].astype(str) != "99999"].reset_index(drop=True)
     except Exception:
         df = df[df["id"] != "99999"].reset_index(drop=True)
-    return df
+    schema = [c for c in STANDARD_BISON_REPORT_COLUMNS if c in df.columns]
+    return df.loc[:, schema].reset_index(drop=True)
 
 
 def load_dataset_from_path(path: str | Path) -> tuple[pd.DataFrame, DatasetInfo]:

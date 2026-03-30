@@ -316,9 +316,10 @@ def plot_ancestor_pedigree(
     max_nodes_in_level = max((len(v) for v in by_level.values()), default=1)
     # Przy wielu węzłach na poziomie etykiety zaczynają się nakładać.
     # Zwiększamy szerokość proporcjonalnie do gęstości.
-    fig_width = min(34.0, 10.0 + 0.6 * float(max_nodes_in_level))
+    # Szersza figura = wyższa rozdzielczość przy skalowaniu do pełnej szerokości okna / kontenera.
+    fig_width = min(44.0, 11.5 + 0.72 * float(max_nodes_in_level))
     # Więcej miejsca pionowego, żeby “piętra” hierarchii były wyraźne.
-    fig_height = max(6.0, 4.8 + 0.55 * float(max_level))
+    fig_height = max(6.5, 5.0 + 0.58 * float(max_level))
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     ax.set_title(f"Osobnik numer: {person_id}")
     ax.axis("off")

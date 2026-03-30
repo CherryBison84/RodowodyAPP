@@ -20,7 +20,7 @@ class AppConfig:
     default_pci_max_generations: int = 4
     default_tree_generations: int = 4
 
-    # Mating / ranking defaults (Tk + Streamlit)
+    # Mating / ranking defaults
     mating_age_limit_years: int = 15
     mating_ranking_top_n: int = 36
     mating_default_male_limit: int = 200
@@ -50,7 +50,7 @@ def resolve_app_icon_ico() -> Path | None:
 
 
 def _ico_largest_frame_rgba(im: "PILImage") -> "PILImage":
-    """Z wieloklatkowego ICO wybiera największą bitmapę (czytelna ikona w Tk / Streamlit)."""
+    """Z wieloklatkowego ICO wybiera największą bitmapę (czytelna ikona)."""
     from PIL import Image
 
     frames: list[Image.Image] = []
@@ -68,7 +68,7 @@ def _ico_largest_frame_rgba(im: "PILImage") -> "PILImage":
 
 
 def app_icon_pil_best() -> "PILImage | None":
-    """Największa klatka z `ikona.ico` jako obraz PIL (Streamlit, Tk)."""
+    """Największa klatka z `ikona.ico` jako obraz PIL (np. favicon Streamlit)."""
     try:
         from PIL import Image
     except ImportError:

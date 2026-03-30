@@ -11,10 +11,10 @@ import pandas as pd
 import streamlit as st
 
 from app.analytics.line_membership import compute_all_line_memberships
-from app.data.dataset_loader import load_default_bison_report
+from app.data.dataset_loader import dataframe_app_schema_columns, load_default_bison_report
 from app.data.validator import validate_loaded_dataset
 from app.ui import help_content as hc
-from app.ui.tk.theme import Theme
+from app.ui.theme import Theme
 from app.ui.typography import apply_matplotlib_fonts, css_font_family
 
 THEME = Theme()
@@ -24,23 +24,6 @@ def help_expander(title: str, body: str, *, expanded: bool = False) -> None:
     """Składany blok pomocy (markdown)."""
     with st.expander(title, expanded=expanded):
         st.markdown(body)
-
-
-def render_main_header(*, tagline: str | None = None) -> None:
-    """Nagłówek obszaru głównego — ta sama estetyka co okno desktop (leśna paleta)."""
-    tag = tagline or (
-        "Import → walidacja spójności → rejestr osobniczy → analiza osobnicza → "
-        "pary → parametry populacji → raport"
-    )
-    st.markdown(
-        f"""
-        <div class="wp-app-header">
-            <h1>WisentPedigree Pro+</h1>
-            <p class="wp-tagline">{tag}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def apply_page_style() -> None:
@@ -54,32 +37,6 @@ def apply_page_style() -> None:
         .stApp [data-testid="stMarkdownContainer"],
         .stApp button, .stApp input, .stApp textarea, .stApp select {{
             font-family: {ff} !important;
-        }}
-        .wp-app-header {{
-            background: linear-gradient(135deg, {THEME.PANEL_BG} 0%, {THEME.PANEL_BG2} 55%, {THEME.PANEL_BG} 100%);
-            border: 1px solid {THEME.BORDER_SUBTLE};
-            border-radius: 14px;
-            padding: 1.1rem 1.35rem 1.15rem;
-            margin: 0 0 1.35rem 0;
-            border-left: 5px solid {THEME.EDGE_PLOT};
-            box-shadow: 0 2px 14px rgba(30, 43, 36, 0.07);
-        }}
-        .wp-app-header h1 {{
-            margin: 0 0 0.4rem 0;
-            font-size: clamp(1.45rem, 2.4vw, 1.75rem);
-            font-weight: 700;
-            letter-spacing: -0.025em;
-            color: {THEME.TEXT} !important;
-            line-height: 1.15;
-        }}
-        .wp-app-header, .wp-app-header h1, .wp-app-header .wp-tagline {{
-            font-family: {ff} !important;
-        }}
-        .wp-app-header .wp-tagline {{
-            margin: 0;
-            color: {THEME.MUTED} !important;
-            font-size: 1.02rem;
-            line-height: 1.55;
         }}
         .stApp {{
             background-color: {THEME.APP_BG};
@@ -106,7 +63,7 @@ def apply_page_style() -> None:
             border-radius: 10px;
             box-shadow: 0 1px 8px rgba(30, 43, 36, 0.08);
         }}
-        /* Nawigacja: zaznaczony punkt jak aktywna zakładka Tk */
+        /* Nawigacja: zaznaczony punkt jak aktywna karta */
         [data-testid="stSidebar"] div[role="radiogroup"] label {{
             padding: 0.32rem 0.55rem;
             border-radius: 8px;
@@ -204,6 +161,16 @@ def apply_page_style() -> None:
             color: {THEME.TEXT} !important;
             border: 1px solid {THEME.ACCENT} !important;
         }}
+        /* PDF „przewodnik metod” w sidebarze — ten sam kolor co wyżej, czcionka ~2–3 pt mniejsza */
+        [data-testid="stSidebar"] .stDownloadButton > button {{
+            font-size: calc(1em - 2.5pt) !important;
+        }}
+        /* Pobierz wykres (PNG) i inne pobrania w treści — mniejsza czcionka (~2–3 pt) */
+        [data-testid="stMain"] .stDownloadButton > button,
+        .stMain .stDownloadButton > button,
+        section.main .stDownloadButton > button {{
+            font-size: calc(1em - 2.5pt) !important;
+        }}
         /* Przycisk primary (zielony akcent rodowy) */
         div[data-testid="stBaseButton-primary"] > button,
         button[kind="primary"] {{
@@ -298,6 +265,7 @@ def id_sort_key(s: str) -> tuple[int, str]:
 def set_dataset(df_std: pd.DataFrame, source: str) -> None:
     from app.pedigree.ancestor_pedigree import build_people_map
 
+    df_std = dataframe_app_schema_columns(df_std)
     st.session_state["df_std"] = df_std
     st.session_state["source"] = source
     people = build_people_map(df_std)

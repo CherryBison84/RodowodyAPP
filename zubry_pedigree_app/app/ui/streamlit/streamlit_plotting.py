@@ -1,6 +1,8 @@
 """
-Rysowanie wykresów do wersji w przeglądarce (urodzenia, trendy inbredu, GI, rodziny itp.).
-Logika liczenia jest spójna z oknem na pulpicie, żeby wyniki się zgadzały.
+Rysowanie wykresów w przeglądarce (urodzenia, trendy inbredu, GI, rodziny itp.).
+
+Wyświetlanie: `show_matplotlib_figure_in_streamlit` — PNG; domyślnie stała szerokość (`ST_CHART_DISPLAY_WIDTH_PX`),
+opcjonalnie `use_container_width=True` (np. rodowód na całą szerokość kolumny); przy wielu kategorii na osi X — `_figsize_for_n_x_categories`.
 """
 
 from __future__ import annotations
@@ -17,9 +19,11 @@ from matplotlib.patches import Rectangle
 from pandas import isna
 
 from app.analytics.inbreeding_wright import wright_inbreeding_F
+from app.config import get_config
+from app.data.dataset_loader import dataframe_app_schema_columns
 from app.analytics.population_dashboard import reproducers_by_offspring_decade
 from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
-from app.ui.tk.theme import Theme
+from app.ui.theme import Theme
 from app.ui.typography import apply_matplotlib_fonts
 
 PLOT_THEME = Theme()
@@ -29,30 +33,47 @@ BUTTON_BG = PLOT_THEME.BUTTON_BG
 BUTTON_BG2 = PLOT_THEME.BUTTON_BG2
 PLOT_BAR_3RD = PLOT_THEME.TAB_TEXT
 
-# Spójnie z gui_pro.POP_FOUNDERS_PI_TOP_N
-POP_FOUNDERS_PI_TOP_N = 20
+POP_FOUNDERS_PI_TOP_N = int(get_config().report_founders_top_n)
 
-# Kompaktowy układ pod Streamlit: figury i czcionki zbliżone do UI (mniej scrolla).
-ST_FS_TITLE = 7.75
-ST_FS_AXIS = 6.0
-ST_FS_TICK = 5.35
-ST_FS_DENSE = 4.9
-ST_FS_MISS_HEAD = 8.5
-ST_DPI_EXPORT = 100
-ST_FIG_EMPTY = (4.45, 1.35)
-ST_FIG_W, ST_FIG_H = 5.95, 2.08
-ST_FIG_REPO_W, ST_FIG_REPO_H = 5.95, 2.28
-ST_FIG_STACK_W, ST_FIG_STACK_H = 5.95, 2.36
-ST_FIG_HIST_W, ST_FIG_HIST_H = 5.4, 2.05
-ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H = 7.85, 2.55
-ST_FIG_TWIN_W, ST_FIG_TWIN_H = 6.45, 3.35
-ST_FIG_F_DIAG_W, ST_FIG_F_DIAG_H = 5.85, 2.35
-ST_FIG_PCL_BAR_W, ST_FIG_PCL_BAR_H = 5.85, 2.05
-ST_FIG_SCATTER_W, ST_FIG_SCATTER_H = 6.45, 3.35
+# Streamlit: czcionki jak w UI (~13–15px treści), figury wyższe — bez płaskiego „letterboxa”.
+ST_FS_TITLE = 11.0
+ST_FS_AXIS = 9.5
+ST_FS_TICK = 8.5
+ST_FS_DENSE = 7.5
+ST_FS_MISS_HEAD = 11.0
+ST_DPI_EXPORT = 120
+# Domyślny rozmiar słupków / linii (średnio liczba kategorii na X)
+ST_FIG_W, ST_FIG_H = 7.5, 3.85
+ST_FIG_REPO_W, ST_FIG_REPO_H = 8.5, 4.35
+ST_FIG_HIST_W, ST_FIG_HIST_H = 7.0, 3.55
+ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H = 9.0, 4.0
+ST_FIG_TWIN_W, ST_FIG_TWIN_H = 7.8, 5.0
+ST_FIG_F_DIAG_W, ST_FIG_F_DIAG_H = 7.0, 3.6
+ST_FIG_PCL_BAR_W, ST_FIG_PCL_BAR_H = 7.0, 3.45
+ST_FIG_SCATTER_W, ST_FIG_SCATTER_H = 7.5, 4.85
+ST_FIG_EMPTY = (5.2, 2.0)
+# Szerokość podglądu w px — bez rozciągania na cały monitor (proporcje jak w figurze)
+ST_CHART_DISPLAY_WIDTH_PX = 920
 
 apply_matplotlib_fonts()
 
-# Kolejność jak w Treeview „Rejestr osobniczy populacji” (Tk), potem typowe pola pomocnicze ze standardowego schematu.
+
+def _figsize_for_n_x_categories(
+    n: int,
+    *,
+    min_w: float = 7.5,
+    max_w: float = 14.5,
+    min_h: float = 4.0,
+    max_h: float = 6.2,
+) -> tuple[float, float]:
+    """Przy wielu dekadach na osi X: szersza i wyższa figura, żeby etykiety nie były mikroskopijne."""
+    if n <= 1:
+        return min_w, min_h
+    w = min(max_w, max(min_w, 4.8 + 0.4 * float(n)))
+    h = min(max_h, max(min_h, 3.15 + 0.1 * float(n)))
+    return w, h
+
+# Kolejność jak w tabeli „Rejestr osobniczy populacji”, potem pozostałe pola schematu alfabetycznie.
 _REGISTRY_TREE_ORDER: tuple[str, ...] = (
     "id",
     "name",
@@ -77,7 +98,7 @@ _REGISTRY_EXTRA_ORDER: tuple[str, ...] = (
 
 
 def registry_like_column_order(df_columns: pd.Index | list[str]) -> list[str]:
-    """Kolumny w tej samej kolejności co rejestr (najpierw widoczne w tabeli Tk), potem pozostałe alfabetycznie."""
+    """Kolumny w tej samej kolejności co widok rejestru (najpierw główne pola tabeli), potem pozostałe alfabetycznie."""
     names = [str(c) for c in df_columns]
     colset = set(names)
     preferred = _REGISTRY_TREE_ORDER + _REGISTRY_EXTRA_ORDER
@@ -103,10 +124,12 @@ def show_matplotlib_figure_in_streamlit(
     *,
     download_filename: str,
     download_key: str,
+    use_container_width: bool = False,
 ) -> None:
     """
     Wyświetla wykres jako PNG (`st.image`, stabilniej niż `st.pyplot` w części przeglądarek)
     i dodaje przycisk pobrania pliku. Figura jest zamykana po zapisie.
+    Przy `use_container_width=True` obraz rozciąga się na szerokość kontenera (np. rodowód).
     """
     import io
 
@@ -126,7 +149,10 @@ def show_matplotlib_figure_in_streamlit(
     finally:
         plt.close(fig)
     png = buf.getvalue()
-    st.image(io.BytesIO(png), width="stretch")
+    if use_container_width:
+        st.image(io.BytesIO(png), use_container_width=True)
+    else:
+        st.image(io.BytesIO(png), width=ST_CHART_DISPLAY_WIDTH_PX)
     st.download_button(
         "Pobierz wykres (PNG)",
         data=png,
@@ -140,15 +166,17 @@ def show_matplotlib_figure_in_streamlit(
 def column_missing_percentages(df: pd.DataFrame) -> pd.Series:
     """
     Dla każdej kolumny: % wierszy z brakiem (NaN / puste / „nan” w tekście).
+    Zdublowane nazwy kolumn — jak w rejestrze: pierwsza kopia (spójnie z widokiem Streamlit).
     """
     if df is None or df.empty:
         return pd.Series(dtype=float)
-    n = len(df)
+    work = df.loc[:, ~df.columns.duplicated(keep="first")] if df.columns.duplicated().any() else df
+    n = len(work)
     if n == 0:
         return pd.Series(dtype=float)
     out: dict[str, float] = {}
-    for col in df.columns:
-        s = df[col]
+    for col in work.columns:
+        s = work[col]
         if pd.api.types.is_bool_dtype(s):
             miss = s.isna()
         elif pd.api.types.is_numeric_dtype(s):
@@ -161,9 +189,9 @@ def column_missing_percentages(df: pd.DataFrame) -> pd.Series:
     return pd.Series(out)
 
 
-def _truncate_col_label(name: str, ncol: int) -> str:
+def _truncate_col_label(name: str, ncol: int, *, cap_max: int = 22) -> str:
     s = str(name).replace("\n", " ")
-    cap = max(5, min(20, int(132 / max(ncol, 1))))
+    cap = max(6, min(cap_max, int(150 / max(ncol, 1))))
     if len(s) <= cap:
         return s
     return s[: cap - 1] + "…"
@@ -187,47 +215,67 @@ def _forest_missing_segment_cmap(th: Theme) -> LinearSegmentedColormap:
 
 def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
     """
-    Pozioma „mapa braków”: sąsiadujące prostokąty (jak na screenie), w każdym:
-    nazwa kolumny + % braków; skala leśna (jasno = mało braków).
+    Pozioma mapa braków: kolumny schematu importu (bez dodatkowych pól z arkusza), kolejność jak w rejestrze (+ reszta alfabetycznie).
+    W każdym polu: etykieta i % braków; przy umiarkowanej liczbie kolumn także (braki/n). Skala leśna; pod spodem pasek 0–100 %.
     """
     th = PLOT_THEME
+    if df is not None and not df.empty:
+        df = dataframe_app_schema_columns(df)
+    n_rows = len(df) if df is not None and not df.empty else 0
     pct = column_missing_percentages(df)
     if pct.empty:
         fig, ax = plt.subplots(figsize=ST_FIG_EMPTY)
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
-    order = registry_tree_only_order(pct.index)
-    pct = pct.reindex(order)
+    order = registry_like_column_order(pct.index)
+    pct = pct.reindex([c for c in order if c in pct.index])
     pct = pct.dropna()
     if pct.empty:
         fig, ax = plt.subplots(figsize=ST_FIG_EMPTY)
-        ax.text(0.5, 0.5, "Brak kolumn rejestru osobników w danych", ha="center", va="center", fontsize=ST_FS_AXIS)
+        ax.text(0.5, 0.5, "Brak kolumn do wyświetlenia", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     ncol = len(pct)
     cmap = _forest_missing_segment_cmap(th)
-    fig_w = min(18.0, max(6.5, 0.52 * ncol + 1.85))
-    fig_h = 2.05
+    fig_w = min(18.5, max(6.5, 0.48 * float(ncol) + 2.1))
+    fig_h = max(2.85, min(4.15, 1.55 + 0.088 * float(ncol)))
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
     fig.patch.set_facecolor(th.APP_BG)
-    fig.subplots_adjust(left=0.03, right=0.97, top=0.81, bottom=0.12)
+    bottom_margin = 0.24 if ncol > 14 else 0.18
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.78, bottom=bottom_margin)
     ax.set_xlim(0, ncol)
     ax.set_ylim(0, 1)
     ax.axis("off")
     ax.set_facecolor(th.ENTRY_BG)
 
-    _miss_seg_fs = max(5.2, min(7.6, 102.0 / max(ncol, 1)))
+    cap_label = 16 if ncol <= 14 else 12
+    _miss_seg_fs = max(6.5, min(9.5, 120.0 / max(ncol, 1)))
+    _miss_small_fs = max(5.5, _miss_seg_fs - 1.2)
     fig.text(
         0.03,
-        0.93,
+        0.92,
         "Mapa braków danych",
         fontsize=ST_FS_MISS_HEAD,
         color=th.TEXT,
         ha="left",
         va="top",
     )
+    fig.text(
+        0.03,
+        0.845,
+        f"n = {n_rows} wierszy  ·  jasny kolor = mniej braków  ·  kolejność jak w rejestrze",
+        fontsize=ST_FS_TICK,
+        color=th.MUTED,
+        ha="left",
+        va="top",
+    )
 
+    n = float(max(n_rows, 1))
+    rot = 0.0 if ncol <= 14 else 50.0
+    y_name, y_pct, y_cnt = (0.66, 0.36, 0.14) if rot == 0 else (0.62, 0.38, 0.12)
+    va_name = "center" if rot == 0 else "top"
+    _show_counts = ncol <= 24
     for j, (col_name, v_raw) in enumerate(pct.items()):
         p = float(v_raw)
         t = np.clip(p / 100.0, 0.0, 1.0)
@@ -235,22 +283,27 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         r, g, b = float(rgba[0]), float(rgba[1]), float(rgba[2])
         lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
         tcol = "#f7faf7" if lum < 0.42 else th.TEXT
-        rect = Rectangle((j, 0), 1.0, 1.0, facecolor=rgba, edgecolor="none", linewidth=0)
+        tcol_muted = "#e8f2ea" if lum < 0.42 else th.MUTED
+        rect = Rectangle((j, 0), 1.0, 1.0, facecolor=rgba, edgecolor=th.BORDER_SUBTLE, linewidth=0.35, zorder=1)
         ax.add_patch(rect)
-        label = _truncate_col_label(col_name, ncol)
+        if j > 0:
+            ax.plot([j, j], [0, 1], color=th.BORDER_SUBTLE, linewidth=0.6, alpha=0.85, zorder=2)
+        miss_n = int(round(p * n / 100.0))
+        label = _truncate_col_label(col_name, ncol, cap_max=cap_label)
         ax.text(
             j + 0.5,
-            0.64,
+            y_name,
             label,
             ha="center",
-            va="center",
+            va=va_name,
             fontsize=_miss_seg_fs,
             color=tcol,
+            rotation=rot,
             clip_on=True,
         )
         ax.text(
             j + 0.5,
-            0.28,
+            y_pct,
             f"{p:.1f}%",
             ha="center",
             va="center",
@@ -259,17 +312,44 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
             fontweight="semibold",
             clip_on=True,
         )
+        if _show_counts:
+            ax.text(
+                j + 0.5,
+                y_cnt,
+                f"({miss_n}/{n_rows})" if n_rows else "—",
+                ha="center",
+                va="center",
+                fontsize=_miss_small_fs,
+                color=tcol_muted,
+                clip_on=True,
+            )
 
     frame = Rectangle(
         (0, 0),
         ncol,
         1.0,
         fill=False,
-        edgecolor=th.BORDER_SUBTLE,
-        linewidth=1.0,
+        edgecolor=th.EDGE_PLOT,
+        linewidth=1.1,
         zorder=5,
     )
     ax.add_patch(frame)
+
+    # Legenda skali (miniaturowy gradient)
+    leg_y = 0.03
+    leg_h = 0.028
+    leg_x0, leg_w = 0.28, 0.44
+    grad = np.linspace(0.0, 1.0, 256).reshape(1, -1)
+    ax_leg = fig.add_axes([leg_x0, leg_y, leg_w, leg_h])
+    ax_leg.imshow(grad, aspect="auto", cmap=cmap, vmin=0.0, vmax=1.0, extent=[0, 100, 0, 1])
+    ax_leg.set_xlim(0, 100)
+    ax_leg.set_xticks([0, 50, 100])
+    ax_leg.set_xticklabels(["0% braków", "50%", "100%"], fontsize=ST_FS_DENSE, color=th.MUTED)
+    ax_leg.set_yticks([])
+    ax_leg.tick_params(axis="x", length=2, pad=1)
+    for spine in ax_leg.spines.values():
+        spine.set_visible(False)
+    ax_leg.set_facecolor(th.APP_BG)
     return fig
 
 
@@ -301,9 +381,10 @@ def fig_birth_decades_sex(df: pd.DataFrame) -> plt.Figure:
     decade_labels = [f"{d}-{d+9}" for d in decades]
     x = list(range(len(decades)))
     w = 0.38
+    _fx, _fy = _figsize_for_n_x_categories(len(decades))
 
     if df is None or df.empty or "birth_year" not in df.columns:
-        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+        fig, ax = plt.subplots(figsize=(_fx, _fy))
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
@@ -313,7 +394,7 @@ def fig_birth_decades_sex(df: pd.DataFrame) -> plt.Figure:
     dfc["_birth_int"] = birth_int
     dfc = dfc.dropna(subset=["_birth_int"])
     if dfc.empty:
-        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+        fig, ax = plt.subplots(figsize=(_fx, _fy))
         ax.text(0.5, 0.5, "Brak prawidłowych lat urodzenia", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
@@ -338,7 +419,7 @@ def fig_birth_decades_sex(df: pd.DataFrame) -> plt.Figure:
     m_vals = [m_counts.get(d, 0) for d in decades]
     f_vals = [f_counts.get(d, 0) for d in decades]
 
-    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+    fig, ax = plt.subplots(figsize=(_fx, _fy))
     ax.bar([i - w / 2 for i in x], m_vals, width=w, color="#9ecbff", edgecolor=ACCENT, label="M")
     ax.bar([i + w / 2 for i in x], f_vals, width=w, color="#ffb4c1", edgecolor=ACCENT, label="F")
     ax.set_title("Urodzenia w dekadach (płeć)", fontsize=ST_FS_TITLE)
@@ -360,9 +441,10 @@ def fig_birth_decades_line(df: pd.DataFrame) -> plt.Figure:
     decade_labels = [f"{d}-{d+9}" for d in decades]
     x = list(range(len(decades)))
     w = 0.38
+    _fx, _fy = _figsize_for_n_x_categories(len(decades))
 
     if df is None or df.empty or "birth_year" not in df.columns:
-        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+        fig, ax = plt.subplots(figsize=(_fx, _fy))
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
@@ -372,7 +454,7 @@ def fig_birth_decades_line(df: pd.DataFrame) -> plt.Figure:
     dfc["_birth_int"] = birth_int
     dfc = dfc.dropna(subset=["_birth_int"])
     if dfc.empty:
-        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+        fig, ax = plt.subplots(figsize=(_fx, _fy))
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
@@ -397,7 +479,7 @@ def fig_birth_decades_line(df: pd.DataFrame) -> plt.Figure:
     lb_vals = [lb_counts.get(d, 0) for d in decades]
     lc_vals = [lc_counts.get(d, 0) for d in decades]
 
-    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+    fig, ax = plt.subplots(figsize=(_fx, _fy))
     ax.bar([i - w / 2 for i in x], lc_vals, width=w, color="#2e8b57", edgecolor=ACCENT, label="LC")
     ax.bar([i + w / 2 for i in x], lb_vals, width=w, color="#d64545", edgecolor=ACCENT, label="LB")
     ax.set_title("Urodzenia w dekadach (LC vs LB)", fontsize=ST_FS_TITLE)
@@ -417,8 +499,8 @@ def fig_female_male_ratio(df: pd.DataFrame) -> plt.Figure:
     max_dec = (now_year // 10) * 10
     decades = list(range(min_dec, max_dec + 1, 10))
 
-    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
     if df is None or df.empty:
+        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
@@ -428,6 +510,7 @@ def fig_female_male_ratio(df: pd.DataFrame) -> plt.Figure:
     dfc["_birth_int"] = birth_int
     dfc = dfc.dropna(subset=["_birth_int"])
     if dfc.empty:
+        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
@@ -455,8 +538,10 @@ def fig_female_male_ratio(df: pd.DataFrame) -> plt.Figure:
         f = f_counts.get(d, 0)
         ratio_vals.append(float("nan") if m <= 0 else float(f) / float(m))
 
+    _fx, _fy = _figsize_for_n_x_categories(len(ratio_decades))
+    fig, ax = plt.subplots(figsize=(_fx, _fy))
     xs3 = list(range(len(ratio_decades)))
-    ax.plot(xs3, ratio_vals, marker="o", markersize=1.65, linewidth=1.55, color=MUTED)
+    ax.plot(xs3, ratio_vals, marker="o", markersize=4.0, linewidth=2.0, color=MUTED)
     ax.axhline(1.0, color=ACCENT, linewidth=1, alpha=0.8)
     ax.set_title("Stosunek samic do samców (F/M) w dekadach od 1900", fontsize=ST_FS_TITLE)
     ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
@@ -626,7 +711,7 @@ def fig_histogram_f(f_values: List[float]) -> plt.Figure:
     return fig
 
 
-# --- GI, rodziny, trendy F (jak w gui_pro) ---
+# --- GI, rodziny, trendy F ---
 # compute_gi_and_family_data: app.analytics.population_genetics
 
 
@@ -659,16 +744,18 @@ def fig_gi_mean_bar(gi_data: Dict[str, Any]) -> plt.Figure:
 
 
 def fig_gi_trend_decades(gi_data: Dict[str, Any]) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
     gi_decades: dict[str, dict[int, list[float]]] = gi_data.get("gi_decades") or {}
     all_decades = sorted(
         set().union(*[set(gi_decades.get(k, {}).keys()) for k in ("FS", "FD", "MS", "MD")])
     )
     if not all_decades:
+        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
         ax.text(0.5, 0.5, "Brak danych GI w dekadach", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
 
+    _gx, _gy = _figsize_for_n_x_categories(len(all_decades))
+    fig, ax = plt.subplots(figsize=(_gx, _gy))
     decade_labels = [f"{d}-{d+9}" for d in all_decades]
     x = list(range(len(all_decades)))
     colors = {"FS": "#9ecbff", "FD": "#ffb4c1", "MS": "#2e8b57", "MD": "#d64545"}
@@ -683,7 +770,7 @@ def fig_gi_trend_decades(gi_data: Dict[str, Any]) -> plt.Figure:
     for path_key in ("FS", "FD", "MS", "MD"):
         ys = [_dec_mean(path_key, d) for d in all_decades]
         ys_plot = [float(v) if v is not None else float("nan") for v in ys]
-        ax.plot(x, ys_plot, marker="o", markersize=1.65, linewidth=1.55, color=colors[path_key], label=labels_map[path_key])
+        ax.plot(x, ys_plot, marker="o", markersize=3.8, linewidth=2.0, color=colors[path_key], label=labels_map[path_key])
     ax.set_title("GI (trend) — dekady urodzenia potomstwa", fontsize=ST_FS_TITLE)
     ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
     ax.set_ylabel("średni GI (lata)", fontsize=ST_FS_AXIS)
@@ -733,11 +820,13 @@ def prepare_inbreeding_trends_dataframe(
     people: dict,
     max_generations_back: Optional[int],
     *,
-    max_ids: int = 5000,
+    max_ids: Optional[int] = None,
 ) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """
     Jedno liczenie F (Wright) per ID — wspólne dla wykresów płeć/linie i N_e.
     Zwraca ramkę z kolumnami: id, birth_year_int, _F, (+ sex, line jeśli były).
+
+    ``max_ids`` — opcjonalnie: ograniczenie liczby ID (tylko gdy podane); domyślnie brak limitu.
     """
     warn: Optional[str] = None
     if df is None or df.empty or not people:
@@ -769,7 +858,7 @@ def prepare_inbreeding_trends_dataframe(
         return None, None
 
     unique_ids = sorted(set(dfc["id"].tolist()))
-    if len(unique_ids) > max_ids:
+    if max_ids is not None and len(unique_ids) > max_ids:
         unique_ids = unique_ids[:max_ids]
         warn = f"Ograniczono liczenie F do pierwszych {max_ids} ID (wydajność)."
         dfc = dfc[dfc["id"].isin(unique_ids)].reset_index(drop=True)
@@ -801,7 +890,7 @@ def fig_inbreeding_year_trends_sex(
     people: dict,
     max_generations_back: Optional[int],
     *,
-    max_ids: int = 5000,
+    max_ids: Optional[int] = None,
     dfc_precomputed: Optional[pd.DataFrame] = None,
     trend_warn: Optional[str] = None,
 ) -> Tuple[plt.Figure, Optional[str]]:
@@ -848,8 +937,8 @@ def fig_inbreeding_year_trends_sex(
             years,
             avg_f,
             marker="o",
-            markersize=1.65,
-            linewidth=1.55,
+            markersize=3.8,
+            linewidth=2.0,
             color=colors_sex[cat],
             label=cat,
         )
@@ -857,8 +946,8 @@ def fig_inbreeding_year_trends_sex(
             years,
             ria,
             marker="o",
-            markersize=1.65,
-            linewidth=1.55,
+            markersize=3.8,
+            linewidth=2.0,
             color=colors_sex[cat],
             label=cat,
         )
@@ -891,7 +980,7 @@ def fig_inbreeding_year_trends_line(
     people: dict,
     max_generations_back: Optional[int],
     *,
-    max_ids: int = 5000,
+    max_ids: Optional[int] = None,
     dfc_precomputed: Optional[pd.DataFrame] = None,
     trend_warn: Optional[str] = None,
 ) -> Tuple[plt.Figure, Optional[str]]:
@@ -941,8 +1030,8 @@ def fig_inbreeding_year_trends_line(
             years,
             avg_f,
             marker="o",
-            markersize=1.65,
-            linewidth=1.55,
+            markersize=3.8,
+            linewidth=2.0,
             color=colors_line[cat],
             label=cat,
         )
@@ -950,8 +1039,8 @@ def fig_inbreeding_year_trends_line(
             years,
             ria,
             marker="o",
-            markersize=1.65,
-            linewidth=1.55,
+            markersize=3.8,
+            linewidth=2.0,
             color=colors_line[cat],
             label=cat,
         )
@@ -985,7 +1074,7 @@ def estimate_ne_from_f_trend(
     gi_mean: Optional[float],
     max_generations_back: Optional[int],
     *,
-    max_ids: int = 5000,
+    max_ids: Optional[int] = None,
     dfc_precomputed: Optional[pd.DataFrame] = None,
 ) -> Optional[float]:
     """N_e ~ 1/(2*ΔF_na_pokolenie), ΔF_na_pokolenie = slope_rok * GI."""
@@ -1027,13 +1116,15 @@ def estimate_ne_from_f_trend(
 
 def fig_reproducers_by_decade(df: pd.DataFrame) -> plt.Figure:
     """Unikalni ojcowie i matki (o potomstwie urodzonym w danej dekadzie)."""
-    fig, ax = plt.subplots(figsize=(ST_FIG_REPO_W, ST_FIG_REPO_H))
     pr = reproducers_by_offspring_decade(df)
     if pr is None or pr.empty:
+        fig, ax = plt.subplots(figsize=(ST_FIG_REPO_W, ST_FIG_REPO_H))
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     decades = pr["decade"].astype(int).tolist()
+    _fx, _fy = _figsize_for_n_x_categories(len(decades))
+    fig, ax = plt.subplots(figsize=(_fx, _fy))
     xi = list(range(len(decades)))
     w = 0.38
     ax.bar([i - w / 2 for i in xi], pr["unikalni_ojcowie"], width=w, color="#4a6fa5", edgecolor=ACCENT, label="ojcowie")
@@ -1044,7 +1135,12 @@ def fig_reproducers_by_decade(df: pd.DataFrame) -> plt.Figure:
     labels = [f"{d}-{d+9}" for d in decades]
     ax.set_xticks(xi)
     ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
-    ax.legend(fontsize=ST_FS_TICK)
+    ax.legend(
+        fontsize=ST_FS_TICK,
+        loc="upper left",
+        framealpha=0.96,
+        edgecolor=PLOT_THEME.BORDER_SUBTLE,
+    )
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     ax.grid(True, axis="y", alpha=0.25)
     fig.tight_layout()
@@ -1058,8 +1154,9 @@ def fig_line_share_percent_stacked(df: pd.DataFrame) -> plt.Figure:
     max_dec = (now_year // 10) * 10
     decades = list(range(min_dec, max_dec + 1, 10))
     x = list(range(len(decades)))
+    _sx, _sy = _figsize_for_n_x_categories(len(decades))
 
-    fig, ax = plt.subplots(figsize=(ST_FIG_STACK_W, ST_FIG_STACK_H))
+    fig, ax = plt.subplots(figsize=(_sx, _sy))
     if df is None or df.empty or "birth_year" not in df.columns:
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")

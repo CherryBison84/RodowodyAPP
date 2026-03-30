@@ -1,2 +1,0 @@
-"""Interfejs desktopowy (tkinter / ttkbootstrap)."""
-
