@@ -172,8 +172,9 @@ POPULATION_CONTROL_HELP = {
 SECTION_REPORTS = """
 ## Raporty
 
-- **Podgląd tekstowy** oraz zapis **.txt** i **.docx**; zakres metryk obejmuje m.in. walidację, skrót populacji, dane osobnika, **mean kinship (Φ̄, R)**, skrót **GI (4 ścieżki)**, podsumowanie **rodzin pełnego rodzeństwa** i **top miejsc urodzenia**.
-- **Pobrania** (PNG, CSV itd.) obsługuje przeglądarka — zapisuj pliki w wybranym folderze.
+- **Podgląd tekstowy** oraz zapis **.pdf** (A4, tekst z zawijaniem wierszy), **.docx** i **.txt**.
+- Raport zbiorczy zawiera m.in.: **datę generacji**, **źródło danych**, **parametry liczenia** (np. głębokość F/EG/PCI), **opis zbioru** (kolumny modelu, płeć, lata urodzenia, braki slotów rodzicielskich), **skrót walidacji** (status i liczby — bez listy problemów; szczegóły i CSV w module walidacji), dalej **metryki populacji** (F z min/med/maks, RIA, EG/PCI, f_e/f_a, linie, top założyciele wg p_i), **mean kinship (Φ̄, R)**, **GI** i **rodziny pełnego rodzeństwa**, **miejsca urodzenia** (top N wg konfiguracji).
+- **Wykresy** z modułu Populacja i **PNG rodowodów** dołączasz osobno (pobrania w aplikacji).
 """
 
 

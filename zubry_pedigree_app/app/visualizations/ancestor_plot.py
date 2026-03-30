@@ -91,7 +91,7 @@ def _draw_pedigree_edges(
             ax=ax,
             arrows=True,
             arrowstyle="-|>",
-            arrowsize=12,
+            arrowsize=14,
             width=edge_width,
             edge_color="#6b5b4d",
             alpha=edge_alpha,
@@ -105,7 +105,7 @@ def _draw_pedigree_edges(
         ax=ax,
         arrows=True,
         arrowstyle="-|>",
-        arrowsize=10,
+        arrowsize=12,
         width=edge_width,
         edge_color="#4f443a",
         alpha=edge_alpha,
@@ -125,7 +125,7 @@ def _draw_line_badges(
     max_abs_x = max((abs(float(x)) for x, _ in pos.values()), default=1.0)
     dx_badge = min(0.18, max(0.06, 0.05 * max_abs_x))
     dy_badge = 0.05
-    badge_font_size = max(5, label_font_size - 2)
+    badge_font_size = max(6, label_font_size - 2)
     badge_size = max(45.0, float(node_size) * 0.05)
 
     for nid, (x, y) in pos.items():
@@ -144,7 +144,7 @@ def _draw_line_badges(
             marker="s",
             c=[line_color],
             edgecolors="#333333",
-            linewidths=0.6,
+            linewidths=0.75,
             zorder=5,
         )
         ax.text(
@@ -172,7 +172,7 @@ def _add_combined_legend(ax) -> None:
         ["M (ojciec)", "F (matka)", "LB", "LC"],
         loc="upper right",
         frameon=True,
-        fontsize=8,
+        fontsize=9,
         borderpad=0.25,
         labelspacing=0.25,
         handletextpad=0.5,
@@ -196,7 +196,7 @@ def plot_ancestor_pedigree(
 ) -> plt.Figure:
     """Warstwowy graf rodzic → dziecko z poziomami przodków."""
     if not levels:
-        fig, ax = plt.subplots(figsize=(8, 4))
+        fig, ax = plt.subplots(figsize=(10.5, 5.25))
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
         ax.axis("off")
         return fig
@@ -317,11 +317,11 @@ def plot_ancestor_pedigree(
     # Przy wielu węzłach na poziomie etykiety zaczynają się nakładać.
     # Zwiększamy szerokość proporcjonalnie do gęstości.
     # Szersza figura = wyższa rozdzielczość przy skalowaniu do pełnej szerokości okna / kontenera.
-    fig_width = min(44.0, 11.5 + 0.72 * float(max_nodes_in_level))
+    fig_width = min(52.0, 13.0 + 0.82 * float(max_nodes_in_level))
     # Więcej miejsca pionowego, żeby “piętra” hierarchii były wyraźne.
-    fig_height = max(6.5, 5.0 + 0.58 * float(max_level))
+    fig_height = max(7.6, 5.85 + 0.65 * float(max_level))
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
-    ax.set_title(f"Osobnik numer: {person_id}")
+    ax.set_title(f"Osobnik numer: {person_id}", fontsize=11.75, fontweight="semibold", pad=10)
     ax.axis("off")
 
     total_nodes = len(levels)
@@ -329,11 +329,11 @@ def plot_ancestor_pedigree(
     # więc bazowe krawędzie przyciemnimy, aby highlight był bardziej widoczny.
     base_edge_alpha = 0.55 if total_nodes <= 200 else 0.22
     edge_alpha = float(base_edge_alpha) * (0.45 if enable_click_highlight else 1.0)
-    edge_width = 1.1 if total_nodes <= 200 else 0.75
+    edge_width = 1.28 if total_nodes <= 200 else 0.85
     if total_nodes > 320:
         # Przy bardzo gęstych wykresach grubsze linie potęgują “spaghetti”.
         edge_alpha = min(edge_alpha, 0.18)
-        edge_width = 0.55
+        edge_width = 0.58
 
     _draw_pedigree_edges(
         G=G,
@@ -348,8 +348,8 @@ def plot_ancestor_pedigree(
     node_ids = list(G.nodes())
     node_colors = [_node_color(people.get(nid).sex if nid in people else None) for nid in node_ids]
     # node_size jest polem (area) w punktach, więc daje wyraźnie większe kółka.
-    base_node_size = 2600 if readable_mode else 1900
-    node_size = int(max(260, base_node_size / np.sqrt(max(1.0, total_nodes / 160.0))))
+    base_node_size = 3000 if readable_mode else 2200
+    node_size = int(max(280, base_node_size / np.sqrt(max(1.0, total_nodes / 150.0))))
     node_artist = nx.draw_networkx_nodes(
         G,
         pos,
@@ -357,7 +357,7 @@ def plot_ancestor_pedigree(
         nodelist=node_ids,
         node_color=node_colors,
         node_size=node_size,
-        linewidths=0.8,
+        linewidths=1.0,
         edgecolors="#333333",
     )
 
@@ -403,7 +403,7 @@ def plot_ancestor_pedigree(
                     labels[nid] = f"{nid}"
                     label_line_counts[nid] = 1
                 else:
-                # W pierwszych pokoleniach dodatkowo krótka nazwa.
+                    # W pierwszych pokoleniach dodatkowo krótka nazwa.
                     if name:
                         name = str(name)
                         if len(name) > 18:
@@ -431,9 +431,9 @@ def plot_ancestor_pedigree(
     if labels:
         # Dynamiczne zmniejszanie fontu przy gęstości.
         if readable_mode:
-            label_font_size = 8 if max_nodes_in_level <= 6 else (7 if max_nodes_in_level <= 10 else 6)
+            label_font_size = 9 if max_nodes_in_level <= 6 else (8 if max_nodes_in_level <= 10 else 7)
         else:
-            label_font_size = 7 if max_nodes_in_level <= 8 else 6
+            label_font_size = 8 if max_nodes_in_level <= 8 else 7
         font_color = "#0b2f22" if readable_mode else "white"
         nx.draw_networkx_labels(G, pos, ax=ax, labels=labels, font_size=label_font_size, font_color=font_color)
 
@@ -449,7 +449,7 @@ def plot_ancestor_pedigree(
     # Delikatne linie poziome pomagają “odczytać piętra” hierarchii.
     # (Oś jest wyłączona, ale linie rysujemy mimo wszystko.)
     for lvl in range(0, max_level + 1):
-        ax.axhline(-float(lvl), color="#ede7d8", linewidth=0.8, alpha=0.55, zorder=0)
+        ax.axhline(-float(lvl), color="#ede7d8", linewidth=0.95, alpha=0.55, zorder=0)
 
     _add_combined_legend(ax)
 
@@ -562,7 +562,7 @@ def plot_ancestor_pedigree(
                 # Podświetlenie ścieżki ma charakter “UX”, nie krytyczny.
                 pass
 
-            ax.set_title(f"Zaznaczono osobnika: {nid}")
+            ax.set_title(f"Zaznaczono osobnika: {nid}", fontsize=11.75, fontweight="semibold", pad=10)
             fig.canvas.draw_idle()
 
             if on_node_click is not None:

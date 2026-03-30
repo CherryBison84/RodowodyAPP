@@ -1,1 +1,1 @@
-"""Warstwa prezentacji: Streamlit, pomoc (markdown), PDF metod, raporty DOCX."""
+"""Warstwa prezentacji: Streamlit, pomoc (markdown), PDF (metody, raport tekstowy), raporty DOCX."""

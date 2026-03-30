@@ -1,7 +1,7 @@
 """
 Rysowanie wykresów w przeglądarce (urodzenia, trendy inbredu, GI, rodziny itp.).
 
-Wyświetlanie: `show_matplotlib_figure_in_streamlit` — PNG (podgląd przezroczysty, **pobieranie z białym tłem**); domyślnie `width="stretch"`;
+Wyświetlanie: `show_matplotlib_figure_in_streamlit` — PNG (podgląd przezroczysty, **pobieranie z białym tłem**); domyślnie `width="stretch"`; **DPI eksportu** `ST_DPI_EXPORT` (ostre renderowanie w UI i PNG); rodowody/plan — `ST_DPI_PEDIGREE`; mapa braków — `ST_DPI_MISSING_MAP`.
 opcjonalnie stała szerokość w px (`ST_CHART_DISPLAY_WIDTH_PX` lub int). Przy wielu kategoriach na X — `_figsize_for_n_x_categories`.
 """
 
@@ -36,26 +36,31 @@ PLOT_BAR_3RD = PLOT_THEME.TAB_TEXT
 
 POP_FOUNDERS_PI_TOP_N = int(get_config().report_founders_top_n)
 
-# Streamlit: nieco mniejszy tekst na wykresach (czytelność przy wielu kategoriach na X).
-ST_FS_TITLE = 9.2
-ST_FS_AXIS = 7.75
-ST_FS_TICK = 6.85
-ST_FS_DENSE = 6.15
-ST_FS_MISS_HEAD = 9.2
+# Czcionki i figury dopasowane do wyższego DPI — czytelność w UI i w pobranym PNG.
+ST_FS_TITLE = 10.0
+ST_FS_AXIS = 8.35
+ST_FS_TICK = 7.35
+ST_FS_DENSE = 6.65
+ST_FS_MISS_HEAD = 10.0
 ST_XTICK_ROT = 47.0
-ST_DPI_EXPORT = 120
+ST_DPI_EXPORT = 168
+# Mapa braków (Walidacja): gęsty tekst w komórkach — wyższe DPI niż domyślne wykresy.
+ST_DPI_MISSING_MAP = 240
+# Rodowody i graf planu hodowlanego — więcej pikseli na węzły i drobny tekst.
+ST_DPI_PEDIGREE = 200
 # Domyślny rozmiar słupków / linii (średnio liczba kategorii na X)
-ST_FIG_W, ST_FIG_H = 7.5, 3.85
-ST_FIG_REPO_W, ST_FIG_REPO_H = 8.5, 4.35
-ST_FIG_HIST_W, ST_FIG_HIST_H = 7.0, 3.55
-ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H = 9.0, 4.0
-ST_FIG_TWIN_W, ST_FIG_TWIN_H = 7.8, 5.0
-ST_FIG_F_DIAG_W, ST_FIG_F_DIAG_H = 7.0, 3.6
-ST_FIG_PCL_BAR_W, ST_FIG_PCL_BAR_H = 7.0, 3.45
-ST_FIG_SCATTER_W, ST_FIG_SCATTER_H = 7.5, 4.85
-ST_FIG_EMPTY = (5.2, 2.0)
+ST_FIG_W, ST_FIG_H = 8.6, 4.45
+ST_FIG_REPO_W, ST_FIG_REPO_H = 9.75, 5.0
+ST_FIG_HIST_W, ST_FIG_HIST_H = 8.0, 4.1
+ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H = 10.25, 4.6
+# Panel 2×1 — trendy F/RIA (płeć i linie).
+ST_FIG_TWIN_INBRED_TREND_W, ST_FIG_TWIN_INBRED_TREND_H = 12.5, 9.65
+ST_FIG_F_DIAG_W, ST_FIG_F_DIAG_H = 8.0, 4.15
+ST_FIG_PCL_BAR_W, ST_FIG_PCL_BAR_H = 8.0, 4.0
+ST_FIG_SCATTER_W, ST_FIG_SCATTER_H = 8.65, 5.55
+ST_FIG_EMPTY = (5.85, 2.35)
 # Opcjonalna stała szerokość podglądu (px), gdy przy wywołaniu podasz width=ST_CHART_DISPLAY_WIDTH_PX
-ST_CHART_DISPLAY_WIDTH_PX = 920
+ST_CHART_DISPLAY_WIDTH_PX = 1100
 
 apply_matplotlib_fonts()
 
@@ -83,16 +88,16 @@ mpl.rcParams.update(
 def _figsize_for_n_x_categories(
     n: int,
     *,
-    min_w: float = 7.5,
-    max_w: float = 14.5,
-    min_h: float = 4.0,
-    max_h: float = 6.2,
+    min_w: float = 8.6,
+    max_w: float = 16.2,
+    min_h: float = 4.45,
+    max_h: float = 6.85,
 ) -> tuple[float, float]:
     """Przy wielu dekadach na osi X: szersza i wyższa figura, żeby etykiety nie były mikroskopijne."""
     if n <= 1:
         return min_w, min_h
-    w = min(max_w, max(min_w, 4.8 + 0.4 * float(n)))
-    h = min(max_h, max(min_h, 3.15 + 0.1 * float(n)))
+    w = min(max_w, max(min_w, 5.35 + 0.42 * float(n)))
+    h = min(max_h, max(min_h, 3.45 + 0.11 * float(n)))
     return w, h
 
 # Kolejność jak w tabeli „Rejestr osobniczy populacji”, potem pozostałe pola schematu alfabetycznie.
@@ -147,12 +152,14 @@ def show_matplotlib_figure_in_streamlit(
     download_filename: str,
     download_key: str,
     width: str | int = "stretch",
+    export_dpi: int | None = None,
 ) -> None:
     """
     Wyświetla wykres jako PNG (`st.image`, stabilniej niż `st.pyplot` w części przeglądarek)
     i dodaje przycisk pobrania pliku. Figura jest zamykana po zapisie.
     Podgląd: tło przezroczyste (spójne ze stroną). Pobierany plik PNG: **białe tło**.
     `width`: domyślnie `"stretch"`; albo `"content"` albo szerokość w px (np. `ST_CHART_DISPLAY_WIDTH_PX`).
+    `export_dpi`: opcjonalnie inne DPI niż `ST_DPI_EXPORT` (np. gęsty wykres dwupanelowy).
     """
     import io
 
@@ -160,11 +167,12 @@ def show_matplotlib_figure_in_streamlit(
 
     buf_ui = io.BytesIO()
     buf_dl = io.BytesIO()
+    _dpi = int(export_dpi) if export_dpi is not None else ST_DPI_EXPORT
     _save_kw = dict(
         format="png",
-        dpi=ST_DPI_EXPORT,
+        dpi=_dpi,
         bbox_inches="tight",
-        pad_inches=0.08,
+        pad_inches=0.1,
     )
     try:
         fig.savefig(
@@ -225,7 +233,7 @@ def column_missing_percentages(df: pd.DataFrame) -> pd.Series:
 def _col_label_missing_map_rotated(name: str, ncol: int) -> str:
     """Jedna linia pod mapą (ukośna etykieta); przy bardzo długich nazwach delikatne skrócenie."""
     s = str(name).replace("\n", " ")
-    cap = max(14, min(36, int(200 / max(ncol, 1)) + 8))
+    cap = max(16, min(42, int(220 / max(ncol, 1)) + 10))
     if len(s) <= cap:
         return s
     return s[: cap - 1] + "…"
@@ -243,7 +251,7 @@ def _forest_missing_segment_cmap(th: Theme) -> LinearSegmentedColormap:
             to_rgb(th.ACCENT),
             (0.32, 0.20, 0.16),
         ],
-        N=256,
+        N=768,
     )
 
 
@@ -272,33 +280,34 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         return fig
     ncol = len(pct)
     cmap = _forest_missing_segment_cmap(th)
-    # Pas pod pasem kolorów — ukośne etykiety potrzebują więcej miejsca niż poziome.
-    fig_w = min(19.0, max(6.8, 0.54 * float(ncol) + 2.15))
-    label_band = min(0.98, max(0.48, 0.38 + 0.028 * float(ncol)))
-    fig_h = max(3.65, min(5.85, 1.78 + 0.092 * float(ncol) + 0.42 * label_band))
+    # Większa figura + marginesy pod etykiety — więcej pikseli na komórki przy ST_DPI_MISSING_MAP.
+    fig_w = min(26.5, max(8.6, 0.72 * float(ncol) + 2.85))
+    label_band = min(1.14, max(0.58, 0.48 + 0.034 * float(ncol)))
+    fig_h = max(4.65, min(7.45, 2.28 + 0.11 * float(ncol) + 0.52 * label_band))
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-    bottom_margin = max(0.20, min(0.28, 0.16 + 0.005 * float(ncol)))
-    fig.subplots_adjust(left=0.03, right=0.97, top=0.78, bottom=bottom_margin)
+    bottom_margin = max(0.19, min(0.34, 0.145 + 0.007 * float(ncol)))
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.805, bottom=bottom_margin)
     ax.set_xlim(0, ncol)
     ax.set_ylim(-label_band, 1)
     ax.axis("off")
 
-    _miss_seg_fs = max(6.0, min(9.0, 112.0 / max(ncol, 1)))
-    _miss_name_fs = max(6.5, min(9.25, 88.0 / max(ncol, 1) + 1.75))
+    _miss_seg_fs = max(8.2, min(12.6, 150.0 / max(ncol, 1)))
+    _miss_name_fs = max(8.6, min(12.0, 112.0 / max(ncol, 1) + 2.35))
     fig.text(
         0.03,
-        0.92,
+        0.935,
         "Mapa braków danych",
-        fontsize=ST_FS_MISS_HEAD,
+        fontsize=ST_FS_MISS_HEAD * 1.14,
         color=th.TEXT,
         ha="left",
         va="top",
+        fontweight="semibold",
     )
     fig.text(
         0.03,
-        0.845,
+        0.855,
         f"n = {n_rows} wierszy  ·  jasny kolor = mniej braków",
-        fontsize=ST_FS_TICK,
+        fontsize=ST_FS_TICK * 1.08,
         color=th.MUTED,
         ha="left",
         va="top",
@@ -311,10 +320,28 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         r, g, b = float(rgba[0]), float(rgba[1]), float(rgba[2])
         lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
         tcol = "#f8fcf8" if lum < 0.45 else th.TEXT
-        rect = Rectangle((j, 0), 1.0, 1.0, facecolor=rgba, edgecolor=th.BORDER_SUBTLE, linewidth=0.35, zorder=1)
+        rect = Rectangle(
+            (j, 0),
+            1.0,
+            1.0,
+            facecolor=rgba,
+            edgecolor=th.EDGE_PLOT,
+            linewidth=0.72,
+            alpha=1.0,
+            antialiased=True,
+            zorder=1,
+        )
         ax.add_patch(rect)
         if j > 0:
-            ax.plot([j, j], [0, 1], color=th.BORDER_SUBTLE, linewidth=0.6, alpha=0.85, zorder=2)
+            ax.plot(
+                [j, j],
+                [0, 1],
+                color=th.EDGE_PLOT,
+                linewidth=1.05,
+                alpha=0.88,
+                zorder=2,
+                solid_capstyle="butt",
+            )
         ax.text(
             j + 0.5,
             0.5,
@@ -330,17 +357,17 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
             j + 0.5,
             -0.02,
             _col_label_missing_map_rotated(col_name, ncol),
-            rotation=52,
+            rotation=48,
             ha="right",
             va="top",
             rotation_mode="anchor",
-            fontsize=_miss_name_fs * 0.94,
+            fontsize=_miss_name_fs,
             color=th.TEXT,
             clip_on=False,
             zorder=4,
         )
 
-    ax.plot([0, ncol], [0, 0], color=th.BORDER_SUBTLE, linewidth=1.0, zorder=3, clip_on=False)
+    ax.plot([0, ncol], [0, 0], color=th.EDGE_PLOT, linewidth=1.35, zorder=3, clip_on=False, solid_capstyle="butt")
 
     frame = Rectangle(
         (0, 0),
@@ -348,7 +375,8 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         1.0,
         fill=False,
         edgecolor=th.EDGE_PLOT,
-        linewidth=1.1,
+        linewidth=1.95,
+        antialiased=True,
         zorder=5,
     )
     ax.add_patch(frame)
@@ -908,7 +936,11 @@ def fig_inbreeding_year_trends_sex(
 ) -> Tuple[plt.Figure, Optional[str]]:
     """Średnie F i RIA (%) wg roku urodzenia i płci."""
     warn: Optional[str] = None
-    fig, (ax_avg, ax_ria) = plt.subplots(2, 1, figsize=(ST_FIG_TWIN_W, ST_FIG_TWIN_H))
+    fig, (ax_avg, ax_ria) = plt.subplots(
+        2,
+        1,
+        figsize=(ST_FIG_TWIN_INBRED_TREND_W, ST_FIG_TWIN_INBRED_TREND_H),
+    )
     if dfc_precomputed is not None:
         dfc = dfc_precomputed.copy()
         warn = trend_warn
@@ -949,8 +981,8 @@ def fig_inbreeding_year_trends_sex(
             years,
             avg_f,
             marker="o",
-            markersize=3.15,
-            linewidth=1.85,
+            markersize=3.85,
+            linewidth=2.05,
             color=colors_sex[cat],
             label=cat,
         )
@@ -958,8 +990,8 @@ def fig_inbreeding_year_trends_sex(
             years,
             ria,
             marker="o",
-            markersize=3.15,
-            linewidth=1.85,
+            markersize=3.85,
+            linewidth=2.05,
             color=colors_sex[cat],
             label=cat,
         )
@@ -986,6 +1018,7 @@ def fig_inbreeding_year_trends_sex(
     _slant_xlabels(ax_avg)
     _slant_xlabels(ax_ria)
     fig.tight_layout()
+    fig.subplots_adjust(hspace=0.4)
     return fig, warn
 
 
@@ -1000,7 +1033,11 @@ def fig_inbreeding_year_trends_line(
 ) -> Tuple[plt.Figure, Optional[str]]:
     """Średnie F i RIA wg roku urodzenia i linii LB/LC/NA."""
     warn: Optional[str] = None
-    fig, (ax_avg, ax_ria) = plt.subplots(2, 1, figsize=(ST_FIG_TWIN_W, ST_FIG_TWIN_H))
+    fig, (ax_avg, ax_ria) = plt.subplots(
+        2,
+        1,
+        figsize=(ST_FIG_TWIN_INBRED_TREND_W, ST_FIG_TWIN_INBRED_TREND_H),
+    )
     if dfc_precomputed is not None:
         dfc = dfc_precomputed.copy()
         warn = trend_warn
@@ -1044,8 +1081,8 @@ def fig_inbreeding_year_trends_line(
             years,
             avg_f,
             marker="o",
-            markersize=3.15,
-            linewidth=1.85,
+            markersize=3.85,
+            linewidth=2.05,
             color=colors_line[cat],
             label=cat,
         )
@@ -1053,8 +1090,8 @@ def fig_inbreeding_year_trends_line(
             years,
             ria,
             marker="o",
-            markersize=3.15,
-            linewidth=1.85,
+            markersize=3.85,
+            linewidth=2.05,
             color=colors_line[cat],
             label=cat,
         )
@@ -1081,6 +1118,7 @@ def fig_inbreeding_year_trends_line(
     _slant_xlabels(ax_avg)
     _slant_xlabels(ax_ria)
     fig.tight_layout()
+    fig.subplots_adjust(hspace=0.4)
     return fig, warn
 
 

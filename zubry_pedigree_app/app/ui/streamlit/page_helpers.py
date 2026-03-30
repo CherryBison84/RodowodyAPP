@@ -11,7 +11,6 @@ from app.pedigree.ancestor_pedigree import (
     get_ancestor_levels_and_edges,
     get_ancestor_levels_unbounded,
 )
-import app.ui.streamlit.streamlit_plotting as splt
 from app.visualizations.ancestor_plot import plot_ancestor_pedigree
 
 PLAN_HYPO_ID = "__PLAN_HYPO_OFFSPRING__"
@@ -88,7 +87,8 @@ def breeding_hypo_offspring_figure(
     try:
         fig.suptitle(
             f"Hipotetyczny potomek: {sire_id} × {dam_id}  (do {plot_depth} pok. wstecz)",
-            fontsize=splt.ST_FS_TITLE,
+            fontsize=11.75,
+            fontweight="semibold",
             y=0.98,
         )
     except Exception:
@@ -153,7 +153,12 @@ def build_pedigree_figure(
         enable_click_highlight=click_highlight,
     )
     try:
-        fig.suptitle(f"Rodowód przodków {note}", fontsize=splt.ST_FS_TITLE, y=0.98)
+        fig.suptitle(
+            f"Rodowód przodków {note}",
+            fontsize=11.75,
+            fontweight="semibold",
+            y=0.98,
+        )
     except Exception:
         pass
     return fig, None

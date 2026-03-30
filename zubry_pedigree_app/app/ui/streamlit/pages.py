@@ -46,6 +46,8 @@ from app.data.dataset_loader import (
 from app.config import get_config
 from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
 from app.ui import help_content as hc
+from app.ui.export_report import build_export_report_text
+from app.ui.text_pdf import plain_text_pdf_bytes, sanitize_text_for_pdf
 from app.ui.streamlit import common as sc
 from app.ui.streamlit.page_helpers import (
     breeding_hypo_offspring_figure,
@@ -186,14 +188,14 @@ def section_validation() -> None:
             f"Zakres ID: min **{min(ids.tolist(), key=sc.id_sort_key)}**, "
             f"max **{max(ids.tolist(), key=sc.id_sort_key)}**"
         )
-    st.markdown("**Braki danych — heatmapa**")
     df_miss = dataframe_app_schema_columns(df_std)
     fig_miss = splt.fig_column_missing_heatmap(df_miss)
     splt.show_matplotlib_figure_in_streamlit(
         fig_miss,
         download_filename="walidacja_mapa_brakow.png",
         download_key="val_miss_heatmap_png",
-        width="stretch",
+        width=splt.ST_CHART_DISPLAY_WIDTH_PX,
+        export_dpi=splt.ST_DPI_MISSING_MAP,
     )
     _miss_raw = splt.column_missing_percentages(df_miss).round(2)
     _miss_ord = splt.registry_like_column_order(_miss_raw.index)
@@ -393,6 +395,7 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                         download_filename=f"rodowod_{pid}.png",
                         download_key=f"hub_rod_png_{pid}",
                         width="stretch",
+                        export_dpi=splt.ST_DPI_PEDIGREE,
                     )
 
     with st2:
@@ -1457,96 +1460,40 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
 def section_reports() -> None:
     st.markdown("### Raporty i eksport wyników")
     sc.help_expander("Raporty — co zawierają", hc.SECTION_REPORTS)
-    st.caption("Podgląd poniżej — pobierz raport jako **.txt** lub **.docx**. Wykresy z sekcji populacji możesz zapisać osobno (**Pobierz wykres PNG**).")
+    st.caption(
+        "Podgląd poniżej — pobierz raport jako **.pdf**, **.docx** lub **.txt**. Wykresy z sekcji Populacja zapisuj osobno (**Pobierz wykres PNG**)."
+    )
     df_std = st.session_state.get("df_std")
     people = st.session_state.get("people")
     rep = st.session_state.get("validation_report")
-    lines = ["WisentPedigree Pro+ — raport (Streamlit)", "", f"Źródło danych: {st.session_state.get('source', '-')}", ""]
-    if rep is not None:
-        lines.append("=== Walidacja ===")
-        lines.append(rep.to_text())
-        lines.append("")
-    if df_std is not None and people:
+    text = build_export_report_text(
+        source=st.session_state.get("source"),
+        df_std=df_std,
+        people=people,
+        rep=rep,
+    )
+    st.text_area("Podgląd", text, height=360)
+    c_pdf, c_docx, c_txt = st.columns(3)
+    with c_pdf:
         try:
-            stats = compute_population_genetics_stats(
-                df_std=df_std,
-                people=people,  # type: ignore[arg-type]
-                max_generations_back=4,
-                calc_f=True,
-                calc_completeness=True,
-                calc_founders=True,
-                calc_lines=True,
-            )
-            lines.append("=== Populacja (skrót) ===")
-            lines.append(f"n={stats.n}, mean F={stats.inbreeding.mean_F:.6f}, mean PCI={stats.completeness.mean_PCI:.4f}")
-            lines.append(f"f_e={stats.founders.f_e:.4f}, f_a={stats.founders.f_a:.4f}")
-            lines.append(
-                f"LB={stats.line_counts.get('LB', 0)}, LC={stats.line_counts.get('LC', 0)}, NA={stats.line_counts.get('NA', 0)}"
-            )
-
-            # Mean kinship (skrót w raporcie tekstowym).
-            try:
-                id_list = [str(x) for x in df_std["id"].tolist()]
-                mk_phi, mk_r, mk_note = mean_kinship_pairwise(
-                    people,  # type: ignore[arg-type]
-                    id_list,
-                    max_generations_back=4,
-                )
-                if mk_phi is not None and mk_r is not None:
-                    lines.append(f"mean kinship: Φ={mk_phi:.6f}, R={mk_r:.6f}")
-                    if mk_note:
-                        lines.append(f"mean kinship — uwaga: {mk_note}")
-            except Exception:
-                pass
-
-            # GI i rodziny pełnego rodzeństwa.
-            try:
-                gi_data = compute_gi_and_family_data(df_std, people)
-                gi_bits: list[str] = []
-                if gi_data.get("gi_all") is not None:
-                    gi_bits.append(f"GI={float(gi_data['gi_all']):.2f} lat")
-                if gi_data.get("gi_fs") is not None:
-                    gi_bits.append(f"O->S={float(gi_data['gi_fs']):.2f}")
-                if gi_data.get("gi_fd") is not None:
-                    gi_bits.append(f"O->C={float(gi_data['gi_fd']):.2f}")
-                if gi_data.get("gi_ms") is not None:
-                    gi_bits.append(f"M->S={float(gi_data['gi_ms']):.2f}")
-                if gi_data.get("gi_md") is not None:
-                    gi_bits.append(f"M->C={float(gi_data['gi_md']):.2f}")
-                if gi_bits:
-                    lines.append("GI: " + ", ".join(gi_bits))
-                fam = gi_data.get("family_sizes") or []
-                if fam:
-                    lines.append(
-                        f"rodziny pełnego rodzeństwa: n={len(fam)}, średnia wielkość={float(sum(fam))/float(len(fam)):.2f}"
-                    )
-            except Exception:
-                pass
-
-            # Top miejsc urodzenia po dodaniu birth_location.
-            try:
-                if "birth_location" in df_std.columns:
-                    loc = df_std["birth_location"].astype(str).str.strip()
-                    loc = loc.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
-                    top = loc.value_counts(dropna=False).head(8).to_dict()
-                    lines.append("miejsce urodzenia (top): " + " | ".join([f"{k}={int(v)}" for k, v in top.items()]))
-            except Exception:
-                pass
+            pdf_bytes = plain_text_pdf_bytes(sanitize_text_for_pdf(text), wrap_width=88, fontsize=8.45)
         except Exception as e:
-            lines.append(f"Błąd metryk: {e}")
-    text = "\n".join(lines)
-    st.text_area("Podgląd", text, height=320)
-    c_dl1, c_dl2 = st.columns(2)
-    with c_dl1:
-        st.download_button("Pobierz raport (.txt)", data=text, file_name="raport_wisent.txt", mime="text/plain")
-    with c_dl2:
+            st.warning(f"Eksport PDF (matplotlib) nie powiódł się: {e}")
+        else:
+            st.download_button(
+                "Pobierz raport (.pdf)",
+                data=pdf_bytes,
+                file_name="raport_wisent.pdf",
+                mime="application/pdf",
+            )
+    with c_docx:
         try:
             from app.ui.docx_report import report_plain_text_to_docx_bytes
 
             docx_bytes = report_plain_text_to_docx_bytes(
                 text,
-                title="WisentPedigree Pro+ — Raport (Streamlit)",
-                footer_note="Raport tekstowy z podglądu (walidacja, skrót populacji). Wykresy dołącz ręcznie z pobranych plików PNG.",
+                title="WisentPedigree Pro+ — Raport zbiorczy",
+                footer_note="Ten sam zakres co podgląd i PDF: metadane, zbiór, walidacja (tylko skrót), metryki populacji, mean kinship, GI, miejsca urodzenia. Wykresy i pełna walidacja w aplikacji.",
             )
         except Exception as e:
             st.warning(f"Eksport DOCX wymaga pakietu python-docx (`pip install python-docx`). Szczegóły: {e}")
@@ -1557,6 +1504,8 @@ def section_reports() -> None:
                 file_name="raport_wisent.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
+    with c_txt:
+        st.download_button("Pobierz raport (.txt)", data=text, file_name="raport_wisent.txt", mime="text/plain")
 
 
 def section_breeding(df_std: pd.DataFrame, people: dict) -> None:
@@ -1774,6 +1723,7 @@ def section_breeding(df_std: pd.DataFrame, people: dict) -> None:
             download_filename=f"plan_potomek_{dam_id}_{sire_id}.png",
             download_key=f"plan_hypo_png_{dam_id}_{sire_id}",
             width="stretch",
+            export_dpi=splt.ST_DPI_PEDIGREE,
         )
 
 
