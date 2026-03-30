@@ -1,6 +1,4 @@
-"""
-Przypisywanie osobników do linii hodowlanych (np. wzdłuż linii ojców) na podstawie rodowodu.
-"""
+"""Śledzenie „linii sire/dam”: założyciel gałęzi i liczba kroków w górę rodowodu."""
 
 from __future__ import annotations
 
@@ -26,9 +24,7 @@ class LineMembership:
 
 @dataclass(frozen=True)
 class LineMembershipLite:
-    """
-    lżejsza wersja wyniku do wypełniania tabel/GUI.
-    """
+    """Uproszczony wynik linii do tabel w GUI (bez zbędnych pól)."""
 
     person_id: str
     person_name: Optional[str]
@@ -47,12 +43,7 @@ def compute_all_line_memberships(
     *,
     person_ids: Optional[Iterable[str]] = None,
 ) -> Dict[str, LineMembershipLite]:
-    """
-    Precomputing przynależności do sire/dam linii.
-
-    To wywołanie jest zoptymalizowane memoizacją, bo GUI chce te informacje
-    również dla całego podglądu w "Osobniki".
-    """
+    """Liczy przynależność do linii ojca i matki dla wielu ID (memoizacja, szybkie dla rejestru)."""
 
     targets = list(person_ids) if person_ids is not None else list(people.keys())
 
@@ -126,13 +117,7 @@ def _trace_line(
     *,
     parent_field: str,
 ) -> tuple[Optional[str], Optional[str], int]:
-    """
-    Trzeci sposób mapowania "linii" (sire/dam):
-    - sireline: id założyciela, aż do momentu gdy `father_id` jest nieznany
-    - damline: id założyciela, aż do momentu gdy `mother_id` jest nieznany
-    Jeśli rodzic (łańcuch) wskazuje id, którego nie ma w `people`, traktujemy ten id jako założyciela
-    (ale bez imienia).
-    """
+    """Idzie w górę po `father_id` lub `mother_id` do brakującego rodzica = „założyciel” tej linii."""
     if start_id not in people:
         return None, None, 0
 

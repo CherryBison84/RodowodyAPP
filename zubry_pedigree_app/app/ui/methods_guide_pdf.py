@@ -19,6 +19,7 @@ PdfTarget = Union[str, Path, BinaryIO]
 
 
 def _flatten_references_markdown(section: str) -> str:
+    """Markdown z sekcji „Literatura” — zwykły tekst do PDF (bez pogrubień)."""
     lines_out: list[str] = []
     for line in section.splitlines():
         ln = line.strip()
@@ -38,6 +39,7 @@ def _flatten_references_markdown(section: str) -> str:
 
 
 def _wrap_words(text: str, width: int) -> list[str]:
+    """Łamanie wierszy po słowach do podanej szerokości (znaki)."""
     words = text.split()
     if not words:
         return [] if not text.strip() else [text.strip()]
@@ -59,6 +61,7 @@ def _wrap_words(text: str, width: int) -> list[str]:
 
 
 def build_methods_guide_plain_text() -> str:
+    """Pełny tekst przewodnika: wstęp + literatura z help_content."""
     from app.ui import help_content as hc
 
     refs = _flatten_references_markdown(hc.SECTION_REFERENCES)
@@ -67,6 +70,7 @@ def build_methods_guide_plain_text() -> str:
 
 
 def _lines_for_pdf() -> list[str]:
+    """Lista krótkich linii gotowych do rysowania na stronach A4."""
     full = build_methods_guide_plain_text()
     out: list[str] = []
     for para in full.split("\n\n"):
@@ -86,10 +90,7 @@ def _lines_for_pdf() -> list[str]:
 
 
 def write_methods_guide_pdf(target: PdfTarget) -> None:
-    """
-    Zapisuje wielostronicowy PDF (A4, DejaVu Sans, UTF-8).
-    `target` — ścieżka lub bufor binarny (np. BytesIO).
-    """
+    """Zapis przewodnika do PDF (A4, DejaVu Sans); cel — ścieżka lub bufor (np. BytesIO)."""
     lines = _lines_for_pdf()
     fig_w, fig_h = 8.27, 11.69
     margin_x = 0.07
@@ -125,6 +126,7 @@ def write_methods_guide_pdf(target: PdfTarget) -> None:
 
 
 def methods_guide_pdf_bytes() -> bytes:
+    """Cały PDF w pamięci (bytes) — np. do pobrania z przeglądarki."""
     buf = io.BytesIO()
     write_methods_guide_pdf(buf)
     return buf.getvalue()

@@ -1,6 +1,4 @@
-"""
-Wejście na pulpit: pełne GUI w `gui_pro` (wszystkie zakładki, populacja, raporty).
-"""
+"""Uruchomienie pełnego GUI (moduł `gui_pro`)."""
 
 from __future__ import annotations
 

@@ -1,9 +1,4 @@
-"""
-Zestawienia dla całej populacji: średnie pokrewieństwo, założyciele, linie,
-kompletność rodowodu — to, co widać w podsumowaniach i raportach zbiorczych.
-Dodatkowo: odstępy międzypokoleniowe (GI) i wielkości rodzin pełnego rodzeństwa
-(wspólne dla okna na pulpicie i wersji w przeglądarce).
-"""
+"""Metryki zbiorcze: F, EG, PCI, założyciele (f_e, f_a), linie; oraz GI i rodziny pełnego rodzeństwa."""
 
 from __future__ import annotations
 
@@ -21,10 +16,7 @@ TEST_ID = "99999"
 
 
 class FounderContributionComputer:
-    """
-    Wkłady genów od założycieli (founder-stop: brak ojca lub matki = koniec gałęzi),
-    spójnie z `wright_inbreeding_F`. Wynik dla osobnika sumuje się do 1.0.
-    """
+    """Udział genów od przodków przy founder-stop (jak przy F); suma udziałów = 1 dla pełnej gałęzi."""
 
     def __init__(self, people: Mapping[str, Person]):
         self._people = people
@@ -80,19 +72,15 @@ class PopulationInbreedingSummary:
 
 @dataclass(frozen=True)
 class PopulationCompletenessSummary:
-    # EG (Equivalent Complete Generations) wprost wg definicji z metrics_definition:
-    # EG = sum_{ancestor at generation n} (1/2)^n = sum_g a_g / 2^g
+    # EG — równoważne pełne pokolenia; PCI — średnia „pełności” poziomów (0–1).
     mean_EG: float
     mean_PCI: float
 
 
 @dataclass(frozen=True)
 class PopulationFounderSummary:
-    # f_e policzone na wkładach genów założycieli (founder-like stop),
-    # gdzie brak ojca lub matki traktujemy jak "founder stop", spójnie z logiką w F.
+    # f_e — efektywna liczba założycieli z p_i; f_a — druga miara w tej samej logice founder-stop.
     f_e: float
-    # W tym podejściu (founder-stop spójny z `wright_inbreeding_F`) efektywna
-    # liczba przodków wychodzi równoważna f_e.
     f_a: float
 
 
@@ -104,7 +92,7 @@ class PopulationGeneticsStats:
     completeness: PopulationCompletenessSummary
     founders: PopulationFounderSummary
     line_counts: Dict[str, int]
-    # Surowe dane do wizualizacji
+    # Serie do wykresów (F, EG, PCI na osobnika).
     f_values: List[float]
     eg_values: List[float]
     pci_values: List[float]
@@ -138,15 +126,8 @@ def compute_population_genetics_stats(
     calc_lines: bool = True,
 ) -> PopulationGeneticsStats:
     """
-    Liczy zestaw metryk genetyki populacyjnej możliwych do wyliczenia z rodowodu:
-    - Wright inbreeding F (dla całej populacji w trybie unbounded/bounded)
-    - kompletność rodowodu (EG + PCI w uproszczeniu jako średnia PCL po pokoleniach)
-    - efektywna liczba założycieli (f_e) z wkładów genów
-    - rozkład linii (LB/LC z kolumny `line`)
-
-    Uwaga dot. definicji founder stop:
-    - tu spójnie z `wright_inbreeding_F` uznajemy, że brak ojca lub matki
-      kończy ścieżkę i traktujemy osobnika jako źródło founder-like.
+    Zbiór F, kompletności, f_e/f_a i linii dla wierszy `df_std` (limit głębokości jak przy F).
+    Founder-stop: brak ojca lub matki kończy gałąź — spójnie z `wright_inbreeding_F`.
     """
 
     if df_std is None or df_std.empty:
@@ -322,9 +303,7 @@ def compute_gi_and_family_data(
     df_use: Any,
     people: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    """
-    Statystyki GI (4 ścieżki + średnia), dekady na trendy oraz rozmiary rodzin pełnego rodzeństwa.
-    """
+    """GI (cztery ścieżki + średnia), zgrupowanie po dekadach, listy wielkości rodzin pełnego rodzeństwa."""
     out: dict[str, Any] = {
         "gi_fs": None,
         "gi_fd": None,

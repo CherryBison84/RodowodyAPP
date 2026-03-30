@@ -1,17 +1,6 @@
 """
-Dekompozycja współzgodności Φ (Malecot / Wright) na pary ścieżek rodowych do wspólnych przodków.
-
-Model zgodny z klasycznym wzorem ścieżkowym: dla każdej pary ścieżek (A→…→C, B→…→C),
-gdzie C jest wspólnym przodkiem, wkład do Φ wynosi::
-
-    (1/2)^(n_a + n_b + 1) * (1 + F_C)
-
-gdzie n_a, n_b to liczby krawędzi (pokoleń) od A i B do C, a F_C — inbred C (ten sam
-schemat co w `wright_inbreeding_F`). Suma po wszystkich parach ścieżek do wszystkich C
-powinna zgadzać się z rekurencyjnym Φ z `inbreeding_wright` przy tym samym limicie głębokości.
-
-Przy bardzo gęstym inbredzie liczba ścieżek rośnie wykładniczo — stosowany jest limit
-krawędzi zgodny z `_resolve_offspring_depth` dla pary (A,B).
+Rozkład Φ na ścieżki do wspólnych przodków (wzór ścieżkowy); suma = Φ z rekurencji przy tym samym limicie.
+Przy silnym inbredzie liczba ścieżek jest ograniczana tak jak przy liczeniu F dla pary.
 """
 
 from __future__ import annotations

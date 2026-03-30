@@ -1,7 +1,4 @@
-"""
-Uruchamia wersję programu wyświetlaną w przeglądarce internetowej.
-Zwykle wystarczy uruchomić ten plik tak jak każdy inny skrypt Pythona.
-"""
+"""Start Streamlit: aplikacja w przeglądarce (`streamlit run`)."""
 
 from __future__ import annotations
 

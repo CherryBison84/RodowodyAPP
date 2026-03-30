@@ -1,4 +1,2 @@
-"""
-Automatyczne sprawdzanie poprawności obliczeń i działania programu (dla osób rozwijających aplikację).
-"""
+"""Testy jednostkowe obliczeń genetycznych i spójności Φ."""
 

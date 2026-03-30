@@ -1,7 +1,4 @@
-"""
-Tworzenie opisu osobników (kto z kim spokrewniony, po ilu pokoleniach wstecz)
-z wczytanej tabeli identyfikatorów, płci i rodziców.
-"""
+"""Budowa słownika `Person` oraz poziomów i krawędzi drzewa przodków (BFS w górę)."""
 
 from __future__ import annotations
 

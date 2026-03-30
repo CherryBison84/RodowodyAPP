@@ -34,7 +34,7 @@ POP_FOUNDERS_PI_TOP_N = 20
 
 apply_matplotlib_fonts()
 
-# Kolejność jak w Treeview „Rejestr osobników” (Tk), potem typowe pola pomocnicze ze standardowego schematu.
+# Kolejność jak w Treeview „Rejestr osobniczy populacji” (Tk), potem typowe pola pomocnicze ze standardowego schematu.
 _REGISTRY_TREE_ORDER: tuple[str, ...] = (
     "id",
     "name",

@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Teksty pomocy po polsku: prosty język, skróty (F, GI, RIA…), wykresy, walidacja.
-Wspólne dla okna na pulpicie (Tk) i wersji w przeglądarce (Streamlit).
-Przy metodach statystycznych — skrótowa literatura naukowa.
-"""
+"""Zbiór tekstów pomocy (markdown): słownik, zakładki, wykresy — wspólny dla Tk i Streamlit."""
 
 from __future__ import annotations
 
@@ -50,7 +46,7 @@ GLOSSARY = """
 
 *(Związek tempa narastania inbredu z N_e ma korzenie u Wrighta; szczegóły w podręcznikach z listy na końcu.)*
 
-### Walidacja bazy
+### Walidacja spójności zbioru
 - Program sprawdza m.in. **powtarzające się ID**, czy podani **rodzice istnieją w bazie**, rozsądność **płci, linii i lat**, oraz oczywiste **błędy w relacjach**. Ostrzeżenie nie zawsze znaczy błąd krytyczny — czasem wynika z historii stadka albo literówki w numerze; warto zajrzeć w szczegóły komunikatu.
 
 ### Mapowanie kolumn
@@ -66,7 +62,7 @@ SECTION_LOADING = """
 2. **Adres URL** — pobranie pliku z sieci i takie samo mapowanie jak z dysku.
 3. **Rekord testowy** — ID **99999** jest traktowane technicznie i **nie wchodzi** do statystyk populacji.
 
-**Kolejny krok:** w wersji przeglądarkowej i na pulpicie po imporcie przejdź do **Walidacja bazy** — tam jest **krótki wynik** (np. liczba błędów), **wypunktowanie** problemów, **CSV** z listą (id, typ, szczegóły) do poprawy w Excelu oraz pełny raport tekstowy.
+**Kolejny krok:** w wersji przeglądarkowej i na pulpicie po imporcie przejdź do **Walidacja spójności zbioru** — tam jest **krótki wynik** (np. liczba błędów), **wypunktowanie** problemów, **CSV** z listą (id, typ, szczegóły) do poprawy w Excelu oraz pełny raport tekstowy.
 """
 
 
@@ -126,7 +122,7 @@ SECTION_MATING = """
 - Lista pokazuje **do 36 par**, posortowanych od **najmniejszego Φ** (= F potomka). Ten sam osobnik może być w liście **co najwyżej 3 razy** (jako sire lub dam).
 - **Macierz Φ**: po obliczeniu rankingu możesz zapisać tabelę **wszystkich par sire×dam** z aktualnego zestawu kandydatów (CSV) — wiersze = samce, kolumny = samice, komórka = Φ.
 - **Kinship dowolnej pary**: dwa wybrane ID z bazy — **Φ** i **R**; **Φ(A,B) = Φ(B,A)** (symetria współzgodności Malecota). **F potomka** z hipotetycznego kojarzenia tych osobników jako rodziców jest równe **Φ**.
-- **Dlaczego taki wynik?** (Streamlit / zakładka „Para” w Tk): rozkład na **wspólnych przodków**, **wkład do Φ** (w tym skalowanie do wartości z rekurencji, gdy suma surowych ścieżek przekracza Φ przez nakładanie się dróg genów) oraz **liczba par niezależnych ścieżek** w grafie rodowym.
+- **Dlaczego taki wynik?** (Streamlit / panel pokrewieństwa par w Tk): rozkład na **wspólnych przodków**, **wkład do Φ** (w tym skalowanie do wartości z rekurencji, gdy suma surowych ścieżek przekracza Φ przez nakładanie się dróg genów) oraz **liczba par niezależnych ścieżek** w grafie rodowym.
 - **Filtr miejsca urodzenia** (birth_location) może dodatkowo zawęzić kandydatów do par — przydatne, gdy chcesz porównywać kojarzenia tylko w wybranej grupie.
 - **Limity** liczby samców, samic i pokoleń **skracają czas** i nie muszą obejmować całej populacji.
 """
@@ -144,7 +140,7 @@ SECTION_POPULATION = """
 - **% braków rodziców** — albo odsetek **rekordów** z brakiem ojca lub matki, albo odsetek **pustych slotów** (ojciec+matka) względem 2n.
 - **Kohorta aktywna** — osobnicy urodzeni w ostatnich X latach (rok ur.); **reproduktorzy** — unikalne ID ojca/matki przy urodzeniach potomstwa w tym samym oknie; wersja „w koh.” ogranicza do płci zgodnej z kohortą.
 - **Koncentracja ojców** — jaki udział potomstwa z **znanym ojcem** przypada na 5 lub 10 najczęściej używanych ojców.
-- Zakładka **Okresy, ryzyko…** — porównanie urodzeń 1950–1980 / 1981–2000 / 2001–dziś, uproszczony ranking „ryzyka” dla linii LB i LC oraz wykresy trendu reproduktorów i udziału linii w czasie.
+- Zakładka **Okresy kohortowe, ryzyko linii…** — porównanie urodzeń 1950–1980 / 1981–2000 / 2001–dziś, uproszczony ranking „ryzyka” dla linii LB i LC oraz wykresy trendu reproduktorów i udziału linii w czasie.
 - **Założyciele (brak ojca lub matki)** — ile rekordów ma **dziurę** po jednej ze stron rodziców — ważne przy interpretacji F i metryk potomstwa.
 - Ustawienia **F** (z limitem lub bez) wpływają też na histogram F i trendy **F / RIA**.
 
@@ -162,9 +158,9 @@ SECTION_REPORTS = """
 
 
 SECTION_BREEDING = """
-## Plan hodowlany (tylko Tk)
+## Scenariusze planu hodowlanego (tylko Tk)
 
-Ścieżka w menu: **Analityka hodowlana → Plan hodowli** (obok innych narzędzi hodowlanych).
+Ścieżka w module: **Analityka osobnicza i kojarzeń → Scenariusze planu hodowlanego** (obok innych narzędzi analitycznych).
 
 Moduł **proponuje pary** przy ograniczeniach: wiek, linia, ile razy można użyć tego samego reproduktora, cele dotyczące średniego lub maksymalnego F. Wynik **zależy od tego, jak dobre są rodowody w bazie** i jak ustawisz liczenie ryzyka inbredu.
 

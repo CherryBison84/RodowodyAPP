@@ -1,4 +1,2 @@
-"""
-Budowanie listy przodków, powiązań między osobnikami i pomocniczych informacji o rodowodzie.
-"""
+"""Model rodowodu: osobnicy, poziomy przodków, krawędzie rodzic–dziecko."""
 

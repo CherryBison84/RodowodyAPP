@@ -1,7 +1,4 @@
-"""
-Wspólna czcionka interfejsu: to samo „pismo” w oknie na pulpicie, w przeglądarce i na wykresach.
-Priorytet: sans-serif z pełnym zestawem znaków łacińskich (polskie ogonki) na danej platformie.
-"""
+"""Czcionki: Tk, CSS (Streamlit) i matplotlib — spójnie, z obsługą polskich znaków."""
 
 from __future__ import annotations
 
@@ -13,7 +10,7 @@ TK_PT_LABEL = 13
 TK_PT_BUTTON = 12
 TK_PT_ENTRY = 12
 TK_PT_TREE = 12
-TK_PT_NOTEBOOK_TAB = 12
+TK_PT_NOTEBOOK_TAB = 13
 TK_PT_SMALL = 11
 TK_PT_HELP_BODY = 16
 

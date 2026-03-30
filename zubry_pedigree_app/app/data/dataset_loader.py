@@ -1,7 +1,4 @@
-"""
-Otwieranie baz z dysku lub z internetu (np. zestawienie EBPB) oraz układanie ich
-w jednolity format zrozumiały dla reszty programu.
-"""
+"""Wczytywanie CSV/XLSX/URL, standaryzacja kolumn i jawne mapowanie pól do schematu aplikacji."""
 
 from __future__ import annotations
 
@@ -245,21 +242,9 @@ def standardize_bison_report_dataframe_with_column_mapping(
     test_id: str = "99999",
 ) -> pd.DataFrame:
     """
-    Standardizuje dowolnie sformatowaną bazę do wspólnego schematu aplikacji,
-    na podstawie mapowania kolumn dostarczonego przez użytkownika.
-
-    Oczekiwane klucze w `column_mapping` (wewnętrzne nazwy pól aplikacji):
-      - id (ID/Number)
-      - sex (M/F)
-      - line (LB/LC)
-      - birth_year (rok urodzenia)
-      - father_id (ID ojca)
-      - mother_id (ID matki)
-      - name (opcjonalnie; imię/etykieta)
-      - father_line (opcjonalnie)
-      - mother_line (opcjonalnie)
-
-    Funkcja zawsze tworzy pełny zestaw kolumn: patrz schema w `Person`.
+    Przekształca arkusz do schematu aplikacji wg mapy kolumn od użytkownika.
+    W mapie: wymagane id, sex, line, birth_year, father_id, mother_id; opcjonalnie name, father_line, mother_line.
+    Zawsze uzupełnia kolumny zgodnie z modelem `Person`.
     """
 
     df = df.copy()

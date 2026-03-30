@@ -1,7 +1,4 @@
-"""
-Po wczytaniu bazy program sprawdza, czy nie brakuje ważnych informacji
-i czy relacje rodzic–dziecko mają sens — stąd komunikaty ostrzegawcze.
-"""
+"""Walidacja danych po imporcie: duplikaty ID, rodzice w bazie, lata, płeć, cykle w grafie."""
 
 from __future__ import annotations
 
@@ -24,7 +21,7 @@ class ValidationIssue:
 
 @dataclass(frozen=True)
 class ValidationExportRow:
-    """Jeden wiersz do CSV: ID rekordu (osobnika) + typ problemu — do poprawy w Excelu."""
+    """Wiersz eksportu CSV (id, priorytet, typ, opis) do poprawy w arkuszu."""
 
     record_id: str
     severity: str  # ERROR | WARN
@@ -52,10 +49,7 @@ class ValidationReport:
         return "Walidacja: OK"
 
     def ui_summary(self, *, max_issues: int = 30) -> str:
-        """
-        Nagłówek jak `short_status()` oraz wypunktowane ERROR/WARN (bez wpisów OK),
-        do jednowierszowego podglądu w zakładce Import / Streamlit.
-        """
+        """Krótki opis + lista problemów (ERROR/WARN) do podglądu w UI."""
         head = self.short_status()
         problems = [i for i in self.issues if i.severity in ("ERROR", "WARN")]
         if not problems:
@@ -139,12 +133,7 @@ def validate_loaded_dataset(
     min_year: int = 1800,
     max_year_buffer: int = 2,
 ) -> ValidationReport:
-    """
-    Cross-walidacja spójności załadowanej bazy.
-
-    Zakładamy, że `df_std` jest już po standardyzacji aplikacji (czyli ma kolumny: id, sex, line,
-    father_id, mother_id, birth_year oraz opcjonalnie: father_line, mother_line).
-    """
+    """Zbiorcza walidacja ramki po standaryzacji (wymagane i opcjonalne kolumny jak w `Person`)."""
     issues: List[ValidationIssue] = []
     export_rows: List[ValidationExportRow] = []
     total_rows = int(len(df_std.index))

@@ -23,6 +23,29 @@ from app.ui.streamlit.pages import (
     section_validation,
 )
 
+# Etykiety nawigacji (spójne z nomenklaturą akademicką wersji Tk).
+NAV_IMPORT = "Import i standaryzacja danych"
+NAV_VALIDATION = "Walidacja spójności zbioru"
+NAV_PERSONS = "Rejestr osobniczy populacji"
+NAV_ANALYSIS_IND = "Analiza osobnicza: inbred i kompletność"
+NAV_ANALYSIS_PAIRS = "Analiza par i optymalizacja kojarzeń"
+NAV_POPULATION = "Parametry populacyjne i genetyka grupy"
+NAV_REPORTS = "Raporty i eksport wyników"
+NAV_BREEDING = "Scenariusze planu hodowlanego"
+NAV_SETTINGS = "Konfiguracja obliczeń i raportów"
+
+NAV_SECTIONS = [
+    NAV_IMPORT,
+    NAV_VALIDATION,
+    NAV_PERSONS,
+    NAV_ANALYSIS_IND,
+    NAV_ANALYSIS_PAIRS,
+    NAV_POPULATION,
+    NAV_REPORTS,
+    NAV_BREEDING,
+    NAV_SETTINGS,
+]
+
 
 @st.cache_data(show_spinner=False)
 def _methods_guide_pdf_cached() -> bytes:
@@ -45,32 +68,21 @@ def run_streamlit_direct() -> None:
     with st.sidebar:
         _logo_path = Path(__file__).resolve().parents[2] / "logo.png"
         if _logo_path.exists():
-            st.image(str(_logo_path), width=140)
-        st.markdown("### WisentPedigree Pro+")
+            st.image(str(_logo_path), width=320)
         st.caption("Analiza rodowodów żubrów")
         section = st.radio(
             "Nawigacja",
-            [
-                "Import danych",
-                "Walidacja bazy",
-                "Rejestr osobników",
-                "Analiza osobnika",
-                "Analiza par i kojarzenia",
-                "Metryki populacji",
-                "Raportowanie",
-                "Plan hodowli",
-                "Konfiguracja",
-            ],
+            NAV_SECTIONS,
             label_visibility="collapsed",
         )
         st.caption(
-            "Przepływ: import → walidacja → rejestr → osobnik → pary → populacja → raport."
+            "Przepływ: import → walidacja → rejestr → analiza osobnicza → pary → populacja → raport."
         )
         st.markdown("---")
         st.caption("Autor: Magdalena Perlińska-Teresiak • 2026")
         with st.expander("Słownik parametrów (F, GI, f_e, RIA…)", expanded=False):
             st.markdown(sc.GLOSSARY)
-        with st.expander("Walidacja — skrót (po imporcie)", expanded=False):
+        with st.expander("Walidacja spójności zbioru — skrót (po imporcie)", expanded=False):
             st.markdown(sc.SECTION_VALIDATION)
         with st.expander("Literatura — źródła metod (F, p_i, N_e…)", expanded=False):
             st.markdown(sc.SECTION_REFERENCES)
@@ -84,42 +96,42 @@ def run_streamlit_direct() -> None:
 
     st.markdown(
         f'<p style="color:{sc.THEME.MUTED};font-family:{sc.FONT_FAMILY_CSS};font-size:1.05rem;line-height:1.5;margin-top:0;">'
-        "Import → walidacja → rejestr → analiza osobnika → analiza par → populacja → raport"
+        "Import → walidacja spójności → rejestr osobniczy → analiza osobnicza → pary → parametry populacji → raport"
         "</p>",
         unsafe_allow_html=True,
     )
 
-    if section == "Import danych":
+    if section == NAV_IMPORT:
         section_import()
         return
 
     df_std = st.session_state.get("df_std")
     people = st.session_state.get("people")
 
-    if section == "Walidacja bazy":
+    if section == NAV_VALIDATION:
         if df_std is None or people is None or len(df_std) == 0:
-            st.warning("Najpierw wczytaj dane w sekcji **Import danych**.")
+            st.warning(f"Najpierw wczytaj dane w sekcji **{NAV_IMPORT}**.")
             return
         section_validation()
         return
 
     if df_std is None or people is None or len(df_std) == 0:
-        st.warning("Najpierw wczytaj dane w sekcji **Import danych**.")
+        st.warning(f"Najpierw wczytaj dane w sekcji **{NAV_IMPORT}**.")
         return
 
-    if section == "Rejestr osobników":
+    if section == NAV_PERSONS:
         section_persons(df_std)
-    elif section == "Analiza osobnika":
+    elif section == NAV_ANALYSIS_IND:
         section_analysis_individual(df_std, people)
-    elif section == "Analiza par i kojarzenia":
+    elif section == NAV_ANALYSIS_PAIRS:
         section_analysis_pairs_and_mating(df_std, people)
-    elif section == "Metryki populacji":
+    elif section == NAV_POPULATION:
         section_population(df_std, people)
-    elif section == "Raportowanie":
+    elif section == NAV_REPORTS:
         section_reports()
-    elif section == "Plan hodowli":
+    elif section == NAV_BREEDING:
         section_breeding_placeholder()
-    elif section == "Konfiguracja":
+    elif section == NAV_SETTINGS:
         section_settings()
 
 

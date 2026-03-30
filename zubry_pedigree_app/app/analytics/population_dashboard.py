@@ -1,8 +1,4 @@
-"""
-Metryki „dashboard” populacji: kohorta aktywna, reproduktory, koncentracja krycia,
-udział linii w czasie, ryzyko linii, porównania okresów.
-Spójne z `population_genetics` (TEST_ID, kolumny df_std).
-"""
+"""Tabele pomocnicze: kohorta aktywna, reproduktory, koncentracja ojców, ryzyko linii, porównanie okresów."""
 
 from __future__ import annotations
 

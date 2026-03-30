@@ -1,6 +1,4 @@
-"""
-Najprostsze uruchomienie programu w postaci okna na pulpicie (bez przeglądarki).
-"""
+"""Start wersji desktopowej (okno Tk)."""
 
 from __future__ import annotations
 

@@ -1,6 +1,4 @@
-"""
-Rysunek drzewa przodków (schemat pokoleń) dla wybranego osobnika.
-"""
+"""Rysowanie grafu rodowodu (networkx + matplotlib, bez backendu GUI)."""
 
 from __future__ import annotations
 
@@ -22,7 +20,7 @@ except Exception:
 
 import matplotlib
 
-matplotlib.use("Agg")  # UI-klient decyduje gdzie rysujemy; dla Tk/Streamlit i tak użyjemy pyplot/fig.
+matplotlib.use("Agg")  # Brak interaktywnego backendu — rysunek tylko do bufora / pliku.
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -196,9 +194,7 @@ def plot_ancestor_pedigree(
     # event_doubleclick=True oznacza podwójne kliknięcie na węzeł.
     on_node_click: Optional[Callable[[str, bool], None]] = None,
 ) -> plt.Figure:
-    """
-    Generuje prosty, warstwowy wykres przodków (parent -> child).
-    """
+    """Warstwowy graf rodzic → dziecko z poziomami przodków."""
     if not levels:
         fig, ax = plt.subplots(figsize=(8, 4))
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")

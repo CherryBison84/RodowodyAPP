@@ -1,6 +1,4 @@
-"""
-Propozycje par hodowlanych z uwzględnieniem pokrewieństwa i prostych ograniczeń.
-"""
+"""Dobór par: filtry wieku, linii, pochodzenia i minimalizacja F potomka (heurystyka)."""
 
 from __future__ import annotations
 

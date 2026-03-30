@@ -1,7 +1,4 @@
-"""
-Liczenie współczynnika pokrewieństwa F (Wright) dla pojedynczych osobników
-na podstawie drzewa rodowego.
-"""
+"""F (Wright) i współzgodność Φ rodziców — rekurencja Malecota na grafie rodzic–dziecko."""
 
 from __future__ import annotations
 
@@ -112,10 +109,7 @@ def _resolve_batch_offspring_depth(
 
 
 def _build_phi_f(people: Dict[str, Person]):
-    """
-    Jednostronne rozwinięcie Malecota względem drugiego argumentu oraz symetryzacja Φ(a,b)=Φ(b,a)
-    przez uśrednienie dwóch kolejności (stabilne przy skończonej głębokości).
-    """
+    """Zwraca zamknięcia `phi` i `F`: rekursja Φ z uśrednieniem kolejności argumentów."""
 
     @lru_cache(maxsize=None)
     def phi_directed(a: str, b: str, remaining: int) -> float:
@@ -189,17 +183,8 @@ def wright_inbreeding_F(
     max_generations_back: int | None,
 ) -> InbreedingResult:
     """
-    Współczynnik inbredu Wrighta:
-    F(i) = Phi(sire(i), dam(i))
-
-    Phi(a,b) (coancestry) liczony rekurencyjnie:
-    - jeśli a == b: Phi(a,a) = (1 + F(a)) / 2
-    - jeśli a != b:
-      Phi(a,b) = 0, gdy brak rodziców u b
-      w przeciwnym razie: Phi(a,b) = 0.5 * (Phi(a, sire(b)) + Phi(a, dam(b)))
-
-    Traktowanie brakujących rodziców:
-    - brak ojca/matki = osobnik jak founder => wkład IBD do Phi z innymi wynosi 0
+    F osobnika = Φ(ojciec, matka). Brak któregoś rodzica w bazie = koniec gałęzi (jak u fundatora).
+    Szczegóły rekurencji — jak w klasycznej relacji Malecota/Wrighta.
     """
     depth = _resolve_person_depth(
         person_id=person_id,
@@ -238,12 +223,7 @@ def wright_offspring_inbreeding_F_from_parents(
     *,
     max_generations_back: int | None,
 ) -> float:
-    """
-    Liczy inbred potomka o rodzicach (father_id, mother_id) jako:
-        F_offspring = Phi(father_id, mother_id)
-
-    Implementacja jest spójna z wewnętrzną logiką rekurencji używaną w `wright_inbreeding_F`.
-    """
+    """F hipotetycznego potomka pary = Φ(ojciec, matka); ta sama głębokość co przy `wright_inbreeding_F`."""
     if not father_id or not mother_id:
         return 0.0
     if father_id == mother_id:
@@ -271,15 +251,7 @@ def wright_kinship_phi_and_relationship_R(
     *,
     max_generations_back: int | None,
 ) -> tuple[float, float]:
-    """
-    Współczynnik współzgodności Φ (coancestry, Malecot/Wright) i współczynnik relacji R = 2Φ
-    między dwoma osobnikami — ta sama rekurencja i głębokość co przy F hipotetycznego potomka
-    z ojcem `individual_a_id` i matką `individual_b_id`.
-
-    Dla kojarzenia: **F potomka = Φ(ojciec, matka)** przy tej samej głębokości liczenia.
-    **R** to klasyczny współczynnik pokrewieństwa Wrighta (autosomy), np. R=0,5 dla rodzic–dziecko
-    przy braku dodatkowego pokrewieństwa.
-    """
+    """Φ i R=2Φ dla dwóch ID; głębokość jak dla F potomka z tych dwóch jako rodziców. Kojarzenie: F potomka = Φ."""
     phi = wright_offspring_inbreeding_F_from_parents(
         individual_a_id,
         individual_b_id,
@@ -340,13 +312,7 @@ def batch_offspring_inbreeding_F_from_parent_pairs(
     *,
     max_generations_back: int | None,
 ) -> list[float]:
-    """
-    Liczy `F_offspring = Phi(sire, dam)` dla wielu par rodziców (sire, dam).
-
-    Funkcja buduje wspólny cache dla rekurencji `phi()`/`F()` w obrębie jednego wywołania,
-    dzięki czemu ranking wielu par jest dużo szybszy niż wielokrotne wołanie
-    `wright_inbreeding_F()` w osobnych wywołaniach.
-    """
+    """Φ dla wielu par (ojciec, matka) w jednym przebiegu — szybciej niż osobne wywołania."""
     if not parent_pairs:
         return []
 

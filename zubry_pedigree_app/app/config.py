@@ -1,6 +1,4 @@
-"""
-Domyślne ustawienia programu, np. gdzie szukać folderu z plikami danych.
-"""
+"""Konfiguracja: katalog danych, domyślne limity obliczeń, kojarzeń i raportów."""
 
 from __future__ import annotations
 
@@ -14,6 +12,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class AppConfig:
+    """Niezmienne ustawienia wczytywane przy starcie (ścieżki, progi, okna wygładzania)."""
+
     dataset_dir: Path
 
     default_max_inbreeding_depth: int = 20
@@ -34,16 +34,13 @@ class AppConfig:
 
 
 def get_config() -> AppConfig:
-    # Default to project's `data/` directory inside this repo.
+    """Zwraca konfigurację z katalogiem `data/` przy root repozytorium."""
     base_dir = Path(__file__).resolve().parents[2]
     return AppConfig(dataset_dir=base_dir / "data")
 
 
 def resolve_app_icon_ico() -> Path | None:
-    """
-    Ikona okna / favicon: `ikona.ico` w `app/`, w `zubry_pedigree_app/` lub w katalogu
-    nadrzędnym repozytorium (np. folder projektu obok `zubry_pedigree_app/`).
-    """
+    """Szuka pliku `ikona.ico` w `app/`, paczce lub katalogu nadrzędnym repozytorium."""
     app_dir = Path(__file__).resolve().parent
     for base in (app_dir, app_dir.parent, app_dir.parent.parent):
         p = base / "ikona.ico"
@@ -71,10 +68,7 @@ def _ico_largest_frame_rgba(im: "PILImage") -> "PILImage":
 
 
 def app_icon_pil_best() -> "PILImage | None":
-    """
-    Ikona jako obraz PIL (najlepsza klatka `ikona.ico`).
-    Używane przez Streamlit (`page_icon`) i Tk (`iconphoto`).
-    """
+    """Największa klatka z `ikona.ico` jako obraz PIL (Streamlit, Tk)."""
     try:
         from PIL import Image
     except ImportError:

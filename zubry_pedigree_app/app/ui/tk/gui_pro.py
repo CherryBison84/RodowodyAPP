@@ -74,7 +74,7 @@ from app.ui.streamlit.streamlit_plotting import fig_column_missing_heatmap
 
 APP_CFG = get_config()
 
-# Liczba założycieli na wykresie p_i (Metryki populacji / Analizy populacji).
+# Liczba założycieli na wykresie p_i (parametry populacyjne / wizualizacje).
 POP_FOUNDERS_PI_TOP_N = int(APP_CFG.report_founders_top_n)
 
 
@@ -549,10 +549,7 @@ def render_inbreeding_year_trends(
     save_figure_fn: Callable[..., None],
 ) -> None:
     """
-    Average F oraz Rate of Inbred Animals (RIA, %) w czasie (TP),
-    osobno dla:
-    - płci (M/F)
-    - linii (LB/LC)
+    Średnie F i udział inbredów (RIA, %) w czasie — osobno wg płci (M/F) i linii (LB/LC).
     """
     try:
         import matplotlib.pyplot as plt
@@ -1204,7 +1201,7 @@ def render_gi_four_paths_smoothed(
     pop_gi_4paths_plot_area: ttk.Frame,
     smooth_window: int = 3,
 ) -> None:
-    """GI w 4 podoknach (Sire–Son, Sire–Daughter, Dam–Son, Dam–Daughter) + wygładzenie."""
+    """Cztery ścieżki GI (ojciec–syn, ojciec–córka, matka–syn, matka–córka) z wygładzeniem."""
     try:
         import matplotlib.pyplot as plt
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -1522,11 +1519,11 @@ def run_tk_pro() -> None:
         theme_name = (os.environ.get("WISENT_GUI_THEME") or "sandstone").strip() or "sandstone"
         root = ttk.Window(themename=theme_name)
         root.title("WisentPedigree Pro+")
-        root.geometry("1280x860")
+        root.geometry("1360x880")
     else:
         root = tk.Tk()
         root.title("WisentPedigree Pro+")
-        root.geometry("1280x860")
+        root.geometry("1360x880")
 
     _ico = resolve_app_icon_ico()
     if _ico is not None:
@@ -1549,13 +1546,13 @@ def run_tk_pro() -> None:
         pass
 
     # -------------------------
-    # Logo + header
+    # Nagłówek: logo | zakładki (2 rzędy) | akcje PDF/Pomoc (pionowo)
     # -------------------------
-    header = ttk.Frame(root, padding=(12, 10), style="TFrame")
+    header = ttk.Frame(root, padding=(14, 12), style="TFrame")
     header.pack(side=tk.TOP, fill=tk.X)
 
     header_actions = ttk.Frame(header)
-    header_actions.pack(side=tk.RIGHT, padx=(12, 0))
+    header_actions.pack(side=tk.RIGHT, padx=(16, 0), anchor="ne")
 
     def on_save_methods_guide_pdf() -> None:
         from app.ui.methods_guide_pdf import write_methods_guide_pdf
@@ -1580,70 +1577,62 @@ def run_tk_pro() -> None:
         header_actions,
         text="Przewodnik metod (PDF)",
         command=on_save_methods_guide_pdf,
-    ).pack(side=tk.LEFT, padx=(0, 8))
+    ).pack(side=tk.TOP, fill=tk.X, pady=(0, 6))
     ttk.Button(
         header_actions,
         text="Pomoc (parametry i wykresy)",
         command=lambda: show_help_window(root, "WisentPedigree Pro+ — pomoc", hc.FULL_HELP_DOCUMENT),
-    ).pack(side=tk.LEFT)
+    ).pack(side=tk.TOP, fill=tk.X)
+
+    logo_frame = ttk.Frame(header)
+    logo_frame.pack(side=tk.LEFT, padx=(0, 10), anchor="nw")
 
     logo_path = Path(__file__).resolve().parents[2] / "logo.png"
-    logo_img = None
+    LOGO_HEADER_TARGET_W = 440
+    logo_photo = None
     if logo_path.exists():
         try:
-            logo_img = tk.PhotoImage(file=str(logo_path))
-            # quick downscale (Tk PhotoImage can be heavy; subsample is OK).
+            from PIL import Image, ImageTk
+
+            pil = Image.open(logo_path)
+            if pil.mode not in ("RGB", "RGBA"):
+                pil = pil.convert("RGBA")
+            w0, h0 = pil.size
+            if w0 > 0 and h0 > 0:
+                tw = int(LOGO_HEADER_TARGET_W)
+                new_h = max(1, int(round(h0 * (tw / float(w0)))))
+                pil = pil.resize((tw, new_h), Image.Resampling.LANCZOS)
+                logo_photo = ImageTk.PhotoImage(pil)
+                setattr(root, "_wisent_logo_photo_keepalive", logo_photo)
+        except Exception:
+            logo_photo = None
+        if logo_photo is None:
             try:
-                w = logo_img.width()
+                logo_fallback = tk.PhotoImage(file=str(logo_path))
+                try:
+                    w = logo_fallback.width()
+                except Exception:
+                    w = 0
+                if w and w > LOGO_HEADER_TARGET_W:
+                    factor = max(2, int(round(w / float(LOGO_HEADER_TARGET_W))))
+                    logo_fallback = logo_fallback.subsample(factor, factor)
+                logo_photo = logo_fallback
+                setattr(root, "_wisent_logo_photo_keepalive", logo_photo)
             except Exception:
-                w = 0
-            # Docelowa szerokość logo w nagłówku (Tk PhotoImage sub-sampling).
-            target_w = 190
-            if w and w > target_w:
-                factor = max(2, int(round(w / target_w)))
-                logo_img = logo_img.subsample(factor, factor)
-        except Exception:
-            logo_img = None
+                logo_photo = None
 
-    if logo_img is not None:
-        ttk.Label(header, image=logo_img).pack(side=tk.LEFT, padx=(0, 12))
+    if logo_photo is not None:
+        ttk.Label(logo_frame, image=logo_photo).pack(side=tk.LEFT, anchor="nw")
 
-    def _brand_title_font() -> tuple[str, int, str]:
-        """
-        Ozdobna, ale czytelna czcionka nazwy aplikacji.
-        Fallback do standardowej czcionki UI, gdy brak fontów serif.
-        """
-        serif_candidates = (
-            "Baskerville",
-            "Palatino",
-            "Times New Roman",
-            "Georgia",
-            "Garamond",
-        )
-        try:
-            import tkinter.font as tkfont
-
-            fams = set(tkfont.families(root))
-            for name in serif_candidates:
-                if name in fams:
-                    return (name, 22, "bold")
-        except Exception:
-            pass
-        base = tk_font(18, bold=True)
-        if len(base) == 3:
-            return (str(base[0]), 20, "bold")
-        return (str(base[0]), 20, "bold")
-
-    ttk.Label(header, text="WisentPedigree Pro+", font=_brand_title_font()).pack(side=tk.LEFT)
-    subtitle = ttk.Label(
-        header,
-        text="Import → walidacja → rejestr → analiza osobnika / par → populacja → raport (DOCX/PDF)",
-        foreground=colors.MUTED,
-    )
-    subtitle.pack(side=tk.LEFT, padx=(16, 0))
+    header_tabs_area = ttk.Frame(header)
+    header_tabs_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, anchor="nw", padx=(0, 8))
+    tabs_row1 = ttk.Frame(header_tabs_area)
+    tabs_row1.pack(side=tk.TOP, anchor="w")
+    tabs_row2 = ttk.Frame(header_tabs_area)
+    tabs_row2.pack(side=tk.TOP, anchor="w", pady=(6, 0))
 
     # -------------------------
-    # Main: Notebook tabs
+    # Treść główna (zakładki przełączane jak notebook, bez drugiego paska pod logo)
     # -------------------------
     status_var = tk.StringVar(value="Gotowe.")
     status_bar = tk.Frame(root, bd=1, relief=tk.SUNKEN, bg=colors.APP_BG)
@@ -1667,26 +1656,66 @@ def run_tk_pro() -> None:
     )
     status_right.pack(side=tk.RIGHT)
 
-    notebook = ttk.Notebook(root)
-    notebook.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+    body = ttk.Frame(root)
+    body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-    tab_loading = ttk.Frame(notebook, padding=14)
-    tab_validation = ttk.Frame(notebook, padding=14)
-    tab_persons = ttk.Frame(notebook, padding=14)
-    tab_pedigree = ttk.Frame(notebook, padding=14)
-    tab_analysis = ttk.Frame(notebook, padding=14)
-    tab_population = ttk.Frame(notebook, padding=14)
-    tab_reports = ttk.Frame(notebook, padding=14)
-    tab_settings = ttk.Frame(notebook, padding=14)
+    tab_loading = ttk.Frame(body, padding=14)
+    tab_validation = ttk.Frame(body, padding=14)
+    tab_persons = ttk.Frame(body, padding=14)
+    tab_pedigree = ttk.Frame(body, padding=14)
+    tab_analysis = ttk.Frame(body, padding=14)
+    tab_population = ttk.Frame(body, padding=14)
+    tab_reports = ttk.Frame(body, padding=14)
+    tab_settings = ttk.Frame(body, padding=14)
 
-    notebook.add(tab_loading, text="Import danych")
-    notebook.add(tab_validation, text="Walidacja bazy")
-    notebook.add(tab_persons, text="Rejestr osobników")
-    notebook.add(tab_pedigree, text="Graf pedigree")
-    notebook.add(tab_analysis, text="Analiza: osobnik / para / ranking")
-    notebook.add(tab_population, text="Metryki populacji")
-    notebook.add(tab_reports, text="Raportowanie")
-    notebook.add(tab_settings, text="Konfiguracja")
+    main_tabs_spec: list[tuple[ttk.Frame, str]] = [
+        (tab_loading, "Import i standaryzacja danych"),
+        (tab_validation, "Walidacja spójności zbioru"),
+        (tab_persons, "Rejestr osobniczy populacji"),
+        (tab_pedigree, "Wizualizacja rodowodu (pedigree)"),
+        (tab_analysis, "Analityka osobnicza i kojarzeń"),
+        (tab_population, "Parametry populacyjne i genetyka grupy"),
+        (tab_reports, "Raporty i eksport wyników"),
+        (tab_settings, "Konfiguracja obliczeń i raportów"),
+    ]
+    main_tab_buttons: list[ttk.Button] = []
+
+    def _style_main_tab_btn(btn: ttk.Button, selected: bool) -> None:
+        try:
+            btn.configure(style="NavTabActive.TButton" if selected else "NavTab.TButton")
+        except Exception:
+            pass
+
+    def _select_main_tab(tab_widget: ttk.Frame) -> None:
+        for fr, _t in main_tabs_spec:
+            try:
+                fr.pack_forget()
+            except Exception:
+                pass
+        try:
+            tab_widget.pack(fill=tk.BOTH, expand=True)
+        except Exception:
+            pass
+        for i, (tw, _t) in enumerate(main_tabs_spec):
+            if i < len(main_tab_buttons):
+                _style_main_tab_btn(main_tab_buttons[i], tw is tab_widget)
+
+    for idx, (tw, title) in enumerate(main_tabs_spec):
+        row = tabs_row1 if idx < 4 else tabs_row2
+
+        def _make_cmd(w: ttk.Frame) -> Callable[[], None]:
+            return lambda: _select_main_tab(w)
+
+        btn = ttk.Button(
+            row,
+            text=title,
+            command=_make_cmd(tw),
+            style="NavTab.TButton",
+        )
+        btn.pack(side=tk.LEFT, padx=(0, 5), pady=1)
+        main_tab_buttons.append(btn)
+
+    _select_main_tab(tab_loading)
 
     # Wewnętrzny notebook zakładki Analityka hodowlana.
     analyses_nb = ttk.Notebook(tab_analysis)
@@ -1696,10 +1725,10 @@ def run_tk_pro() -> None:
     tab_kpair = ttk.Frame(analyses_nb, padding=10)
     tab_mating = ttk.Frame(analyses_nb, padding=10)
     tab_breeding = ttk.Frame(analyses_nb, padding=10)
-    analyses_nb.add(tab_inb, text="Osobnik — F (Wright)")
-    analyses_nb.add(tab_kpair, text="Para — Φ i wyjaśnienie")
-    analyses_nb.add(tab_mating, text="Ranking kojarzeń")
-    analyses_nb.add(tab_breeding, text="Plan hodowli")
+    analyses_nb.add(tab_inb, text="Inbred osobniczy — współczynnik F (Wright)")
+    analyses_nb.add(tab_kpair, text="Pokrewieństwo par rodzicielskich (Φ, R)")
+    analyses_nb.add(tab_mating, text="Ranking rekomendowanych kojarzeń")
+    analyses_nb.add(tab_breeding, text="Scenariusze planu hodowlanego")
 
     # -------------------------
     # Reports tab
@@ -1762,7 +1791,7 @@ def run_tk_pro() -> None:
 
     rep_include_validation_cb = ttk.Checkbutton(
         rep_include_frame,
-        text="Walidacja bazy (cross-check)",
+        text="Walidacja spójności zbioru (cross-check)",
         variable=rep_include_validation_var,
     )
     rep_include_validation_cb.pack(anchor="w", padx=10, pady=(0, 10))
@@ -1816,7 +1845,7 @@ def run_tk_pro() -> None:
         if not (rep_include_ind_var.get() or rep_include_pop_var.get() or rep_include_validation_var.get()):
             messagebox.showinfo(
                 "Info",
-                "Wybierz przynajmniej jedną sekcję raportu: Osobnik, Populacja albo Walidacja bazy.",
+                "Wybierz przynajmniej jedną sekcję raportu: osobnik, populacja albo walidacja spójności zbioru.",
             )
             return
 
@@ -1840,7 +1869,7 @@ def run_tk_pro() -> None:
                 except Exception:
                     vrep = None
 
-            lines.append("Walidacja bazy (cross-check spójności):")
+            lines.append("Walidacja spójności zbioru (cross-check):")
             if vrep is None:
                 lines.append("- brak danych walidacyjnych")
             else:
@@ -1996,7 +2025,7 @@ def run_tk_pro() -> None:
                 except Exception:
                     pass
 
-                # GI i rodziny pełnego rodzeństwa (jak w panelu Metryki populacji).
+                # GI i rodziny pełnego rodzeństwa (jak w panelu parametrów populacyjnych).
                 try:
                     gi_data = compute_gi_and_family_data(df_std, people)
                     lines.append("- Generation Interval (GI):")
@@ -2165,7 +2194,7 @@ def run_tk_pro() -> None:
     rep_save_btn.pack(side=tk.LEFT, padx=(12, 0))
     rep_save_pdf_btn = ttk.Button(rep_btns, text="Zapisz raport (PDF)", command=on_save_report_pdf)
     rep_save_pdf_btn.pack(side=tk.LEFT, padx=(12, 0))
-    ttk.Button(rep_btns, text="Pomoc", command=lambda: show_help_window(root, "Raportowanie", hc.SECTION_REPORTS)).pack(
+    ttk.Button(rep_btns, text="Pomoc", command=lambda: show_help_window(root, "Raporty i eksport wyników", hc.SECTION_REPORTS)).pack(
         side=tk.LEFT, padx=(16, 0)
     )
 
@@ -2182,8 +2211,8 @@ def run_tk_pro() -> None:
     ).pack(anchor="w", pady=(6, 0))
     ttk.Button(
         tab_breeding,
-        text="Pomoc: plan hodowlany",
-        command=lambda: show_help_window(root, "Plan hodowli", hc.SECTION_BREEDING),
+        text="Pomoc: scenariusze planu hodowlanego",
+        command=lambda: show_help_window(root, "Scenariusze planu hodowlanego", hc.SECTION_BREEDING),
     ).pack(anchor="w", pady=(0, 6))
 
     plan_main = ttk.Frame(tab_breeding)
@@ -2803,7 +2832,7 @@ def run_tk_pro() -> None:
     ttk.Button(
         tab_settings,
         text="Pomoc: znaczenie ustawień",
-        command=lambda: show_help_window(root, "Konfiguracja", hc.SECTION_SETTINGS),
+        command=lambda: show_help_window(root, "Konfiguracja obliczeń i raportów", hc.SECTION_SETTINGS),
     ).pack(anchor="w", pady=(0, 6))
 
     settings_divider = ttk.Separator(tab_settings, orient="horizontal")
@@ -3013,9 +3042,9 @@ def run_tk_pro() -> None:
     tab_pop_meta = ttk.Frame(pop_nb)
     tab_pop_charts = ttk.Frame(pop_nb)
 
-    pop_nb.add(tab_pop_basic, text="Podstawowe statystyki")
+    pop_nb.add(tab_pop_basic, text="Statystyki strukturalne populacji")
     pop_nb.add(tab_pop_meta, text="Wskaźniki genetyczne i demograficzne")
-    pop_nb.add(tab_pop_charts, text="Wykresy")
+    pop_nb.add(tab_pop_charts, text="Wizualizacje populacyjne")
 
     pop_frame = tab_pop_basic
 
@@ -3063,12 +3092,12 @@ def run_tk_pro() -> None:
 
     pop_title_row = ttk.Frame(pop_frame)
     pop_title_row.pack(side=tk.TOP, fill=tk.X)
-    ttk.Label(pop_title_row, text="Podstawowe statystyki:", foreground=colors.TEXT, font=tk_font(12, bold=True)).pack(
+    ttk.Label(pop_title_row, text="Statystyki strukturalne populacji:", foreground=colors.TEXT, font=tk_font(12, bold=True)).pack(
         side=tk.LEFT, anchor="w"
     )
     ttk.Button(
         pop_title_row,
-        text="Pomoc: metryki i wykresy",
+        text="Pomoc: parametry populacyjne i wizualizacje",
         command=lambda: show_help_window(
             root,
             "Populacja — interpretacja",
@@ -3283,7 +3312,7 @@ def run_tk_pro() -> None:
         return tab
 
     # Urodzenia (płeć)
-    tab_birth_sex = _plot_tab("Urodzenia według płci")
+    tab_birth_sex = _plot_tab("Rozkład urodzeń w podziale dekad i płci")
     ttk.Label(tab_birth_sex, text="Liczba osobników urodzonych w dekadach (płeć)", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3299,7 +3328,7 @@ def run_tk_pro() -> None:
     pop_birth_sex_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # Urodzenia (linie)
-    tab_birth_line = _plot_tab("Urodzenia według linii (LB/LC)")
+    tab_birth_line = _plot_tab("Rozkład urodzeń według linii hodowlanych (LB/LC)")
     ttk.Label(tab_birth_line, text="Liczba osobników urodzonych w dekadach (LB vs LC)", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3315,7 +3344,7 @@ def run_tk_pro() -> None:
     pop_birth_line_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # Female/Male ratio
-    tab_birth_ratio = _plot_tab("Stosunek płci (ur. ≥ 1900)")
+    tab_birth_ratio = _plot_tab("Współczynnik płci F/M (ur. ≥ 1900)")
     ttk.Label(tab_birth_ratio, text="Stosunek samic do samców (F/M) urodzeń od 1900 roku", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3331,7 +3360,7 @@ def run_tk_pro() -> None:
     pop_birth_ratio_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # GI (bar)
-    tab_gi = _plot_tab("Średni interwał pokoleniowy (GI)")
+    tab_gi = _plot_tab("Średni interwał pokoleniowy (GI, lata)")
     ttk.Label(tab_gi, text="Odstęp międzypokoleniowy (GI) — średni wiek rodziców", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3347,7 +3376,7 @@ def run_tk_pro() -> None:
     pop_gi_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # GI trend
-    tab_gi_trend = _plot_tab("Trend interwału pokoleniowego")
+    tab_gi_trend = _plot_tab("Dynamika interwału pokoleniowego")
     ttk.Label(tab_gi_trend, text="GI w czasie (trend) — dekady i 4 ścieżki", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3363,7 +3392,7 @@ def run_tk_pro() -> None:
     pop_gi_trend_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # GI — 4 podokna (jak na przykładzie z 4 ścieżkami)
-    tab_gi_4paths = _plot_tab("GI (4 ścieżki) — surowe + wygładzone")
+    tab_gi_4paths = _plot_tab("GI: cztery ścieżki rodzic–potomstwo (surowo / wygładzenie)")
     ttk.Label(tab_gi_4paths, text="GI w 4 wariantach (ojciec→syn, ojciec→córka, matka→syn, matka→córka)", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3379,7 +3408,7 @@ def run_tk_pro() -> None:
     pop_gi_4paths_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # Rodziny pełne
-    tab_family = _plot_tab("Kompletność struktury rodzin")
+    tab_family = _plot_tab("Struktura rodzin pełnego rodzeństwa")
     ttk.Label(tab_family, text="Struktura rodzin pełnego rodzeństwa", font=tk_font(12, bold=True)).pack(anchor="w")
     ttk.Label(
         tab_family,
@@ -3393,7 +3422,7 @@ def run_tk_pro() -> None:
     pop_family_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # Kompletność (płeć)
-    tab_comp_sex = _plot_tab("Kompletność rodowodu — płeć")
+    tab_comp_sex = _plot_tab("Kompletność rodowodu według płci (MG, CG, EG)")
     ttk.Label(tab_comp_sex, text="Kompletność rodowodu: MG / CG / EG wg płci", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3409,7 +3438,7 @@ def run_tk_pro() -> None:
     pop_comp_sex_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # Kompletność (linie)
-    tab_comp_line = _plot_tab("Kompletność rodowodu — linie")
+    tab_comp_line = _plot_tab("Kompletność rodowodu według linii (MG, CG, EG)")
     ttk.Label(tab_comp_line, text="Kompletność rodowodu: MG / CG / EG wg linii LB / LC", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3425,7 +3454,7 @@ def run_tk_pro() -> None:
     pop_comp_line_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # Inbred TP (płeć)
-    tab_inb_year_sex = _plot_tab("Trend współczynnika F — płeć")
+    tab_inb_year_sex = _plot_tab("Trend inbringu (F, RIA) według płci")
     ttk.Label(tab_inb_year_sex, text="Średnie F i RIA (%) w czasie — wg płci", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3441,7 +3470,7 @@ def run_tk_pro() -> None:
     pop_inb_year_sex_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # Inbred TP (linie)
-    tab_inb_year_line = _plot_tab("Trend współczynnika F — linie")
+    tab_inb_year_line = _plot_tab("Trend inbringu (F, RIA) według linii")
     ttk.Label(tab_inb_year_line, text="Średnie F i RIA (%) w czasie — wg linii LB/LC", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3457,7 +3486,7 @@ def run_tk_pro() -> None:
     pop_inb_year_line_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # F i RIA (TP) — surowe + wygładzone
-    tab_inb_smooth = _plot_tab("F i RIA (TP) — surowe + wygładzone")
+    tab_inb_smooth = _plot_tab("F i RIA populacji referencyjnej (surowo / wygładzenie)")
     ttk.Label(tab_inb_smooth, text="Średnie F oraz RIA (%) w czasie (TP ogółem)", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3473,7 +3502,7 @@ def run_tk_pro() -> None:
     pop_inb_smooth_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # Rozkład F w populacji
-    tab_f_hist = _plot_tab("Rozkład F (osobniki)")
+    tab_f_hist = _plot_tab("Rozkład współczynnika inbringu F")
     ttk.Label(tab_f_hist, text="Jak wygląda rozkład F w całej populacji", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3489,7 +3518,7 @@ def run_tk_pro() -> None:
     pop_f_hist_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # F vs rok urodzenia
-    tab_f_scatter = _plot_tab("F vs rok urodzenia")
+    tab_f_scatter = _plot_tab("F w funkcji roku urodzenia (punktowo / trend)")
     ttk.Label(tab_f_scatter, text="F (Wright) w funkcji roku urodzenia", font=tk_font(12, bold=True)).pack(
         anchor="w"
     )
@@ -3505,7 +3534,7 @@ def run_tk_pro() -> None:
     pop_f_scatter_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
     # Founder contributions
-    tab_founders = _plot_tab("Ranking wkładu założycieli (p_i)")
+    tab_founders = _plot_tab("Wkład genetyczny założycieli (ranking p_i)")
     ttk.Label(
         tab_founders,
         text=f"Wkład genetyczny założycieli (top {POP_FOUNDERS_PI_TOP_N} p_i)",
@@ -3712,92 +3741,101 @@ def run_tk_pro() -> None:
             pop_family_count_var.set(str(len(fs_fam)))
             pop_family_mean_size_var.set(f"{float(sum(fs_fam)) / float(len(fs_fam)):.2f}")
 
-        # Aktualizacja wykresów po wczytaniu danych.
-        # Każdy wykres renderujemy niezależnie, żeby błąd jednego nie blokował reszty.
-        try:
-            render_birth_decade_charts(
-                df_use,
-                state=state,
-                colors=colors,
-                save_figure_fn=_save_figure_as_jpeg,
-                pop_birth_sex_plot_area=pop_birth_sex_plot_area,
-                pop_birth_line_plot_area=pop_birth_line_plot_area,
-                pop_birth_ratio_plot_area=pop_birth_ratio_plot_area,
-                pop_comp_sex_plot_area=pop_comp_sex_plot_area,
-                pop_comp_line_plot_area=pop_comp_line_plot_area,
-            )
-        except Exception:
-            pass
-        try:
-            render_inbreeding_year_trends(
-                df_use,
-                state=state,
-                pop_depth_inb_var=pop_depth_inb_var,
-                pop_unbounded_inb_var=pop_unbounded_inb_var,
-                pop_inb_year_sex_plot_area=pop_inb_year_sex_plot_area,
-                pop_inb_year_line_plot_area=pop_inb_year_line_plot_area,
-                pop_ria_overall_var=pop_ria_overall_var,
-                pop_ne_var=pop_ne_var,
-                save_figure_fn=_save_figure_as_jpeg,
-            )
-        except Exception:
-            pass
-        try:
-            render_inbreeding_year_trends_smoothed(
-                df_use,
-                state=state,
-                pop_depth_inb_var=pop_depth_inb_var,
-                pop_unbounded_inb_var=pop_unbounded_inb_var,
-                colors=colors,
-                pop_inb_smooth_plot_area=pop_inb_smooth_plot_area,
-                save_figure_fn=_save_figure_as_jpeg,
-                smooth_window=int(APP_CFG.f_ria_smooth_window),
-            )
-        except Exception:
-            pass
-        try:
-            render_f_distribution_charts(
-                df_use=df_use,
-                state=state,
-                colors=colors,
-                save_figure_fn=_save_figure_as_jpeg,
-                pop_f_hist_plot_area=pop_f_hist_plot_area,
-                pop_f_scatter_plot_area=pop_f_scatter_plot_area,
-            )
-        except Exception:
-            pass
-        try:
-            render_founders_pi_chart(
-                state=state,
-                colors=colors,
-                people=people,
-                save_figure_fn=_save_figure_as_jpeg,
-                pop_founders_plot_area=pop_founders_plot_area,
-            )
-        except Exception:
-            pass
-        try:
-            render_gi_and_family_charts(
-                colors=colors,
-                save_figure_fn=_save_figure_as_jpeg,
-                people=people,
-                gi_data=gi_data,
-                pop_gi_plot_area=pop_gi_plot_area,
-                pop_gi_trend_plot_area=pop_gi_trend_plot_area,
-                pop_family_plot_area=pop_family_plot_area,
-            )
-        except Exception:
-            pass
-        try:
-            render_gi_four_paths_smoothed(
-                gi_data=gi_data,
-                colors=colors,
-                save_figure_fn=_save_figure_as_jpeg,
-                pop_gi_4paths_plot_area=pop_gi_4paths_plot_area,
-                smooth_window=int(APP_CFG.gi_smooth_window),
-            )
-        except Exception:
-            pass
+        # Wykresy populacji: po krótkiej pauzie zdarzeniowej (macOS/Tk często źle
+        # liczy geometrię, jeśli matplotlib i ciężkie obliczenia blokują wątek
+        # zanim okno zdąży się poprawnie zmapować).
+        chart_gen = int(state.get("_pop_chart_gen", 0))
+
+        def _render_population_plot_widgets() -> None:
+            if int(state.get("_pop_chart_gen", 0)) != chart_gen:
+                return
+            # Każdy wykres osobno — błąd jednego nie blokuje reszty.
+            try:
+                render_birth_decade_charts(
+                    df_use,
+                    state=state,
+                    colors=colors,
+                    save_figure_fn=_save_figure_as_jpeg,
+                    pop_birth_sex_plot_area=pop_birth_sex_plot_area,
+                    pop_birth_line_plot_area=pop_birth_line_plot_area,
+                    pop_birth_ratio_plot_area=pop_birth_ratio_plot_area,
+                    pop_comp_sex_plot_area=pop_comp_sex_plot_area,
+                    pop_comp_line_plot_area=pop_comp_line_plot_area,
+                )
+            except Exception:
+                pass
+            try:
+                render_inbreeding_year_trends(
+                    df_use,
+                    state=state,
+                    pop_depth_inb_var=pop_depth_inb_var,
+                    pop_unbounded_inb_var=pop_unbounded_inb_var,
+                    pop_inb_year_sex_plot_area=pop_inb_year_sex_plot_area,
+                    pop_inb_year_line_plot_area=pop_inb_year_line_plot_area,
+                    pop_ria_overall_var=pop_ria_overall_var,
+                    pop_ne_var=pop_ne_var,
+                    save_figure_fn=_save_figure_as_jpeg,
+                )
+            except Exception:
+                pass
+            try:
+                render_inbreeding_year_trends_smoothed(
+                    df_use,
+                    state=state,
+                    pop_depth_inb_var=pop_depth_inb_var,
+                    pop_unbounded_inb_var=pop_unbounded_inb_var,
+                    colors=colors,
+                    pop_inb_smooth_plot_area=pop_inb_smooth_plot_area,
+                    save_figure_fn=_save_figure_as_jpeg,
+                    smooth_window=int(APP_CFG.f_ria_smooth_window),
+                )
+            except Exception:
+                pass
+            try:
+                render_f_distribution_charts(
+                    df_use=df_use,
+                    state=state,
+                    colors=colors,
+                    save_figure_fn=_save_figure_as_jpeg,
+                    pop_f_hist_plot_area=pop_f_hist_plot_area,
+                    pop_f_scatter_plot_area=pop_f_scatter_plot_area,
+                )
+            except Exception:
+                pass
+            try:
+                render_founders_pi_chart(
+                    state=state,
+                    colors=colors,
+                    people=people,
+                    save_figure_fn=_save_figure_as_jpeg,
+                    pop_founders_plot_area=pop_founders_plot_area,
+                )
+            except Exception:
+                pass
+            try:
+                render_gi_and_family_charts(
+                    colors=colors,
+                    save_figure_fn=_save_figure_as_jpeg,
+                    people=people,
+                    gi_data=gi_data,
+                    pop_gi_plot_area=pop_gi_plot_area,
+                    pop_gi_trend_plot_area=pop_gi_trend_plot_area,
+                    pop_family_plot_area=pop_family_plot_area,
+                )
+            except Exception:
+                pass
+            try:
+                render_gi_four_paths_smoothed(
+                    gi_data=gi_data,
+                    colors=colors,
+                    save_figure_fn=_save_figure_as_jpeg,
+                    pop_gi_4paths_plot_area=pop_gi_4paths_plot_area,
+                    smooth_window=int(APP_CFG.gi_smooth_window),
+                )
+            except Exception:
+                pass
+
+        root.after_idle(_render_population_plot_widgets)
 
     state["population_metrics"] = {}
 
@@ -3845,8 +3883,8 @@ def run_tk_pro() -> None:
 
     ttk.Button(
         persons_controls,
-        text="Pomoc: lista osobników",
-        command=lambda: show_help_window(root, "Rejestr osobników", hc.SECTION_PERSONS),
+        text="Pomoc: rejestr osobniczy",
+        command=lambda: show_help_window(root, "Rejestr osobniczy populacji", hc.SECTION_PERSONS),
     ).pack(side=tk.RIGHT)
     ttk.Label(tab_persons, text="Kliknij nagłówek kolumny, aby sortować.", foreground=colors.MUTED).pack(
         anchor="w", pady=(4, 0)
@@ -3878,10 +3916,10 @@ def run_tk_pro() -> None:
 
     ttk.Button(
         loading_frame,
-        text="Pomoc: import danych",
+        text="Pomoc: import i standaryzacja",
         command=lambda: show_help_window(
             root,
-            "Import danych",
+            "Import i standaryzacja danych",
             hc.SECTION_LOADING + "\n\n" + hc.SECTION_VALIDATION,
         ),
     ).pack(anchor="w", pady=(4, 0))
@@ -3895,13 +3933,14 @@ def run_tk_pro() -> None:
     mapping_note_var = tk.StringVar(value="Wczytaj plik aby rozpocząć mapowanie.")
     ttk.Label(loading_frame, textvariable=mapping_note_var, foreground=colors.TEXT, wraplength=900).pack(anchor="w", pady=(4, 10))
 
-    validation_var = tk.StringVar(value="Walidacja bazy: -")
+    validation_var = tk.StringVar(value="Walidacja spójności zbioru: —")
 
     ttk.Label(
         tab_validation,
         text=(
             "Podsumowanie walidacji wczytanej bazy. Po sprawdzeniu przejdź do rejestru lub grafu pedigree.\n"
-            "Przepływ: import → walidacja → rejestr → analiza osobnika / par → populacja → raport."
+            "Przepływ: import i standaryzacja → walidacja spójności → rejestr osobniczy → analityka osobnicza i kojarzeń → "
+            "parametry populacyjne → raport."
         ),
         foreground=colors.MUTED,
         wraplength=920,
@@ -3909,8 +3948,8 @@ def run_tk_pro() -> None:
     ).pack(anchor="w", pady=(0, 10))
     ttk.Button(
         tab_validation,
-        text="Pomoc: walidacja bazy",
-        command=lambda: show_help_window(root, "Walidacja bazy", hc.SECTION_VALIDATION),
+        text="Pomoc: walidacja spójności zbioru",
+        command=lambda: show_help_window(root, "Walidacja spójności zbioru", hc.SECTION_VALIDATION),
     ).pack(anchor="w", pady=(0, 8))
 
     def on_export_validation_issues_csv() -> None:
@@ -4180,7 +4219,7 @@ def run_tk_pro() -> None:
                 people=people,
                 source=f"Wczytano (mapowanie): {state.get('raw_filename')}",
             )
-            notebook.select(tab_validation)
+            _select_main_tab(tab_validation)
         except Exception as e:
             messagebox.showerror("Błąd mapowania", str(e))
             _set_status(f"Błąd mapowania: {e}")
@@ -4190,7 +4229,7 @@ def run_tk_pro() -> None:
             df_std, _info = load_default_bison_report()
             people = _build_people_map(df_std)
             _apply_dataset(df_std=df_std, people=people, source="Wczytano domyślną bazę")
-            notebook.select(tab_validation)
+            _select_main_tab(tab_validation)
             raw_file_var.set("Wczytano domyślną bazę (bez mapowania).")
             mapping_note_var.set("Domyślna baza została wczytana automatycznie.")
             _set_mapping_ready(False)
@@ -4209,7 +4248,7 @@ def run_tk_pro() -> None:
             df_std, _info = load_dataset_from_url(url)
             people = _build_people_map(df_std)
             _apply_dataset(df_std=df_std, people=people, source=f"Pobrano z internetu: {url}")
-            notebook.select(tab_validation)
+            _select_main_tab(tab_validation)
             state["df_raw"] = None
             state["raw_filename"] = "ebpb_download"
             raw_file_var.set("Pobrano z EBPB i wczytano automatycznie.")
@@ -4240,7 +4279,7 @@ def run_tk_pro() -> None:
             _clear_mapping_vars()
             _refresh_mapping_form_for_raw_df(df_raw)
             _set_mapping_ready(True)
-            notebook.select(tab_loading)
+            _select_main_tab(tab_loading)
             root.update_idletasks()
         except Exception as e:
             messagebox.showerror("Błąd pobierania", str(e))
@@ -4261,7 +4300,7 @@ def run_tk_pro() -> None:
             df_std, _info = load_dataset_from_path(path)
             people = _build_people_map(df_std)
             _apply_dataset(df_std=df_std, people=people, source=f"Wczytano: {Path(path).name}")
-            notebook.select(tab_validation)
+            _select_main_tab(tab_validation)
             state["df_raw"] = None
             state["raw_filename"] = Path(path).name
             raw_file_var.set(f"Wczytano automatycznie: {Path(path).name}")
@@ -4603,7 +4642,7 @@ def run_tk_pro() -> None:
 
     anc_btn = ttk.Button(rod_header, text="Generuj przodków", state="disabled")
     anc_btn.grid(row=0, column=4, sticky="w", padx=(14, 0))
-    ttk.Button(rod_header, text="Pomoc", command=lambda: show_help_window(root, "Graf pedigree", hc.SECTION_PEDIGREE)).grid(
+    ttk.Button(rod_header, text="Pomoc", command=lambda: show_help_window(root, "Wizualizacja rodowodu (pedigree)", hc.SECTION_PEDIGREE)).grid(
         row=0, column=5, sticky="w", padx=(8, 0)
     )
 
@@ -4653,7 +4692,7 @@ def run_tk_pro() -> None:
     # -------------------------
     # Zakładka Analityka hodowlana — panel Inbred (analyses_nb utworzony wyżej).
     # -------------------------
-    # Ogólne parametry populacyjne są w zakładce Metryki populacji (nie tutaj).
+    # Ogólne parametry populacyjne są w zakładce „Parametry populacyjne…” (nie tutaj).
 
     ana_header = ttk.Frame(tab_inb)
     ana_header.pack(side=tk.TOP, fill=tk.X)
@@ -4772,7 +4811,7 @@ def run_tk_pro() -> None:
 
     ttk.Label(
         tab_kpair,
-        text="Ustawienia max pokoleń / bez limitu są wspólne z zakładką „Ranking kojarzeń”.",
+        text="Ustawienia max pokoleń / bez limitu są wspólne z zakładką „Ranking rekomendowanych kojarzeń”.",
         foreground=colors.MUTED,
         wraplength=900,
         justify="left",
@@ -5272,7 +5311,7 @@ def run_tk_pro() -> None:
         return (int(m.group(1)), m.group(2) or "")
 
     def _refresh_persons_tree_rows(df_std_in) -> None:
-        """Rebuild tabelę Osobników według aktualnego filtra 'birth_location'."""
+        """Odświeża tabelę Osobników według filtra „birth_location”."""
         try:
             for item in tree.get_children():
                 tree.delete(item)
@@ -5374,6 +5413,7 @@ def run_tk_pro() -> None:
     persons_birth_location_filter_cb.bind("<<ComboboxSelected>>", _on_birth_location_filter_change)
 
     def _apply_dataset(df_std, people, source: str) -> None:
+        state["_pop_chart_gen"] = int(state.get("_pop_chart_gen", 0)) + 1
         state["df_std"] = df_std
         state["people"] = people
         state.pop("mating_phi_matrix", None)
@@ -5418,7 +5458,7 @@ def run_tk_pro() -> None:
                 validation_export_btn.configure(state="normal")
         except Exception:
             state["validation_report"] = None
-            validation_var.set("Walidacja bazy: nie udało się przeprowadzić walidacji.")
+            validation_var.set("Walidacja spójności zbioru: nie udało się przeprowadzić walidacji.")
             validation_export_btn.configure(state="disabled")
 
         ids = df_std["id"].dropna().astype(str)
@@ -5635,7 +5675,7 @@ def run_tk_pro() -> None:
             if dbl:
                 id_inb_var.set(nid)
                 try:
-                    notebook.select(tab_analysis)
+                    _select_main_tab(tab_analysis)
                 except Exception:
                     pass
                 try:
@@ -5993,7 +6033,7 @@ def run_tk_pro() -> None:
     # -------------------------
     def _go_to_tab(tab_widget: ttk.Frame) -> None:
         try:
-            notebook.select(tab_widget)
+            _select_main_tab(tab_widget)
         except Exception:
             pass
 
@@ -6009,12 +6049,12 @@ def run_tk_pro() -> None:
             "WisentPedigree Pro+\n\n"
             "Aplikacja do analizy rodowodów żubrów i wsparcia zarządzania stadem.\n\n"
             "Najważniejsze funkcjonalności:\n"
-            "- Import danych (plik/URL) i mapowanie kolumn,\n"
-            "- Walidacja i kontrola spójności danych,\n"
-            "- Analityka osobnika (Wright F, kompletność rodowodu, linie),\n"
-            "- Metryki populacji i wizualizacje,\n"
+            "- Import i standaryzacja danych (plik/URL, mapowanie kolumn),\n"
+            "- Walidacja spójności zbioru i spójności rodowodu,\n"
+            "- Analityka osobnicza (Wright F, kompletność, linie hodowlane),\n"
+            "- Parametry populacyjne, genetyka grupy i wizualizacje,\n"
             "- Interaktywny graf pedigree,\n"
-            "- Plan hodowli w module Analityka hodowlana (dobór par i ryzyko inbredu potomstwa),\n"
+            "- Scenariusze planu hodowlanego (dobór par, ryzyko inbredu potomstwa),\n"
             "- Raporty DOCX/PDF (opcjonalnie z wykresami).\n\n"
             "Autor: Magdalena Perlinska-Teresiak\n"
             "Rok: 2026"
@@ -6024,7 +6064,7 @@ def run_tk_pro() -> None:
     menubar = tk.Menu(root)
 
     menu_file = tk.Menu(menubar, tearoff=0)
-    menu_file.add_command(label="Import danych", command=lambda: _go_to_tab(tab_loading))
+    menu_file.add_command(label="Import i standaryzacja danych", command=lambda: _go_to_tab(tab_loading))
     menu_file.add_command(label="Wczytaj domyslna baze", command=on_load_default)
     menu_file.add_command(label="Wybierz plik...", command=on_choose_file)
     menu_file.add_separator()
@@ -6032,34 +6072,34 @@ def run_tk_pro() -> None:
     menubar.add_cascade(label="Plik", menu=menu_file)
 
     menu_data = tk.Menu(menubar, tearoff=0)
-    menu_data.add_command(label="Import danych", command=lambda: _go_to_tab(tab_loading))
-    menu_data.add_command(label="Walidacja bazy", command=lambda: _go_to_tab(tab_validation))
-    menu_data.add_command(label="Rejestr osobników", command=lambda: _go_to_tab(tab_persons))
-    menu_data.add_command(label="Graf pedigree", command=lambda: _go_to_tab(tab_pedigree))
-    menu_data.add_command(label="Metryki populacji", command=lambda: _go_to_tab(tab_population))
+    menu_data.add_command(label="Import i standaryzacja danych", command=lambda: _go_to_tab(tab_loading))
+    menu_data.add_command(label="Walidacja spójności zbioru", command=lambda: _go_to_tab(tab_validation))
+    menu_data.add_command(label="Rejestr osobniczy populacji", command=lambda: _go_to_tab(tab_persons))
+    menu_data.add_command(label="Wizualizacja rodowodu (pedigree)", command=lambda: _go_to_tab(tab_pedigree))
+    menu_data.add_command(label="Parametry populacyjne i genetyka grupy", command=lambda: _go_to_tab(tab_population))
     menubar.add_cascade(label="Dane", menu=menu_data)
 
     menu_analysis = tk.Menu(menubar, tearoff=0)
     menu_analysis.add_command(
-        label="Analiza: osobnik / para / ranking",
+        label="Analityka osobnicza i kojarzeń",
         command=lambda: _go_to_tab(tab_analysis),
     )
-    menu_analysis.add_command(label="Plan hodowli", command=_go_to_plan_hodowlany)
-    menu_analysis.add_command(label="Metryki populacji", command=lambda: _go_to_tab(tab_population))
+    menu_analysis.add_command(label="Scenariusze planu hodowlanego", command=_go_to_plan_hodowlany)
+    menu_analysis.add_command(label="Parametry populacyjne i genetyka grupy", command=lambda: _go_to_tab(tab_population))
     menubar.add_cascade(label="Analiza", menu=menu_analysis)
 
     menu_viz = tk.Menu(menubar, tearoff=0)
-    menu_viz.add_command(label="Graf pedigree", command=lambda: _go_to_tab(tab_pedigree))
+    menu_viz.add_command(label="Wizualizacja rodowodu (pedigree)", command=lambda: _go_to_tab(tab_pedigree))
     menu_viz.add_command(
-        label="Analiza: osobnik / para / ranking",
+        label="Analityka osobnicza i kojarzeń",
         command=lambda: _go_to_tab(tab_analysis),
     )
-    menu_viz.add_command(label="Metryki populacji", command=lambda: _go_to_tab(tab_population))
+    menu_viz.add_command(label="Parametry populacyjne i genetyka grupy", command=lambda: _go_to_tab(tab_population))
     menubar.add_cascade(label="Wizualizacja", menu=menu_viz)
 
     menu_export = tk.Menu(menubar, tearoff=0)
-    menu_export.add_command(label="Raportowanie", command=lambda: _go_to_tab(tab_reports))
-    menu_export.add_command(label="Konfiguracja", command=lambda: _go_to_tab(tab_settings))
+    menu_export.add_command(label="Raporty i eksport wyników", command=lambda: _go_to_tab(tab_reports))
+    menu_export.add_command(label="Konfiguracja obliczeń i raportów", command=lambda: _go_to_tab(tab_settings))
     menubar.add_cascade(label="Eksport", menu=menu_export)
 
     menu_help = tk.Menu(menubar, tearoff=0)
@@ -6069,7 +6109,7 @@ def run_tk_pro() -> None:
     )
     menu_help.add_command(
         label="Interpretacja wykresów populacji",
-        command=lambda: show_help_window(root, "Wykresy populacji", hc.all_charts_text()),
+        command=lambda: show_help_window(root, "Wizualizacje populacyjne", hc.all_charts_text()),
     )
     menu_help.add_command(
         label="Pełna dokumentacja (tekst)",
@@ -6081,7 +6121,7 @@ def run_tk_pro() -> None:
     )
     menu_help.add_separator()
     menu_help.add_command(label="O aplikacji", command=_show_about_app)
-    menu_help.add_command(label="Konfiguracja", command=lambda: _go_to_tab(tab_settings))
+    menu_help.add_command(label="Konfiguracja obliczeń i raportów", command=lambda: _go_to_tab(tab_settings))
     menubar.add_cascade(label="Pomoc", menu=menu_help)
 
     root.config(menu=menubar)
@@ -6090,11 +6130,19 @@ def run_tk_pro() -> None:
     set_controls_enabled(False)
     _refresh_validation_missing_heatmap()
 
-    # Auto-load default dataset for convenience.
-    try:
-        on_load_default()
-    except Exception:
-        _set_status("Nie udało się wczytać domyślnej bazy.")
+    # Auto-load default dataset dopiero po pierwszym cyklu zdarzeń: wcześniejsze
+    # synchroniczne wczytanie + matplotlib blokowały mapowanie okna na macOS
+    # (pusty/szary obszar, fragmenty UI w rogu), dopóki mainloop nie ruszył.
+    status_var.set("Uruchamianie…")
+    root.update_idletasks()
 
+    def _startup_autoload_default() -> None:
+        try:
+            _set_status("Wczytywanie domyślnej bazy…")
+            on_load_default()
+        except Exception:
+            _set_status("Nie udało się wczytać domyślnej bazy.")
+
+    root.after(32, _startup_autoload_default)
     root.mainloop()
 

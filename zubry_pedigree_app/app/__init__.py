@@ -1,4 +1,2 @@
-"""
-Wewnętrzny zespół plików programu: obliczenia, wczytywanie danych i ekrany użytkownika.
-"""
+"""Pakiet aplikacji: logika, dane i interfejsy (Tk / Streamlit)."""
 

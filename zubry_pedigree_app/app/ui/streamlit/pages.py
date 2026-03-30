@@ -58,8 +58,8 @@ CFG = get_config()
 
 
 def section_import() -> None:
-    st.markdown("### Import danych")
-    st.caption("Plik CSV/XLSX lub URL z mapowaniem kolumn. Po wczytaniu przejdź do **Walidacja bazy**.")
+    st.markdown("### Import i standaryzacja danych")
+    st.caption("Plik CSV/XLSX lub URL z mapowaniem kolumn. Po wczytaniu przejdź do **Walidacja spójności zbioru**.")
     sc.help_expander(
         "Co oznacza wczytywanie?",
         hc.SECTION_LOADING,
@@ -137,20 +137,23 @@ def section_import() -> None:
     if df_std is not None and not df_std.empty:
         st.success(
             f"W pamięci sesji: **{st.session_state.get('source', '-')}** • **n =** {len(df_std)}. "
-            "Następny krok: **Walidacja bazy** w menu."
+            "Następny krok: **Walidacja spójności zbioru** w menu."
         )
 
 
 def section_validation() -> None:
-    st.markdown("### Walidacja bazy")
-    st.caption("Sprawdzenie spójności po imporcie. Potem: rejestr → analiza osobnika / par → populacja → raport.")
+    st.markdown("### Walidacja spójności zbioru")
+    st.caption(
+        "Kontrola spójności rodowodu i rekordów po imporcie. Potem: rejestr osobniczy → analizy osobnicze i par → "
+        "parametry populacyjne → raport."
+    )
     sc.help_expander(
         "Co sprawdza walidacja?",
         hc.SECTION_VALIDATION,
     )
     df_std = st.session_state.get("df_std")
     if df_std is None or df_std.empty:
-        st.info("Brak wczytanej bazy — użyj **Import danych**.")
+        st.info("Brak wczytanej bazy — użyj **Import i standaryzacja danych**.")
         return
     st.info(f"**Źródło:** {st.session_state.get('source', '-')} • **n =** {len(df_std)}")
     ids = df_std["id"].dropna().astype(str)
@@ -196,8 +199,8 @@ def section_validation() -> None:
 
 
 def section_persons(df_std: pd.DataFrame) -> None:
-    st.markdown("### Rejestr osobników")
-    sc.help_expander("Rejestr osobników — jak czytać tabelę", hc.SECTION_PERSONS)
+    st.markdown("### Rejestr osobniczy populacji")
+    sc.help_expander("Rejestr osobniczy populacji — jak czytać tabelę", hc.SECTION_PERSONS)
     lm = st.session_state.get("line_memberships") or {}
     people = st.session_state.get("people") or {}
     base = df_std.copy()
@@ -398,15 +401,17 @@ def _individual_pcl_dataframe(person_id: str, people: dict) -> tuple[pd.DataFram
 
 
 def section_analysis_individual(df_std: pd.DataFrame, people: dict) -> None:
-    st.markdown("### Analiza osobnika")
+    st.markdown("### Analiza osobnicza: inbred i kompletność")
     st.caption("Graf przodków, F (Wright), kompletność (EG/PCI), linie sire/dam, wspólni przodkowie rodziców.")
     section_individual_pedigree_analysis(df_std, people)
 
 
 def section_analysis_pairs_and_mating(df_std: pd.DataFrame, people: dict) -> None:
-    st.markdown("### Analiza par i kojarzenia")
-    st.caption("Kinship pary (Φ, R, wyjaśnienie ścieżek) oraz ranking kojarzeń.")
-    t1, t2 = st.tabs(["Para", "Ranking kojarzeń"])
+    st.markdown("### Analiza par i optymalizacja kojarzeń")
+    st.caption("Pokrewieństwo par rodzicielskich (Φ, R, dekompozycja ścieżek) oraz ranking rekomendowanych kojarzeń.")
+    t1, t2 = st.tabs(
+        ["Pokrewieństwo par (Φ, R)", "Ranking rekomendowanych kojarzeń"],
+    )
     with t1:
         section_pair_kinship_analysis(df_std, people)
     with t2:
@@ -414,7 +419,7 @@ def section_analysis_pairs_and_mating(df_std: pd.DataFrame, people: dict) -> Non
 
 
 def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> None:
-    st.markdown("#### Analiza rodowodowa — osobnik")
+    st.markdown("#### Analiza rodowodowa osobnika")
     id_opts = sorted(df_std["id"].astype(str).unique().tolist(), key=sc.id_sort_key)
     if not id_opts:
         st.warning("Brak ID w bazie.")
@@ -427,7 +432,7 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
     )
 
     with st1:
-        sc.help_expander("Graf pedigree — linie (sire/dam)", hc.SECTION_PEDIGREE)
+        sc.help_expander("Wizualizacja rodowodu (pedigree) — linie sire / dam", hc.SECTION_PEDIGREE)
         col1, col2, col3 = st.columns(3)
         with col1:
             unbounded = st.checkbox("Bez limitu (do founderów)", value=True, key="hub_rod_ub")
@@ -842,10 +847,10 @@ def _figure_to_jpeg_bytes(fig: plt.Figure) -> bytes:
 
 
 def section_population(df_std: pd.DataFrame, people: dict) -> None:
-    st.markdown("### Metryki populacji")
+    st.markdown("### Parametry populacyjne i genetyka grupy")
     verbose = bool(st.session_state.get("st_verbose_pop_captions", True))
     sc.help_expander(
-        "Metryki populacji (średnie F, f_e, f_a, GI, N_e…)",
+        "Parametry populacyjne (średnie F, f_e, f_a, GI, N_e, mean kinship…)",
         hc.SECTION_POPULATION + "\n\n*Pełny słownik skrótów: panel boczny → „Słownik parametrów”.*",
         expanded=False,
     )
@@ -886,7 +891,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
     df_use["id"] = df_use["id"].astype(str)
     df_use = df_use[df_use["id"] != TEST_ID].reset_index(drop=True)
 
-    with st.spinner("Liczenie metryk populacji, kohorty, okresów…"):
+    with st.spinner("Liczenie parametrów populacyjnych, kohort, okresów…"):
         stats = compute_population_genetics_stats(
             df_std=df_std,
             people=people,
@@ -993,20 +998,20 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
     )
 
     tab_names = [
-        "Okresy, ryzyko, reprodukcja, udział linii",
-        "Urodzenia według płci",
-        "Urodzenia według linii (LB/LC)",
-        "Stosunek płci (ur. ≥ 1900)",
-        "Kompletność rodowodu — płeć",
-        "Kompletność rodowodu — linie",
-        "Rozkład F (Wright)",
-        "Ranking wkładu założycieli (p_i)",
-        "Średni interwał pokoleniowy (GI)",
-        "Trend interwału pokoleniowego",
-        "Kompletność struktury rodzin",
-        "Trend F i RIA — płeć",
-        "Trend F i RIA — linie",
-        "PCL vs MG — ANC i RP",
+        "Okresy kohortowe, ryzyko linii, reprodukcja, udział LB/LC",
+        "Rozkład urodzeń w podziale dekad i płci",
+        "Rozkład urodzeń według linii hodowlanych (LB/LC)",
+        "Współczynnik płci F/M (ur. ≥ 1900)",
+        "Kompletność rodowodu według płci (MG, CG, EG)",
+        "Kompletność rodowodu według linii (MG, CG, EG)",
+        "Rozkład współczynnika inbringu F",
+        "Wkład genetyczny założycieli (ranking p_i)",
+        "Średni interwał pokoleniowy (GI, lata)",
+        "Dynamika interwału pokoleniowego",
+        "Struktura rodzin pełnego rodzeństwa",
+        "Trend inbringu (F, RIA) według płci",
+        "Trend inbringu (F, RIA) według linii",
+        "PCL vs MG — przodkowie (ANC) i populacja referencyjna (RP)",
     ]
     tabs = st.tabs(tab_names)
 
@@ -1295,7 +1300,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
 
 
 def section_reports() -> None:
-    st.markdown("### Raportowanie")
+    st.markdown("### Raporty i eksport wyników")
     sc.help_expander("Raporty — co zawierają", hc.SECTION_REPORTS)
     st.caption("Podgląd tekstowy; pełny eksport DOCX/PDF jest w wersji Tk.")
     df_std = st.session_state.get("df_std")
@@ -1380,11 +1385,11 @@ def section_reports() -> None:
 
 
 def section_settings() -> None:
-    st.markdown("### Konfiguracja (sesja)")
+    st.markdown("### Konfiguracja obliczeń i raportów (sesja)")
     sc.help_expander("Ustawienia sesji Streamlit", hc.SECTION_SETTINGS)
     st.caption("W Streamlit ustawienia są trzymane w tej sesji przeglądarki.")
     st.checkbox(
-        "Domyślnie: rozwinięte bloki „Interpretacja wykresu” w Metrykach populacji",
+        "Domyślnie: rozwinięte bloki „Interpretacja wykresu” przy parametrach populacyjnych",
         value=True,
         key="st_verbose_pop_captions",
     )
@@ -1392,6 +1397,6 @@ def section_settings() -> None:
 
 def section_breeding_placeholder() -> None:
     st.info(
-        "Plan hodowli — sekcja synchronizowana z wersją desktop (Tk); logika hodowlana w rozwoju."
+        "Scenariusze planu hodowlanego — sekcja synchronizowana z wersją desktop (Tk); rozwój modułu w toku."
     )
-    sc.help_expander("Plan hodowli (Tk vs Streamlit)", hc.SECTION_BREEDING)
+    sc.help_expander("Scenariusze planu hodowlanego (Tk vs Streamlit)", hc.SECTION_BREEDING)

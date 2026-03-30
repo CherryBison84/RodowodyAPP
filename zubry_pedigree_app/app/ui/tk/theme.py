@@ -1,9 +1,4 @@
-"""
-Kolory i wygląd przycisków oraz tabel w oknie na pulpicie, żeby tekst był czytelny.
-
-Gdy dostępny jest pakiet **ttkbootstrap** (okno `ttk.Window`), stosowany jest gotowy
-motyw (np. „litera”) z lekką korektą czcionek w tabelach — zamiast „gołego” stylu ttk z lat 90.
-"""
+"""Motyw kolorystyczny i style ttk (clam lub ttkbootstrap + paleta „leśna”)."""
 
 from __future__ import annotations
 
@@ -116,6 +111,34 @@ def _setup_theme_ttkbootstrap(root: tk.Misc) -> Theme:
         )
     except Exception:
         pass
+    # Przyciski nawigacji głównej (jak karty notebooka — ta sama paleta co TNotebook.Tab).
+    try:
+        style.configure(
+            "NavTab.TButton",
+            background=colors.TAB_BG,
+            foreground=colors.TAB_TEXT,
+            padding=(10, 6),
+            font=tk_font(TK_PT_NOTEBOOK_TAB, bold=True),
+        )
+        style.map(
+            "NavTab.TButton",
+            background=[("active", colors.PANEL_BG2), ("pressed", colors.TAB_ACTIVE_BG)],
+            foreground=[("active", colors.TAB_TEXT), ("pressed", colors.TAB_TEXT)],
+        )
+        style.configure(
+            "NavTabActive.TButton",
+            background=colors.TAB_ACTIVE_BG,
+            foreground=colors.TAB_TEXT,
+            padding=(10, 6),
+            font=tk_font(TK_PT_NOTEBOOK_TAB, bold=True),
+        )
+        style.map(
+            "NavTabActive.TButton",
+            background=[("active", colors.PANEL_BG2), ("pressed", colors.TAB_BG)],
+            foreground=[("active", colors.TAB_TEXT), ("pressed", colors.TAB_TEXT)],
+        )
+    except Exception:
+        pass
     try:
         style.configure(
             "TButton",
@@ -222,6 +245,31 @@ def setup_theme(root: tk.Misc) -> Theme:
         "TNotebook.Tab",
         background=[("selected", colors.TAB_ACTIVE_BG), ("active", colors.PANEL_BG2)],
         foreground=[("selected", colors.TAB_TEXT), ("active", colors.TAB_TEXT)],
+    )
+
+    style.configure(
+        "NavTab.TButton",
+        background=colors.TAB_BG,
+        foreground=colors.TAB_TEXT,
+        padding=(10, 6),
+        font=tk_font(TK_PT_NOTEBOOK_TAB, bold=True),
+    )
+    style.map(
+        "NavTab.TButton",
+        background=[("active", colors.PANEL_BG2), ("pressed", colors.TAB_ACTIVE_BG)],
+        foreground=[("active", colors.TAB_TEXT), ("pressed", colors.TAB_TEXT)],
+    )
+    style.configure(
+        "NavTabActive.TButton",
+        background=colors.TAB_ACTIVE_BG,
+        foreground=colors.TAB_TEXT,
+        padding=(10, 6),
+        font=tk_font(TK_PT_NOTEBOOK_TAB, bold=True),
+    )
+    style.map(
+        "NavTabActive.TButton",
+        background=[("active", colors.PANEL_BG2), ("pressed", colors.TAB_BG)],
+        foreground=[("active", colors.TAB_TEXT), ("pressed", colors.TAB_TEXT)],
     )
 
     style.configure(

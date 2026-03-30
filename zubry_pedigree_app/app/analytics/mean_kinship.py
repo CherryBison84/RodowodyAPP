@@ -1,9 +1,4 @@
-"""
-Średni kinship (średnia współzgodności Φ Malecota / Wrighta) po parach osobników.
-
-Dla dużych populacji pełne O(n²) jest niepraktyczne — stosujemy losową próbkę osobników
-i średnią Φ po parach w próbie (przybliżenie; ten sam limit głębokości co przy F / Φ par).
-"""
+"""Średnia Φ po parach (pełna lista małych n lub losowa próba przy dużym n); R = 2Φ̄."""
 
 from __future__ import annotations
 
@@ -23,14 +18,7 @@ def mean_kinship_pairwise(
     random_sample_n: int = 72,
     random_seed: int = 42,
 ) -> Tuple[Optional[float], Optional[float], str]:
-    """
-    Średnia z Φ(i,j) po parach i≠j (kolejność bez znaczenia; Φ symetryczne).
-
-    - Gdy n ≤ `exhaustive_max_n`: wszystkie n·(n−1)/2 par.
-    - Gdy n większe: losowa próba `min(random_sample_n, n)` ID, potem wszystkie pary w próbie.
-
-    Zwraca: (średnia_Φ, średnie_R=2Φ, krótki opis metody).
-    """
+    """Φ̄ po parach i≠j; przy dużym n — próba. Zwraca (Φ̄, 2Φ̄, opis)."""
     ids = [str(x) for x in individual_ids if str(x) in people]
     n = len(ids)
     if n < 2:

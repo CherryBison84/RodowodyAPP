@@ -1,6 +1,4 @@
-"""
-Składanie raportów tekstowych i PDF z wykresami dla jednego osobnika lub całej populacji.
-"""
+"""Budowa raportów TXT/PDF z wykresami (osobnik, populacja)."""
 
 from __future__ import annotations
 

@@ -1,7 +1,4 @@
-"""
-Punkt startowy z linii poleceń: wybór, czy pokazać program w oknie na pulpicie,
-czy w wersji otwieranej w przeglądarce.
-"""
+"""CLI: `--ui tk` lub `streamlit` — wybór interfejsu."""
 
 from __future__ import annotations
 
@@ -17,7 +14,7 @@ if str(_pkg_root) not in sys.path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="WisentPedigree Pro+")
+    parser = argparse.ArgumentParser(description="WisentPedigree Pro+ — analiza rodowodów żubrów")
     parser.add_argument("--ui", choices=["tk", "streamlit"], default="tk")
     args = parser.parse_args()
 

@@ -1,4 +1,2 @@
-"""
-Wczytywanie plików z tabelami, dopasowywanie kolumn i sprawdzanie poprawności danych.
-"""
+"""Wczytywanie baz, mapowanie kolumn i walidacja spójności."""
 
