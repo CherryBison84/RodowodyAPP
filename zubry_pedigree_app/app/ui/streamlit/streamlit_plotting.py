@@ -60,13 +60,14 @@ ST_CHART_DISPLAY_WIDTH_PX = 920
 apply_matplotlib_fonts()
 
 
-def _slant_xlabels(ax: plt.Axes, *, rotation: float | None = None) -> None:
+def _slant_xlabels(ax: plt.Axes, *, rotation: float | None = None, tick_fs: float | None = None) -> None:
     """Etykiety osi X pod kątem (domyślnie ST_XTICK_ROT), żeby się nie nakładały."""
     rot = float(ST_XTICK_ROT if rotation is None else rotation)
+    fs = float(ST_FS_TICK if tick_fs is None else tick_fs)
     for t in ax.get_xticklabels():
         t.set_rotation(rot)
         t.set_horizontalalignment("right")
-        t.set_fontsize(ST_FS_TICK)
+        t.set_fontsize(fs)
 
 
 # Przezroczyste tło figury i osi — podgląd i PNG są spójne z tłem strony (zielonkawy APP_BG).
@@ -282,8 +283,8 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
     ax.set_ylim(-label_band, 1)
     ax.axis("off")
 
-    _miss_seg_fs = max(7.0, min(10.5, 128.0 / max(ncol, 1)))
-    _miss_name_fs = max(7.5, min(10.8, 100.0 / max(ncol, 1) + 2.2))
+    _miss_seg_fs = max(6.0, min(9.0, 112.0 / max(ncol, 1)))
+    _miss_name_fs = max(6.5, min(9.25, 88.0 / max(ncol, 1) + 1.75))
     fig.text(
         0.03,
         0.92,
@@ -427,7 +428,8 @@ def fig_birth_decades_sex(df: pd.DataFrame) -> plt.Figure:
     ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
     ax.set_ylabel("liczba urodzeń", fontsize=ST_FS_AXIS)
     ax.set_xticks(x)
-    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.set_xticklabels(decade_labels, fontsize=ST_FS_TICK)
+    _slant_xlabels(ax)
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     ax.legend(fontsize=ST_FS_TICK)
     fig.tight_layout()
@@ -487,7 +489,8 @@ def fig_birth_decades_line(df: pd.DataFrame) -> plt.Figure:
     ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
     ax.set_ylabel("liczba urodzeń", fontsize=ST_FS_AXIS)
     ax.set_xticks(x)
-    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.set_xticklabels(decade_labels, fontsize=ST_FS_TICK)
+    _slant_xlabels(ax)
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     ax.legend(fontsize=ST_FS_TICK)
     fig.tight_layout()
@@ -542,13 +545,14 @@ def fig_female_male_ratio(df: pd.DataFrame) -> plt.Figure:
     _fx, _fy = _figsize_for_n_x_categories(len(ratio_decades))
     fig, ax = plt.subplots(figsize=(_fx, _fy))
     xs3 = list(range(len(ratio_decades)))
-    ax.plot(xs3, ratio_vals, marker="o", markersize=4.0, linewidth=2.0, color=MUTED)
+    ax.plot(xs3, ratio_vals, marker="o", markersize=3.2, linewidth=1.9, color=MUTED)
     ax.axhline(1.0, color=ACCENT, linewidth=1, alpha=0.8)
     ax.set_title("Stosunek samic do samców (F/M) w dekadach od 1900", fontsize=ST_FS_TITLE)
     ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
     ax.set_ylabel("F/M", fontsize=ST_FS_AXIS)
     ax.set_xticks(xs3)
-    ax.set_xticklabels(ratio_labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.set_xticklabels(ratio_labels, fontsize=ST_FS_TICK)
+    _slant_xlabels(ax)
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     fig.tight_layout()
     return fig
@@ -651,6 +655,7 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
     ax_c.set_title("Kompletność: MG/CG/EG wg płci", fontsize=ST_FS_TITLE)
     ax_c.set_xticks(xs)
     ax_c.set_xticklabels(cats, fontsize=ST_FS_TICK)
+    _slant_xlabels(ax_c)
     ax_c.tick_params(axis="y", labelsize=ST_FS_TICK)
     ax_c.legend(fontsize=ST_FS_TICK)
     fig_c.tight_layout()
@@ -667,6 +672,7 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
     ax_l.set_title("Kompletność: MG/CG/EG wg linii", fontsize=ST_FS_TITLE)
     ax_l.set_xticks(xs2)
     ax_l.set_xticklabels(cats2, fontsize=ST_FS_TICK)
+    _slant_xlabels(ax_l)
     ax_l.tick_params(axis="y", labelsize=ST_FS_TICK)
     ax_l.legend(fontsize=ST_FS_TICK)
     fig_l.tight_layout()
@@ -676,7 +682,7 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
 def fig_founder_contributions(contributions: Dict[str, float], people: dict) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H))
     if not contributions:
-        ax.text(0.5, 0.5, "Brak danych founder contributions", ha="center", va="center", fontsize=ST_FS_AXIS)
+        ax.text(0.5, 0.5, "Brak danych o wkładach założycieli", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     items = sorted(contributions.items(), key=lambda kv: kv[1], reverse=True)[:POP_FOUNDERS_PI_TOP_N]
@@ -690,7 +696,8 @@ def fig_founder_contributions(contributions: Dict[str, float], people: dict) -> 
     ax.bar(range(len(items)), vals, color=BUTTON_BG2, edgecolor=ACCENT)
     ax.set_title(f"Top {len(items)} założycieli (p_i)", fontsize=ST_FS_TITLE)
     ax.set_xticks(range(len(items)))
-    ax.set_xticklabels(labels, rotation=75, ha="right", fontsize=ST_FS_DENSE)
+    ax.set_xticklabels(labels, fontsize=ST_FS_DENSE)
+    _slant_xlabels(ax, rotation=72.0, tick_fs=ST_FS_DENSE)
     ax.set_ylabel("p_i", fontsize=ST_FS_AXIS)
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     fig.tight_layout()
@@ -708,6 +715,7 @@ def fig_histogram_f(f_values: List[float]) -> plt.Figure:
     ax.set_xlabel("F", fontsize=ST_FS_AXIS)
     ax.set_ylabel("liczba osobników", fontsize=ST_FS_AXIS)
     ax.tick_params(axis="both", labelsize=ST_FS_TICK)
+    _slant_xlabels(ax)
     fig.tight_layout()
     return fig
 
@@ -736,7 +744,8 @@ def fig_gi_mean_bar(gi_data: Dict[str, Any]) -> plt.Figure:
         return fig
     ax.bar(x, means, color=bar_colors, edgecolor=ACCENT)
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=20, ha="right", fontsize=ST_FS_TICK)
+    ax.set_xticklabels(labels, fontsize=ST_FS_TICK)
+    _slant_xlabels(ax)
     ax.set_title("Odstęp międzypokoleniowy (GI) — średni wiek rodziców", fontsize=ST_FS_TITLE)
     ax.set_ylabel("GI (lata)", fontsize=ST_FS_AXIS)
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
@@ -771,7 +780,7 @@ def fig_gi_trend_decades(gi_data: Dict[str, Any]) -> plt.Figure:
     for path_key in ("FS", "FD", "MS", "MD"):
         ys = [_dec_mean(path_key, d) for d in all_decades]
         ys_plot = [float(v) if v is not None else float("nan") for v in ys]
-        ax.plot(x, ys_plot, marker="o", markersize=3.8, linewidth=2.0, color=colors[path_key], label=labels_map[path_key])
+        ax.plot(x, ys_plot, marker="o", markersize=3.15, linewidth=1.85, color=colors[path_key], label=labels_map[path_key])
     ax.set_title("GI (trend) — dekady urodzenia potomstwa", fontsize=ST_FS_TITLE)
     ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
     ax.set_ylabel("średni GI (lata)", fontsize=ST_FS_AXIS)
@@ -784,7 +793,8 @@ def fig_gi_trend_decades(gi_data: Dict[str, Any]) -> plt.Figure:
     else:
         ticks = x
     ax.set_xticks(ticks)
-    ax.set_xticklabels([decade_labels[i] for i in ticks], rotation=35, ha="right", fontsize=ST_FS_TICK)
+    ax.set_xticklabels([decade_labels[i] for i in ticks], fontsize=ST_FS_TICK)
+    _slant_xlabels(ax)
     fig.tight_layout()
     return fig
 
@@ -808,6 +818,7 @@ def fig_family_full_siblings(family_sizes: List[int]) -> plt.Figure:
     ax.bar(x2, counts, color=BUTTON_BG2, edgecolor=ACCENT)
     ax.set_xticks(x2)
     ax.set_xticklabels(labels, fontsize=ST_FS_TICK)
+    _slant_xlabels(ax)
     ax.set_title("Rozkład wielkości rodzin pełnego rodzeństwa", fontsize=ST_FS_TITLE)
     ax.set_xlabel("wielkość rodziny (liczba rodzeństwa)", fontsize=ST_FS_AXIS)
     ax.set_ylabel("liczba rodzin", fontsize=ST_FS_AXIS)
@@ -938,8 +949,8 @@ def fig_inbreeding_year_trends_sex(
             years,
             avg_f,
             marker="o",
-            markersize=3.8,
-            linewidth=2.0,
+            markersize=3.15,
+            linewidth=1.85,
             color=colors_sex[cat],
             label=cat,
         )
@@ -947,8 +958,8 @@ def fig_inbreeding_year_trends_sex(
             years,
             ria,
             marker="o",
-            markersize=3.8,
-            linewidth=2.0,
+            markersize=3.15,
+            linewidth=1.85,
             color=colors_sex[cat],
             label=cat,
         )
@@ -972,6 +983,8 @@ def fig_inbreeding_year_trends_sex(
         ticks = [y for i, y in enumerate(years) if i % step == 0]
         ax_avg.set_xticks(ticks)
         ax_ria.set_xticks(ticks)
+    _slant_xlabels(ax_avg)
+    _slant_xlabels(ax_ria)
     fig.tight_layout()
     return fig, warn
 
@@ -1031,8 +1044,8 @@ def fig_inbreeding_year_trends_line(
             years,
             avg_f,
             marker="o",
-            markersize=3.8,
-            linewidth=2.0,
+            markersize=3.15,
+            linewidth=1.85,
             color=colors_line[cat],
             label=cat,
         )
@@ -1040,8 +1053,8 @@ def fig_inbreeding_year_trends_line(
             years,
             ria,
             marker="o",
-            markersize=3.8,
-            linewidth=2.0,
+            markersize=3.15,
+            linewidth=1.85,
             color=colors_line[cat],
             label=cat,
         )
@@ -1065,6 +1078,8 @@ def fig_inbreeding_year_trends_line(
         ticks = [y for i, y in enumerate(years) if i % step == 0]
         ax_avg.set_xticks(ticks)
         ax_ria.set_xticks(ticks)
+    _slant_xlabels(ax_avg)
+    _slant_xlabels(ax_ria)
     fig.tight_layout()
     return fig, warn
 
@@ -1135,7 +1150,8 @@ def fig_reproducers_by_decade(df: pd.DataFrame) -> plt.Figure:
     ax.set_ylabel("liczba unikalnych rodziców", fontsize=ST_FS_AXIS)
     labels = [f"{d}-{d+9}" for d in decades]
     ax.set_xticks(xi)
-    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.set_xticklabels(labels, fontsize=ST_FS_TICK)
+    _slant_xlabels(ax)
     ax.legend(
         fontsize=ST_FS_TICK,
         loc="upper left",
@@ -1204,13 +1220,14 @@ def fig_line_share_percent_stacked(df: pd.DataFrame) -> plt.Figure:
     ax.bar(x, lb, color="#d64545", edgecolor=ACCENT, label="LB")
     ax.bar(x, lc, bottom=lb, color="#2e8b57", edgecolor=ACCENT, label="LC")
     bottom2 = [lb[i] + lc[i] for i in range(len(x))]
-    ax.bar(x, na, bottom=bottom2, color="#888888", edgecolor=ACCENT, label="in./NA")
+    ax.bar(x, na, bottom=bottom2, color="#888888", edgecolor=ACCENT, label="inne / NA")
     ax.set_title("Struktura linii w czasie (udział % urodzeń w dekadzie)", fontsize=ST_FS_TITLE)
     ax.set_ylim(0, 100)
     ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
     ax.set_ylabel("udział %", fontsize=ST_FS_AXIS)
     ax.set_xticks(x)
-    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.set_xticklabels(decade_labels, fontsize=ST_FS_TICK)
+    _slant_xlabels(ax)
     ax.legend(fontsize=ST_FS_TICK, loc="upper right")
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     ax.grid(True, axis="y", alpha=0.25)

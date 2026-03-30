@@ -1,35 +1,14 @@
-# Zubry Pedigree App
+# Zubry Pedigree App — folder aplikacji
 
-Aplikacja do analizy rodowodowej żubrów — **interfejs webowy (Streamlit)**.
+Pełny opis projektu, nawigacja i instalacja: **[README.md w katalogu nadrzędnym](../README.md)**.
 
-W tym katalogu znajdują się m.in. skrypty startowe, domyślna baza `EBPB_bison_report.xlsx` oraz `metrics_definition.md`.
+W tym katalogu znajdują się skrypty startowe, pakiet **`app/`**, `requirements.txt`, przykładowa baza oraz **`metrics_definition.md`** (definicje metryk).
 
-## Uruchomienie (po instalacji)
-
-Zalecane — Streamlit i otwarcie przeglądarki:
-
-```bash
-cd zubry_pedigree_app
-python run_web.py
-```
-
-Tylko Streamlit (jak `streamlit run`):
-
-```bash
-cd zubry_pedigree_app
-python run_streamlit.py
-```
-
-Bezpośrednio:
-
-```bash
-streamlit run app/ui/streamlit/streamlit_app.py
-```
-
-**Nie** uruchamiaj `streamlit_app.py` przez zwykłe `python streamlit_app.py` — Streamlit wymaga `streamlit run`.
-
-## Zależności
+## Szybki start (stąd)
 
 ```bash
 pip install -r requirements.txt
+python run_web.py
 ```
+
+Alternatywa: `python run_streamlit.py` albo `python run_app.py` (patrz nagłówki plików).

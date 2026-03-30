@@ -59,6 +59,9 @@ import app.ui.streamlit.streamlit_plotting as splt
 CFG = get_config()
 
 # Grupy zakładek wykresów (Populacja) — kolejność i indeksy spójne z dashboardem.
+POP_PCL_LEGEND_RP = "RP — osobniki (kohorta)"
+POP_PCL_LEGEND_ANC = "ANC — przodkowie"
+
 _SECTION_POP_CHART_TAB_GROUPS: tuple[tuple[str, tuple[int, ...]], ...] = (
     ("Populacja i urodzenia", (0, 1, 2, 3)),
     ("Inbred i trendy", (6, 11, 12)),
@@ -427,15 +430,17 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                     depths,
                     Fs,
                     marker="o",
-                    markersize=4.0,
+                    markersize=3.2,
                     color=sc.THEME.EDGE_PLOT,
-                    linewidth=2.0,
+                    linewidth=1.85,
                 )
                 ax.set_title(f"Diagnostyka F vs max pokoleń (ID {pid})", fontsize=splt.ST_FS_TITLE)
                 ax.set_xlabel("max pokoleń", fontsize=splt.ST_FS_AXIS)
                 ax.set_ylabel("F", fontsize=splt.ST_FS_AXIS)
                 ax.tick_params(axis="both", labelsize=splt.ST_FS_TICK)
                 ax.grid(True, alpha=0.25)
+                splt._slant_xlabels(ax)
+                fig.tight_layout()
                 splt.show_matplotlib_figure_in_streamlit(
                     fig,
                     download_filename=f"inbred_diag_{pid}.png",
@@ -459,6 +464,8 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                 ax.set_title("Kompletność per pokolenie (PCL)", fontsize=splt.ST_FS_TITLE)
                 ax.tick_params(axis="both", labelsize=splt.ST_FS_TICK)
                 ax.grid(True, axis="y", alpha=0.25)
+                splt._slant_xlabels(ax)
+                fig.tight_layout()
                 splt.show_matplotlib_figure_in_streamlit(
                     fig,
                     download_filename=f"kompletnosc_PCL_{pid}.png",
@@ -1293,7 +1300,9 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         )
 
     elif sel == 13:
-        st.caption("PCL_max (a_MG/2^MG) w funkcji MG: Ancestors (ANC) vs Reference Population (RP).")
+        st.caption(
+            "PCL_max (a_MG/2^MG) w funkcji MG: przodkowie (ANC) vs osobniki w populacji referencyjnej (RP, kohorta)."
+        )
 
         # Pamiętaj: ten wykres jest kosztowny na dużych bazach.
         MAX_RP_IDS = 160
@@ -1397,24 +1406,26 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             for pid in rp_ids:
                 mg, pcl_max = _pcl_max_and_mg(str(pid))
                 if mg > 0:
-                    rp_rows.append({"MG": mg, "PCL_max": pcl_max, "Grupa": "RP (horses)"})
+                    rp_rows.append({"MG": mg, "PCL_max": pcl_max, "Grupa": POP_PCL_LEGEND_RP})
 
             anc_rows = []
             for pid in anc_ids:
                 mg, pcl_max = _pcl_max_and_mg(str(pid))
                 if mg > 0:
-                    anc_rows.append({"MG": mg, "PCL_max": pcl_max, "Grupa": "ANC (ancestors)"})
+                    anc_rows.append({"MG": mg, "PCL_max": pcl_max, "Grupa": POP_PCL_LEGEND_ANC})
 
         if not rp_rows and not anc_rows:
             st.info("Brak danych do wykresu PCL_max vs MG (MG=0 dla wszystkich).")
             st.stop()
 
         df_plot = pd.DataFrame(rp_rows + anc_rows)
-        st.caption(f"RP={len(rp_rows)} wykresowych koni{rp_note}; ANC={len(anc_rows)} przodków{anc_note}.")
+        st.caption(
+            f"Punkty: {len(rp_rows)} osobników RP{rp_note}; {len(anc_rows)} przodków ANC{anc_note}."
+        )
 
         colors_map = {
-            "ANC (ancestors)": sc.THEME.BUTTON_BG,
-            "RP (horses)": sc.THEME.BUTTON_BG2,
+            POP_PCL_LEGEND_ANC: sc.THEME.BUTTON_BG,
+            POP_PCL_LEGEND_RP: sc.THEME.BUTTON_BG2,
         }
 
         fig, ax = plt.subplots(figsize=(splt.ST_FIG_SCATTER_W, splt.ST_FIG_SCATTER_H))
@@ -1424,13 +1435,18 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             by_mg = sub.groupby("MG")["PCL_max"].mean().sort_index()
             ax.plot(by_mg.index.tolist(), by_mg.values.tolist(), color=c, linewidth=2.0, alpha=0.9)
 
-        ax.set_title("PCL_max (a_MG/2^MG) względem MG — ANC vs RP", fontsize=splt.ST_FS_TITLE)
-        ax.set_xlabel("MG (maksymalna liczba prześledzonych pokoleń)", fontsize=splt.ST_FS_AXIS)
+        ax.set_title(
+            "PCL_max względem MG: przodkowie (ANC) vs osobniki RP",
+            fontsize=splt.ST_FS_TITLE,
+        )
+        ax.set_xlabel("MG (maks. liczba prześledzonych pokoleń)", fontsize=splt.ST_FS_AXIS)
         ax.set_ylabel("PCL_max = a_MG / 2^MG", fontsize=splt.ST_FS_AXIS)
         ax.set_ylim(0, 1.05)
         ax.grid(True, alpha=0.25)
         ax.tick_params(axis="both", labelsize=splt.ST_FS_TICK)
         ax.legend(loc="best", fontsize=splt.ST_FS_TICK)
+        splt._slant_xlabels(ax)
+        fig.tight_layout()
         splt.show_matplotlib_figure_in_streamlit(
             fig,
             download_filename="pop_PCLmax_vs_MG_ANC_RP.png",
