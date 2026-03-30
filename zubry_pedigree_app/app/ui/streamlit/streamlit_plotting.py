@@ -32,6 +32,24 @@ PLOT_BAR_3RD = PLOT_THEME.TAB_TEXT
 # Spójnie z gui_pro.POP_FOUNDERS_PI_TOP_N
 POP_FOUNDERS_PI_TOP_N = 20
 
+# Kompaktowy układ pod Streamlit: figury i czcionki zbliżone do UI (mniej scrolla).
+ST_FS_TITLE = 7.75
+ST_FS_AXIS = 6.0
+ST_FS_TICK = 5.35
+ST_FS_DENSE = 4.9
+ST_FS_MISS_HEAD = 8.5
+ST_DPI_EXPORT = 100
+ST_FIG_EMPTY = (4.45, 1.35)
+ST_FIG_W, ST_FIG_H = 5.95, 2.08
+ST_FIG_REPO_W, ST_FIG_REPO_H = 5.95, 2.28
+ST_FIG_STACK_W, ST_FIG_STACK_H = 5.95, 2.36
+ST_FIG_HIST_W, ST_FIG_HIST_H = 5.4, 2.05
+ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H = 7.85, 2.55
+ST_FIG_TWIN_W, ST_FIG_TWIN_H = 6.45, 3.35
+ST_FIG_F_DIAG_W, ST_FIG_F_DIAG_H = 5.85, 2.35
+ST_FIG_PCL_BAR_W, ST_FIG_PCL_BAR_H = 5.85, 2.05
+ST_FIG_SCATTER_W, ST_FIG_SCATTER_H = 6.45, 3.35
+
 apply_matplotlib_fonts()
 
 # Kolejność jak w Treeview „Rejestr osobniczy populacji” (Tk), potem typowe pola pomocnicze ze standardowego schematu.
@@ -63,8 +81,13 @@ def registry_like_column_order(df_columns: pd.Index | list[str]) -> list[str]:
     names = [str(c) for c in df_columns]
     colset = set(names)
     preferred = _REGISTRY_TREE_ORDER + _REGISTRY_EXTRA_ORDER
-    ordered = [c for c in preferred if c in colset]
-    rest = sorted(c for c in colset if c not in ordered)
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for c in preferred:
+        if c in colset and c not in seen:
+            ordered.append(c)
+            seen.add(c)
+    rest = sorted(c for c in colset if c not in seen)
     return ordered + rest
 
 
@@ -75,10 +98,15 @@ def registry_tree_only_order(df_columns: pd.Index | list[str]) -> list[str]:
     return [c for c in _REGISTRY_TREE_ORDER if c in colset]
 
 
-def display_matplotlib_figure_in_streamlit(fig: plt.Figure) -> None:
+def show_matplotlib_figure_in_streamlit(
+    fig: plt.Figure,
+    *,
+    download_filename: str,
+    download_key: str,
+) -> None:
     """
-    Zapis wykresu do PNG i `st.image` — pewniejsze niż `st.pyplot` przy niektórych
-    przeglądarkach / backendach Matplotlib (pusta strona mimo poprawnej figury).
+    Wyświetla wykres jako PNG (`st.image`, stabilniej niż `st.pyplot` w części przeglądarek)
+    i dodaje przycisk pobrania pliku. Figura jest zamykana po zapisie.
     """
     import io
 
@@ -89,16 +117,24 @@ def display_matplotlib_figure_in_streamlit(fig: plt.Figure) -> None:
         fig.savefig(
             buf,
             format="png",
-            dpi=130,
+            dpi=ST_DPI_EXPORT,
             bbox_inches="tight",
-            pad_inches=0.2,
+            pad_inches=0.08,
             facecolor=fig.get_facecolor(),
             edgecolor="none",
         )
     finally:
         plt.close(fig)
-    buf.seek(0)
-    st.image(buf, use_container_width=True)
+    png = buf.getvalue()
+    st.image(io.BytesIO(png), width="stretch")
+    st.download_button(
+        "Pobierz wykres (PNG)",
+        data=png,
+        file_name=download_filename,
+        mime="image/png",
+        key=download_key,
+        width="content",
+    )
 
 
 def column_missing_percentages(df: pd.DataFrame) -> pd.Series:
@@ -127,7 +163,7 @@ def column_missing_percentages(df: pd.DataFrame) -> pd.Series:
 
 def _truncate_col_label(name: str, ncol: int) -> str:
     s = str(name).replace("\n", " ")
-    cap = max(6, min(24, int(160 / max(ncol, 1))))
+    cap = max(5, min(20, int(132 / max(ncol, 1))))
     if len(s) <= cap:
         return s
     return s[: cap - 1] + "…"
@@ -157,36 +193,36 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
     th = PLOT_THEME
     pct = column_missing_percentages(df)
     if pct.empty:
-        fig, ax = plt.subplots(figsize=(6, 2))
-        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        fig, ax = plt.subplots(figsize=ST_FIG_EMPTY)
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     order = registry_tree_only_order(pct.index)
     pct = pct.reindex(order)
     pct = pct.dropna()
     if pct.empty:
-        fig, ax = plt.subplots(figsize=(6, 2))
-        ax.text(0.5, 0.5, "Brak kolumn rejestru osobników w danych", ha="center", va="center")
+        fig, ax = plt.subplots(figsize=ST_FIG_EMPTY)
+        ax.text(0.5, 0.5, "Brak kolumn rejestru osobników w danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     ncol = len(pct)
     cmap = _forest_missing_segment_cmap(th)
-    fig_w = min(22, max(8.0, 0.62 * ncol + 2.2))
-    fig_h = 3.05
+    fig_w = min(18.0, max(6.5, 0.52 * ncol + 1.85))
+    fig_h = 2.05
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
     fig.patch.set_facecolor(th.APP_BG)
-    fig.subplots_adjust(left=0.03, right=0.97, top=0.84, bottom=0.11)
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.81, bottom=0.12)
     ax.set_xlim(0, ncol)
     ax.set_ylim(0, 1)
     ax.axis("off")
     ax.set_facecolor(th.ENTRY_BG)
 
-    _miss_seg_fs = max(7.0, min(11.2, 152.0 / max(ncol, 1)))
+    _miss_seg_fs = max(5.2, min(7.6, 102.0 / max(ncol, 1)))
     fig.text(
         0.03,
         0.93,
         "Mapa braków danych",
-        fontsize=12.5,
+        fontsize=ST_FS_MISS_HEAD,
         color=th.TEXT,
         ha="left",
         va="top",
@@ -267,8 +303,8 @@ def fig_birth_decades_sex(df: pd.DataFrame) -> plt.Figure:
     w = 0.38
 
     if df is None or df.empty or "birth_year" not in df.columns:
-        fig, ax = plt.subplots(figsize=(8.6, 3.4))
-        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
 
@@ -277,8 +313,8 @@ def fig_birth_decades_sex(df: pd.DataFrame) -> plt.Figure:
     dfc["_birth_int"] = birth_int
     dfc = dfc.dropna(subset=["_birth_int"])
     if dfc.empty:
-        fig, ax = plt.subplots(figsize=(8.6, 3.4))
-        ax.text(0.5, 0.5, "Brak prawidłowych lat urodzenia", ha="center", va="center")
+        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+        ax.text(0.5, 0.5, "Brak prawidłowych lat urodzenia", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     dfc["_birth_int"] = dfc["_birth_int"].astype(int)
@@ -302,15 +338,16 @@ def fig_birth_decades_sex(df: pd.DataFrame) -> plt.Figure:
     m_vals = [m_counts.get(d, 0) for d in decades]
     f_vals = [f_counts.get(d, 0) for d in decades]
 
-    fig, ax = plt.subplots(figsize=(8.6, 3.4))
+    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
     ax.bar([i - w / 2 for i in x], m_vals, width=w, color="#9ecbff", edgecolor=ACCENT, label="M")
     ax.bar([i + w / 2 for i in x], f_vals, width=w, color="#ffb4c1", edgecolor=ACCENT, label="F")
-    ax.set_title("Urodzenia w dekadach (płeć)")
-    ax.set_xlabel("dekada")
-    ax.set_ylabel("liczba urodzeń")
+    ax.set_title("Urodzenia w dekadach (płeć)", fontsize=ST_FS_TITLE)
+    ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
+    ax.set_ylabel("liczba urodzeń", fontsize=ST_FS_AXIS)
     ax.set_xticks(x)
-    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=8)
-    ax.legend(fontsize=8)
+    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.tick_params(axis="y", labelsize=ST_FS_TICK)
+    ax.legend(fontsize=ST_FS_TICK)
     fig.tight_layout()
     return fig
 
@@ -325,8 +362,8 @@ def fig_birth_decades_line(df: pd.DataFrame) -> plt.Figure:
     w = 0.38
 
     if df is None or df.empty or "birth_year" not in df.columns:
-        fig, ax = plt.subplots(figsize=(8.6, 3.4))
-        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
 
@@ -335,8 +372,8 @@ def fig_birth_decades_line(df: pd.DataFrame) -> plt.Figure:
     dfc["_birth_int"] = birth_int
     dfc = dfc.dropna(subset=["_birth_int"])
     if dfc.empty:
-        fig, ax = plt.subplots(figsize=(8.6, 3.4))
-        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     dfc["_birth_int"] = dfc["_birth_int"].astype(int)
@@ -360,15 +397,16 @@ def fig_birth_decades_line(df: pd.DataFrame) -> plt.Figure:
     lb_vals = [lb_counts.get(d, 0) for d in decades]
     lc_vals = [lc_counts.get(d, 0) for d in decades]
 
-    fig, ax = plt.subplots(figsize=(8.6, 3.4))
+    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
     ax.bar([i - w / 2 for i in x], lc_vals, width=w, color="#2e8b57", edgecolor=ACCENT, label="LC")
     ax.bar([i + w / 2 for i in x], lb_vals, width=w, color="#d64545", edgecolor=ACCENT, label="LB")
-    ax.set_title("Urodzenia w dekadach (LC vs LB)")
-    ax.set_xlabel("dekada")
-    ax.set_ylabel("liczba urodzeń")
+    ax.set_title("Urodzenia w dekadach (LC vs LB)", fontsize=ST_FS_TITLE)
+    ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
+    ax.set_ylabel("liczba urodzeń", fontsize=ST_FS_AXIS)
     ax.set_xticks(x)
-    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=8)
-    ax.legend(fontsize=8)
+    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.tick_params(axis="y", labelsize=ST_FS_TICK)
+    ax.legend(fontsize=ST_FS_TICK)
     fig.tight_layout()
     return fig
 
@@ -379,9 +417,9 @@ def fig_female_male_ratio(df: pd.DataFrame) -> plt.Figure:
     max_dec = (now_year // 10) * 10
     decades = list(range(min_dec, max_dec + 1, 10))
 
-    fig, ax = plt.subplots(figsize=(8.6, 3.4))
+    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
     if df is None or df.empty:
-        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
 
@@ -390,7 +428,7 @@ def fig_female_male_ratio(df: pd.DataFrame) -> plt.Figure:
     dfc["_birth_int"] = birth_int
     dfc = dfc.dropna(subset=["_birth_int"])
     if dfc.empty:
-        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     dfc["_birth_int"] = dfc["_birth_int"].astype(int)
@@ -418,13 +456,14 @@ def fig_female_male_ratio(df: pd.DataFrame) -> plt.Figure:
         ratio_vals.append(float("nan") if m <= 0 else float(f) / float(m))
 
     xs3 = list(range(len(ratio_decades)))
-    ax.plot(xs3, ratio_vals, marker="o", linewidth=2, color=MUTED)
+    ax.plot(xs3, ratio_vals, marker="o", markersize=1.65, linewidth=1.55, color=MUTED)
     ax.axhline(1.0, color=ACCENT, linewidth=1, alpha=0.8)
-    ax.set_title("Stosunek samic do samców (F/M) w dekadach od 1900")
-    ax.set_xlabel("dekada")
-    ax.set_ylabel("F/M")
+    ax.set_title("Stosunek samic do samców (F/M) w dekadach od 1900", fontsize=ST_FS_TITLE)
+    ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
+    ax.set_ylabel("F/M", fontsize=ST_FS_AXIS)
     ax.set_xticks(xs3)
-    ax.set_xticklabels(ratio_labels, rotation=45, ha="right", fontsize=8)
+    ax.set_xticklabels(ratio_labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     fig.tight_layout()
     return fig
 
@@ -454,12 +493,12 @@ def _comp_per_individual(pid: str, people: dict) -> tuple[int, int, float]:
 
 
 def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figure, plt.Figure]:
-    fig_c, ax_c = plt.subplots(figsize=(8.6, 3.4))
-    fig_l, ax_l = plt.subplots(figsize=(8.6, 3.4))
+    fig_c, ax_c = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
+    fig_l, ax_l = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
 
     if df is None or df.empty or not people:
         for ax in (ax_c, ax_l):
-            ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+            ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
             ax.axis("off")
         return fig_c, fig_l
 
@@ -468,7 +507,7 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
     dfc = dfc[dfc["id"].isin(set(people.keys()))].reset_index(drop=True)
     if dfc.empty:
         for ax in (ax_c, ax_l):
-            ax.text(0.5, 0.5, "Brak dopasowania ID", ha="center", va="center")
+            ax.text(0.5, 0.5, "Brak dopasowania ID", ha="center", va="center", fontsize=ST_FS_AXIS)
             ax.axis("off")
         return fig_c, fig_l
 
@@ -523,10 +562,11 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
     ax_c.bar([i - ww for i in xs], MGv, width=ww, color=BUTTON_BG2, edgecolor=ACCENT, label="MG")
     ax_c.bar([i for i in xs], CGv, width=ww, color=BUTTON_BG, edgecolor=ACCENT, label="CG")
     ax_c.bar([i + ww for i in xs], EGv, width=ww, color=PLOT_BAR_3RD, edgecolor=ACCENT, label="EG")
-    ax_c.set_title("Kompletność: MG/CG/EG wg płci")
+    ax_c.set_title("Kompletność: MG/CG/EG wg płci", fontsize=ST_FS_TITLE)
     ax_c.set_xticks(xs)
-    ax_c.set_xticklabels(cats)
-    ax_c.legend(fontsize=8)
+    ax_c.set_xticklabels(cats, fontsize=ST_FS_TICK)
+    ax_c.tick_params(axis="y", labelsize=ST_FS_TICK)
+    ax_c.legend(fontsize=ST_FS_TICK)
     fig_c.tight_layout()
 
     cats2 = ["LB", "LC", "NA"]
@@ -538,18 +578,19 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
     ax_l.bar([i - ww2 for i in xs2], MGv2, width=ww2, color=BUTTON_BG2, edgecolor=ACCENT, label="MG")
     ax_l.bar([i for i in xs2], CGv2, width=ww2, color=BUTTON_BG, edgecolor=ACCENT, label="CG")
     ax_l.bar([i + ww2 for i in xs2], EGv2, width=ww2, color=PLOT_BAR_3RD, edgecolor=ACCENT, label="EG")
-    ax_l.set_title("Kompletność: MG/CG/EG wg linii")
+    ax_l.set_title("Kompletność: MG/CG/EG wg linii", fontsize=ST_FS_TITLE)
     ax_l.set_xticks(xs2)
-    ax_l.set_xticklabels(cats2)
-    ax_l.legend(fontsize=8)
+    ax_l.set_xticklabels(cats2, fontsize=ST_FS_TICK)
+    ax_l.tick_params(axis="y", labelsize=ST_FS_TICK)
+    ax_l.legend(fontsize=ST_FS_TICK)
     fig_l.tight_layout()
     return fig_c, fig_l
 
 
 def fig_founder_contributions(contributions: Dict[str, float], people: dict) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(11.0, 4.2))
+    fig, ax = plt.subplots(figsize=(ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H))
     if not contributions:
-        ax.text(0.5, 0.5, "Brak danych founder contributions", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych founder contributions", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     items = sorted(contributions.items(), key=lambda kv: kv[1], reverse=True)[:POP_FOUNDERS_PI_TOP_N]
@@ -561,24 +602,26 @@ def fig_founder_contributions(contributions: Dict[str, float], people: dict) -> 
         nm = getattr(p, "name", None) if p else None
         labels.append(f"{fid} ({nm})" if nm else fid)
     ax.bar(range(len(items)), vals, color=BUTTON_BG2, edgecolor=ACCENT)
-    ax.set_title(f"Top {len(items)} założycieli (p_i)")
+    ax.set_title(f"Top {len(items)} założycieli (p_i)", fontsize=ST_FS_TITLE)
     ax.set_xticks(range(len(items)))
-    ax.set_xticklabels(labels, rotation=75, ha="right", fontsize=7)
-    ax.set_ylabel("p_i")
+    ax.set_xticklabels(labels, rotation=75, ha="right", fontsize=ST_FS_DENSE)
+    ax.set_ylabel("p_i", fontsize=ST_FS_AXIS)
+    ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     fig.tight_layout()
     return fig
 
 
 def fig_histogram_f(f_values: List[float]) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(7.5, 3.5))
+    fig, ax = plt.subplots(figsize=(ST_FIG_HIST_W, ST_FIG_HIST_H))
     if not f_values:
-        ax.text(0.5, 0.5, "Brak danych F", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych F", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     ax.hist(f_values, bins=30, color=BUTTON_BG2, edgecolor=PLOT_BAR_3RD)
-    ax.set_title("Rozkład F (Wright) w populacji")
-    ax.set_xlabel("F")
-    ax.set_ylabel("liczba osobników")
+    ax.set_title("Rozkład F (Wright) w populacji", fontsize=ST_FS_TITLE)
+    ax.set_xlabel("F", fontsize=ST_FS_AXIS)
+    ax.set_ylabel("liczba osobników", fontsize=ST_FS_AXIS)
+    ax.tick_params(axis="both", labelsize=ST_FS_TICK)
     fig.tight_layout()
     return fig
 
@@ -588,7 +631,7 @@ def fig_histogram_f(f_values: List[float]) -> plt.Figure:
 
 
 def fig_gi_mean_bar(gi_data: Dict[str, Any]) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(8.6, 3.4))
+    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
     # Bez U+2192 (→): brak glifu w części fontów sans ustawianych przez OS dla matplotlib.
     labels = ["Ojciec–Syn", "Ojciec–Córka", "Matka–Syn", "Matka–Córka"]
     vals = [
@@ -602,26 +645,27 @@ def fig_gi_mean_bar(gi_data: Dict[str, Any]) -> plt.Figure:
     means = [float(v) if v is not None else 0.0 for v in vals]
     shown = any(v is not None for v in vals)
     if not shown:
-        ax.text(0.5, 0.5, "Brak danych GI", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych GI", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     ax.bar(x, means, color=bar_colors, edgecolor=ACCENT)
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=20, ha="right", fontsize=8)
-    ax.set_title("Odstęp międzypokoleniowy (GI) — średni wiek rodziców")
-    ax.set_ylabel("GI (lata)")
+    ax.set_xticklabels(labels, rotation=20, ha="right", fontsize=ST_FS_TICK)
+    ax.set_title("Odstęp międzypokoleniowy (GI) — średni wiek rodziców", fontsize=ST_FS_TITLE)
+    ax.set_ylabel("GI (lata)", fontsize=ST_FS_AXIS)
+    ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     fig.tight_layout()
     return fig
 
 
 def fig_gi_trend_decades(gi_data: Dict[str, Any]) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(8.6, 3.4))
+    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
     gi_decades: dict[str, dict[int, list[float]]] = gi_data.get("gi_decades") or {}
     all_decades = sorted(
         set().union(*[set(gi_decades.get(k, {}).keys()) for k in ("FS", "FD", "MS", "MD")])
     )
     if not all_decades:
-        ax.text(0.5, 0.5, "Brak danych GI w dekadach", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych GI w dekadach", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
 
@@ -639,27 +683,28 @@ def fig_gi_trend_decades(gi_data: Dict[str, Any]) -> plt.Figure:
     for path_key in ("FS", "FD", "MS", "MD"):
         ys = [_dec_mean(path_key, d) for d in all_decades]
         ys_plot = [float(v) if v is not None else float("nan") for v in ys]
-        ax.plot(x, ys_plot, marker="o", linewidth=2, color=colors[path_key], label=labels_map[path_key])
-    ax.set_title("GI (trend) — dekady urodzenia potomstwa")
-    ax.set_xlabel("dekada")
-    ax.set_ylabel("średni GI (lata)")
+        ax.plot(x, ys_plot, marker="o", markersize=1.65, linewidth=1.55, color=colors[path_key], label=labels_map[path_key])
+    ax.set_title("GI (trend) — dekady urodzenia potomstwa", fontsize=ST_FS_TITLE)
+    ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
+    ax.set_ylabel("średni GI (lata)", fontsize=ST_FS_AXIS)
+    ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     ax.grid(True, alpha=0.25)
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=ST_FS_TICK)
     if len(x) > 15:
         step = 2
         ticks = [i for i in x if i % step == 0]
     else:
         ticks = x
     ax.set_xticks(ticks)
-    ax.set_xticklabels([decade_labels[i] for i in ticks], rotation=35, ha="right", fontsize=8)
+    ax.set_xticklabels([decade_labels[i] for i in ticks], rotation=35, ha="right", fontsize=ST_FS_TICK)
     fig.tight_layout()
     return fig
 
 
 def fig_family_full_siblings(family_sizes: List[int]) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(8.6, 3.4))
+    fig, ax = plt.subplots(figsize=(ST_FIG_W, ST_FIG_H))
     if not family_sizes:
-        ax.text(0.5, 0.5, "Brak danych rodzin", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych rodzin", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     c = Counter(int(s) for s in family_sizes)
@@ -674,10 +719,11 @@ def fig_family_full_siblings(family_sizes: List[int]) -> plt.Figure:
     x2 = list(range(len(labels)))
     ax.bar(x2, counts, color=BUTTON_BG2, edgecolor=ACCENT)
     ax.set_xticks(x2)
-    ax.set_xticklabels(labels, fontsize=8)
-    ax.set_title("Rozkład wielkości rodzin pełnego rodzeństwa")
-    ax.set_xlabel("wielkość rodziny (liczba rodzeństwa)")
-    ax.set_ylabel("liczba rodzin")
+    ax.set_xticklabels(labels, fontsize=ST_FS_TICK)
+    ax.set_title("Rozkład wielkości rodzin pełnego rodzeństwa", fontsize=ST_FS_TITLE)
+    ax.set_xlabel("wielkość rodziny (liczba rodzeństwa)", fontsize=ST_FS_AXIS)
+    ax.set_ylabel("liczba rodzin", fontsize=ST_FS_AXIS)
+    ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     fig.tight_layout()
     return fig
 
@@ -761,7 +807,7 @@ def fig_inbreeding_year_trends_sex(
 ) -> Tuple[plt.Figure, Optional[str]]:
     """Średnie F i RIA (%) wg roku urodzenia i płci."""
     warn: Optional[str] = None
-    fig, (ax_avg, ax_ria) = plt.subplots(2, 1, figsize=(9, 6))
+    fig, (ax_avg, ax_ria) = plt.subplots(2, 1, figsize=(ST_FIG_TWIN_W, ST_FIG_TWIN_H))
     if dfc_precomputed is not None:
         dfc = dfc_precomputed.copy()
         warn = trend_warn
@@ -771,12 +817,12 @@ def fig_inbreeding_year_trends_sex(
         )
     if dfc is None or dfc.empty:
         for a in (ax_avg, ax_ria):
-            a.text(0.5, 0.5, "Brak danych (rok urodzenia / F)", ha="center", va="center")
+            a.text(0.5, 0.5, "Brak danych (rok urodzenia / F)", ha="center", va="center", fontsize=ST_FS_AXIS)
             a.axis("off")
         return fig, warn
     if "sex" not in dfc.columns:
         for a in (ax_avg, ax_ria):
-            a.text(0.5, 0.5, "Brak kolumny sex", ha="center", va="center")
+            a.text(0.5, 0.5, "Brak kolumny sex", ha="center", va="center", fontsize=ST_FS_AXIS)
             a.axis("off")
         return fig, warn
 
@@ -798,20 +844,38 @@ def fig_inbreeding_year_trends_sex(
             vals = g["_F"].tolist()
             avg_f.append(float(sum(vals)) / float(len(vals)))
             ria.append(100.0 * float(sum(1 for v in vals if v > eps_inbred)) / float(len(vals)))
-        ax_avg.plot(years, avg_f, marker="o", markersize=2, linewidth=2, color=colors_sex[cat], label=cat)
-        ax_ria.plot(years, ria, marker="o", markersize=2, linewidth=2, color=colors_sex[cat], label=cat)
+        ax_avg.plot(
+            years,
+            avg_f,
+            marker="o",
+            markersize=1.65,
+            linewidth=1.55,
+            color=colors_sex[cat],
+            label=cat,
+        )
+        ax_ria.plot(
+            years,
+            ria,
+            marker="o",
+            markersize=1.65,
+            linewidth=1.55,
+            color=colors_sex[cat],
+            label=cat,
+        )
 
-    ax_avg.set_title("Średnie F w populacji — wg płci (rok urodzenia)")
-    ax_avg.set_xlabel("rok urodzenia")
-    ax_avg.set_ylabel("średnie F")
+    ax_avg.set_title("Średnie F w populacji — wg płci (rok urodzenia)", fontsize=ST_FS_TITLE)
+    ax_avg.set_xlabel("rok urodzenia", fontsize=ST_FS_AXIS)
+    ax_avg.set_ylabel("średnie F", fontsize=ST_FS_AXIS)
     ax_avg.grid(True, alpha=0.25)
-    ax_avg.legend(fontsize=8)
+    ax_avg.tick_params(axis="both", labelsize=ST_FS_TICK)
+    ax_avg.legend(fontsize=ST_FS_TICK)
 
-    ax_ria.set_title("RIA (%) — odsetek z F>0 — wg płci")
-    ax_ria.set_xlabel("rok urodzenia")
-    ax_ria.set_ylabel("RIA (%)")
+    ax_ria.set_title("RIA (%) — odsetek z F>0 — wg płci", fontsize=ST_FS_TITLE)
+    ax_ria.set_xlabel("rok urodzenia", fontsize=ST_FS_AXIS)
+    ax_ria.set_ylabel("RIA (%)", fontsize=ST_FS_AXIS)
     ax_ria.grid(True, alpha=0.25)
-    ax_ria.legend(fontsize=8)
+    ax_ria.tick_params(axis="both", labelsize=ST_FS_TICK)
+    ax_ria.legend(fontsize=ST_FS_TICK)
 
     if len(years) > 15:
         step = 5
@@ -833,7 +897,7 @@ def fig_inbreeding_year_trends_line(
 ) -> Tuple[plt.Figure, Optional[str]]:
     """Średnie F i RIA wg roku urodzenia i linii LB/LC/NA."""
     warn: Optional[str] = None
-    fig, (ax_avg, ax_ria) = plt.subplots(2, 1, figsize=(9, 6))
+    fig, (ax_avg, ax_ria) = plt.subplots(2, 1, figsize=(ST_FIG_TWIN_W, ST_FIG_TWIN_H))
     if dfc_precomputed is not None:
         dfc = dfc_precomputed.copy()
         warn = trend_warn
@@ -843,12 +907,12 @@ def fig_inbreeding_year_trends_line(
         )
     if dfc is None or dfc.empty:
         for a in (ax_avg, ax_ria):
-            a.text(0.5, 0.5, "Brak danych (rok urodzenia / F)", ha="center", va="center")
+            a.text(0.5, 0.5, "Brak danych (rok urodzenia / F)", ha="center", va="center", fontsize=ST_FS_AXIS)
             a.axis("off")
         return fig, warn
     if "line" not in dfc.columns:
         for a in (ax_avg, ax_ria):
-            a.text(0.5, 0.5, "Brak kolumny line", ha="center", va="center")
+            a.text(0.5, 0.5, "Brak kolumny line", ha="center", va="center", fontsize=ST_FS_AXIS)
             a.axis("off")
         return fig, warn
 
@@ -873,20 +937,38 @@ def fig_inbreeding_year_trends_line(
             vals = g["_F"].tolist()
             avg_f.append(float(sum(vals)) / float(len(vals)))
             ria.append(100.0 * float(sum(1 for v in vals if v > eps_inbred)) / float(len(vals)))
-        ax_avg.plot(years, avg_f, marker="o", markersize=2, linewidth=2, color=colors_line[cat], label=cat)
-        ax_ria.plot(years, ria, marker="o", markersize=2, linewidth=2, color=colors_line[cat], label=cat)
+        ax_avg.plot(
+            years,
+            avg_f,
+            marker="o",
+            markersize=1.65,
+            linewidth=1.55,
+            color=colors_line[cat],
+            label=cat,
+        )
+        ax_ria.plot(
+            years,
+            ria,
+            marker="o",
+            markersize=1.65,
+            linewidth=1.55,
+            color=colors_line[cat],
+            label=cat,
+        )
 
-    ax_avg.set_title("Średnie F w populacji — wg linii (LB/LC/NA)")
-    ax_avg.set_xlabel("rok urodzenia")
-    ax_avg.set_ylabel("średnie F")
+    ax_avg.set_title("Średnie F w populacji — wg linii (LB/LC/NA)", fontsize=ST_FS_TITLE)
+    ax_avg.set_xlabel("rok urodzenia", fontsize=ST_FS_AXIS)
+    ax_avg.set_ylabel("średnie F", fontsize=ST_FS_AXIS)
     ax_avg.grid(True, alpha=0.25)
-    ax_avg.legend(fontsize=8)
+    ax_avg.tick_params(axis="both", labelsize=ST_FS_TICK)
+    ax_avg.legend(fontsize=ST_FS_TICK)
 
-    ax_ria.set_title("RIA (%) — wg linii")
-    ax_ria.set_xlabel("rok urodzenia")
-    ax_ria.set_ylabel("RIA (%)")
+    ax_ria.set_title("RIA (%) — wg linii", fontsize=ST_FS_TITLE)
+    ax_ria.set_xlabel("rok urodzenia", fontsize=ST_FS_AXIS)
+    ax_ria.set_ylabel("RIA (%)", fontsize=ST_FS_AXIS)
     ax_ria.grid(True, alpha=0.25)
-    ax_ria.legend(fontsize=8)
+    ax_ria.tick_params(axis="both", labelsize=ST_FS_TICK)
+    ax_ria.legend(fontsize=ST_FS_TICK)
 
     if len(years) > 15:
         step = 5
@@ -945,10 +1027,10 @@ def estimate_ne_from_f_trend(
 
 def fig_reproducers_by_decade(df: pd.DataFrame) -> plt.Figure:
     """Unikalni ojcowie i matki (o potomstwie urodzonym w danej dekadzie)."""
-    fig, ax = plt.subplots(figsize=(8.6, 3.6))
+    fig, ax = plt.subplots(figsize=(ST_FIG_REPO_W, ST_FIG_REPO_H))
     pr = reproducers_by_offspring_decade(df)
     if pr is None or pr.empty:
-        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     decades = pr["decade"].astype(int).tolist()
@@ -956,13 +1038,14 @@ def fig_reproducers_by_decade(df: pd.DataFrame) -> plt.Figure:
     w = 0.38
     ax.bar([i - w / 2 for i in xi], pr["unikalni_ojcowie"], width=w, color="#4a6fa5", edgecolor=ACCENT, label="ojcowie")
     ax.bar([i + w / 2 for i in xi], pr["unikalne_matki"], width=w, color="#c45c8a", edgecolor=ACCENT, label="matki")
-    ax.set_title("Efektywni reproduktorzy wg dekady urodzenia potomstwa")
-    ax.set_xlabel("dekada")
-    ax.set_ylabel("liczba unikalnych rodziców")
+    ax.set_title("Efektywni reproduktorzy wg dekady urodzenia potomstwa", fontsize=ST_FS_TITLE)
+    ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
+    ax.set_ylabel("liczba unikalnych rodziców", fontsize=ST_FS_AXIS)
     labels = [f"{d}-{d+9}" for d in decades]
     ax.set_xticks(xi)
-    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
-    ax.legend(fontsize=8)
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.legend(fontsize=ST_FS_TICK)
+    ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     ax.grid(True, axis="y", alpha=0.25)
     fig.tight_layout()
     return fig
@@ -976,9 +1059,9 @@ def fig_line_share_percent_stacked(df: pd.DataFrame) -> plt.Figure:
     decades = list(range(min_dec, max_dec + 1, 10))
     x = list(range(len(decades)))
 
-    fig, ax = plt.subplots(figsize=(8.6, 3.8))
+    fig, ax = plt.subplots(figsize=(ST_FIG_STACK_W, ST_FIG_STACK_H))
     if df is None or df.empty or "birth_year" not in df.columns:
-        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
 
@@ -987,7 +1070,7 @@ def fig_line_share_percent_stacked(df: pd.DataFrame) -> plt.Figure:
     dfc["_birth_int"] = birth_int
     dfc = dfc.dropna(subset=["_birth_int"])
     if dfc.empty:
-        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
+        ax.text(0.5, 0.5, "Brak danych", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
     dfc["_birth_int"] = dfc["_birth_int"].astype(int)
@@ -1024,13 +1107,14 @@ def fig_line_share_percent_stacked(df: pd.DataFrame) -> plt.Figure:
     ax.bar(x, lc, bottom=lb, color="#2e8b57", edgecolor=ACCENT, label="LC")
     bottom2 = [lb[i] + lc[i] for i in range(len(x))]
     ax.bar(x, na, bottom=bottom2, color="#888888", edgecolor=ACCENT, label="in./NA")
-    ax.set_title("Struktura linii w czasie (udział % urodzeń w dekadzie)")
+    ax.set_title("Struktura linii w czasie (udział % urodzeń w dekadzie)", fontsize=ST_FS_TITLE)
     ax.set_ylim(0, 100)
-    ax.set_xlabel("dekada")
-    ax.set_ylabel("udział %")
+    ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
+    ax.set_ylabel("udział %", fontsize=ST_FS_AXIS)
     ax.set_xticks(x)
-    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=8)
-    ax.legend(fontsize=8, loc="upper right")
+    ax.set_xticklabels(decade_labels, rotation=45, ha="right", fontsize=ST_FS_TICK)
+    ax.legend(fontsize=ST_FS_TICK, loc="upper right")
+    ax.tick_params(axis="y", labelsize=ST_FS_TICK)
     ax.grid(True, axis="y", alpha=0.25)
     fig.tight_layout()
     return fig

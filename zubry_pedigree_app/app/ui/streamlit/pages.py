@@ -169,7 +169,11 @@ def section_validation() -> None:
         "jasna zieleń = mało braków, ciemniejszy mech / kora = więcej."
     )
     fig_miss = splt.fig_column_missing_heatmap(df_std)
-    splt.display_matplotlib_figure_in_streamlit(fig_miss)
+    splt.show_matplotlib_figure_in_streamlit(
+        fig_miss,
+        download_filename="walidacja_mapa_brakow.png",
+        download_key="val_miss_heatmap_png",
+    )
     _miss_raw = splt.column_missing_percentages(df_std).round(2)
     _miss_ord = splt.registry_tree_only_order(_miss_raw.index)
     _miss_pct = _miss_raw.reindex(_miss_ord)
@@ -204,6 +208,8 @@ def section_persons(df_std: pd.DataFrame) -> None:
     lm = st.session_state.get("line_memberships") or {}
     people = st.session_state.get("people") or {}
     base = df_std.copy()
+    if base.columns.duplicated().any():
+        base = base.loc[:, ~base.columns.duplicated(keep="first")]
     base["id"] = base["id"].astype(str)
     _p_cols = splt.registry_like_column_order(base.columns)
     base = base[_p_cols]
@@ -364,7 +370,7 @@ def _build_pedigree_figure(
         enable_click_highlight=click_highlight,
     )
     try:
-        fig.suptitle(f"Rodowód przodków {note}", fontsize=11, y=0.98)
+        fig.suptitle(f"Rodowód przodków {note}", fontsize=splt.ST_FS_TITLE, y=0.98)
     except Exception:
         pass
     return fig, None
@@ -454,15 +460,10 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                 if err:
                     st.warning(err)
                 elif fig is not None:
-                    st.pyplot(fig, width="stretch")
-                    buf = io.BytesIO()
-                    fig.savefig(buf, format="jpeg", dpi=160, bbox_inches="tight")
-                    st.download_button(
-                        "Pobierz wykres (JPEG)",
-                        data=buf.getvalue(),
-                        file_name=f"rodowod_{pid}.jpg",
-                        mime="image/jpeg",
-                        key="hub_rod_jpeg",
+                    splt.show_matplotlib_figure_in_streamlit(
+                        fig,
+                        download_filename=f"rodowod_{pid}.png",
+                        download_key=f"hub_rod_png_{pid}",
                     )
 
     with st2:
@@ -495,17 +496,24 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                     ).F
                     for d in depths
                 ]
-                fig, ax = plt.subplots(figsize=(8, 3.8))
-                ax.plot(depths, Fs, marker="o", color=sc.THEME.EDGE_PLOT, linewidth=2)
-                ax.set_title(f"Diagnostyka F vs max pokoleń (ID {pid})")
-                ax.set_xlabel("max pokoleń")
-                ax.set_ylabel("F")
+                fig, ax = plt.subplots(figsize=(splt.ST_FIG_F_DIAG_W, splt.ST_FIG_F_DIAG_H))
+                ax.plot(
+                    depths,
+                    Fs,
+                    marker="o",
+                    markersize=1.65,
+                    color=sc.THEME.EDGE_PLOT,
+                    linewidth=1.55,
+                )
+                ax.set_title(f"Diagnostyka F vs max pokoleń (ID {pid})", fontsize=splt.ST_FS_TITLE)
+                ax.set_xlabel("max pokoleń", fontsize=splt.ST_FS_AXIS)
+                ax.set_ylabel("F", fontsize=splt.ST_FS_AXIS)
+                ax.tick_params(axis="both", labelsize=splt.ST_FS_TICK)
                 ax.grid(True, alpha=0.25)
-                st.pyplot(fig, width="stretch")
-                b = io.BytesIO()
-                fig.savefig(b, format="jpeg", dpi=160, bbox_inches="tight")
-                st.download_button(
-                    "Pobierz wykres (JPEG)", b.getvalue(), f"inbred_diag_{pid}.jpg", "image/jpeg", key="hub_inb_jpeg"
+                splt.show_matplotlib_figure_in_streamlit(
+                    fig,
+                    download_filename=f"inbred_diag_{pid}.png",
+                    download_key=f"hub_inb_png_{pid}",
                 )
 
     with st3:
@@ -518,13 +526,18 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                 st.metric("EG (pokolenia równoważne)", f"{eg:.4f}")
                 st.metric("PCI (średnia PCL po poziomach)", f"{pci:.4f}")
                 st.dataframe(df_c, width="stretch", height=min(400, 60 + 28 * len(df_c)))
-                fig, ax = plt.subplots(figsize=(8, 3.2))
+                fig, ax = plt.subplots(figsize=(splt.ST_FIG_PCL_BAR_W, splt.ST_FIG_PCL_BAR_H))
                 ax.bar(df_c["Pokolenie g"].astype(int), df_c["PCL = a_g/2^g"], color=sc.THEME.EDGE_PLOT, alpha=0.85)
-                ax.set_xlabel("Pokolenie g")
-                ax.set_ylabel("PCL")
-                ax.set_title("Kompletność per pokolenie (PCL)")
+                ax.set_xlabel("Pokolenie g", fontsize=splt.ST_FS_AXIS)
+                ax.set_ylabel("PCL", fontsize=splt.ST_FS_AXIS)
+                ax.set_title("Kompletność per pokolenie (PCL)", fontsize=splt.ST_FS_TITLE)
+                ax.tick_params(axis="both", labelsize=splt.ST_FS_TICK)
                 ax.grid(True, axis="y", alpha=0.25)
-                st.pyplot(fig, width="stretch")
+                splt.show_matplotlib_figure_in_streamlit(
+                    fig,
+                    download_filename=f"kompletnosc_PCL_{pid}.png",
+                    download_key=f"hub_pcl_png_{pid}",
+                )
 
     with st4:
         if str(pid) in lm:
@@ -839,13 +852,6 @@ def section_mating_ranking(df_std: pd.DataFrame, people: dict) -> None:
         )
 
 
-def _figure_to_jpeg_bytes(fig: plt.Figure) -> bytes:
-    buf = io.BytesIO()
-    fig.savefig(buf, format="jpeg", dpi=110, bbox_inches="tight")
-    buf.seek(0)
-    return buf.getvalue()
-
-
 def section_population(df_std: pd.DataFrame, people: dict) -> None:
     st.markdown("### Parametry populacyjne i genetyka grupy")
     verbose = bool(st.session_state.get("st_verbose_pop_captions", True))
@@ -1030,90 +1036,117 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             st.info("Brak danych do tabeli ryzyka linii.")
         st.markdown("**Trend liczby efektywnych reproduktorów (unikalni rodzice wg dekady urodzenia potomstwa)**")
         fig_rp = splt.fig_reproducers_by_decade(df_std)
-        st.pyplot(fig_rp, width="stretch")
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_rp,
+            download_filename="pop_reproduktorzy_dekady.png",
+            download_key="pop_dl_reproducers",
+        )
         st.markdown("**Udział linii w czasie (skumulowane 100 % w dekadzie)**")
         fig_ls = splt.fig_line_share_percent_stacked(df_std)
-        st.pyplot(fig_ls, width="stretch")
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_ls,
+            download_filename="pop_udzial_linii_dekady.png",
+            download_key="pop_dl_line_share",
+        )
 
     with tabs[1]:
         st.caption("Liczba urodzeń w dekadach (1881–obecny rok), podział M/F.")
         sc.help_expander("Interpretacja: Urodzenia wg płci", hc.CHART_BIRTH_SEX, expanded=verbose)
         fig = splt.fig_birth_decades_sex(df_std)
-        st.pyplot(fig, width="stretch")
+        splt.show_matplotlib_figure_in_streamlit(
+            fig,
+            download_filename="pop_urodzenia_dekady_plec.png",
+            download_key="pop_dl_birth_sex",
+        )
 
     with tabs[2]:
         st.caption("Urodzenia w dekadach wg linii (LB vs LC).")
         sc.help_expander("Interpretacja: Urodzenia wg linii", hc.CHART_BIRTH_LINE, expanded=verbose)
         fig = splt.fig_birth_decades_line(df_std)
-        st.pyplot(fig, width="stretch")
+        splt.show_matplotlib_figure_in_streamlit(
+            fig,
+            download_filename="pop_urodzenia_dekady_linie.png",
+            download_key="pop_dl_birth_line",
+        )
 
     with tabs[3]:
         st.caption("Stosunek F/M w dekadach od 1900.")
         sc.help_expander("Interpretacja: Female/Male ratio", hc.CHART_FM_RATIO, expanded=verbose)
         fig = splt.fig_female_male_ratio(df_std)
-        st.pyplot(fig, width="stretch")
+        splt.show_matplotlib_figure_in_streamlit(
+            fig,
+            download_filename="pop_stosunek_F_M.png",
+            download_key="pop_dl_fm_ratio",
+        )
 
     with tabs[4]:
         st.caption("Średnie MG, CG, EG wg płci.")
         sc.help_expander("Interpretacja: Kompletność (MG/CG/EG) wg płci", hc.CHART_COMP_SEX, expanded=verbose)
         fc, _ = splt.fig_completeness_sex_line(df_std, people)
-        st.pyplot(fc, width="stretch")
+        splt.show_matplotlib_figure_in_streamlit(
+            fc,
+            download_filename="pop_kompletnosc_plec_MGCGEG.png",
+            download_key="pop_dl_comp_sex",
+        )
 
     with tabs[5]:
         st.caption("Średnie MG, CG, EG wg linii LB/LC/NA.")
         sc.help_expander("Interpretacja: Kompletność wg linii", hc.CHART_COMP_LINE, expanded=verbose)
         _, fl = splt.fig_completeness_sex_line(df_std, people)
-        st.pyplot(fl, width="stretch")
+        splt.show_matplotlib_figure_in_streamlit(
+            fl,
+            download_filename="pop_kompletnosc_linie_MGCGEG.png",
+            download_key="pop_dl_comp_line",
+        )
 
     with tabs[6]:
         st.caption("Histogram F w populacji (przy wybranym limicie pokoleń).")
         sc.help_expander("Interpretacja: rozkład F", hc.CHART_HIST_F, expanded=verbose)
         fig = splt.fig_histogram_f(stats.f_values or [])
-        st.pyplot(fig, width="stretch")
+        splt.show_matplotlib_figure_in_streamlit(
+            fig,
+            download_filename="pop_histogram_F_Wright.png",
+            download_key="pop_dl_hist_f",
+        )
 
     with tabs[7]:
         st.caption("Top 20 wkładu genetycznego założycieli (p_i).")
         sc.help_expander("Interpretacja: założyciele p_i", hc.CHART_FOUNDERS_PI, expanded=verbose)
         fig = splt.fig_founder_contributions(stats.founder_contributions or {}, people)
-        st.pyplot(fig, width="stretch")
+        splt.show_matplotlib_figure_in_streamlit(
+            fig,
+            download_filename="pop_zalozyciele_pi_top.png",
+            download_key="pop_dl_founders_pi",
+        )
 
     with tabs[8]:
         st.caption("Średni odstęp międzypokoleniowy (GI) — ojciec/matka vs syn/córka (jak w Tk).")
         sc.help_expander("Interpretacja: GI (średni)", hc.CHART_GI_BAR, expanded=verbose)
         fig_gi = splt.fig_gi_mean_bar(gi_data)
-        st.pyplot(fig_gi, width="stretch")
-        st.download_button(
-            "Zapis wykresu (JPEG)",
-            data=_figure_to_jpeg_bytes(fig_gi),
-            file_name="pop_gi_sredni.jpeg",
-            mime="image/jpeg",
-            key="dl_gi_bar",
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_gi,
+            download_filename="pop_GI_sredni.png",
+            download_key="pop_dl_gi_bar",
         )
 
     with tabs[9]:
         st.caption("Trend średniego GI w dekadach urodzenia potomstwa.")
         sc.help_expander("Interpretacja: GI trend", hc.CHART_GI_TREND, expanded=verbose)
         fig_tr = splt.fig_gi_trend_decades(gi_data)
-        st.pyplot(fig_tr, width="stretch")
-        st.download_button(
-            "Zapis wykresu (JPEG)",
-            data=_figure_to_jpeg_bytes(fig_tr),
-            file_name="pop_gi_trend.jpeg",
-            mime="image/jpeg",
-            key="dl_gi_trend",
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_tr,
+            download_filename="pop_GI_trend_dekady.png",
+            download_key="pop_dl_gi_trend",
         )
 
     with tabs[10]:
         st.caption("Histogram wielkości rodzin pełnego rodzeństwa (ta sama para rodziców).")
         sc.help_expander("Interpretacja: rodziny pełnego rodzeństwa", hc.CHART_FAMILY, expanded=verbose)
         fig_fam = splt.fig_family_full_siblings(fam_sizes)
-        st.pyplot(fig_fam, width="stretch")
-        st.download_button(
-            "Zapis wykresu (JPEG)",
-            data=_figure_to_jpeg_bytes(fig_fam),
-            file_name="pop_rodziny.jpeg",
-            mime="image/jpeg",
-            key="dl_fam",
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_fam,
+            download_filename="pop_rodziny_pelne_rodzenstwo.png",
+            download_key="pop_dl_families",
         )
 
     with tabs[11]:
@@ -1124,13 +1157,10 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         )
         if warn_sex:
             st.warning(warn_sex)
-        st.pyplot(fig_sex, width="stretch")
-        st.download_button(
-            "Zapis wykresu (JPEG)",
-            data=_figure_to_jpeg_bytes(fig_sex),
-            file_name="pop_inbred_trend_plec.jpeg",
-            mime="image/jpeg",
-            key="dl_inb_sex",
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_sex,
+            download_filename="pop_inbred_trend_plec_RIA.png",
+            download_key="pop_dl_inbred_sex",
         )
 
     with tabs[12]:
@@ -1141,13 +1171,10 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         )
         if warn_ln:
             st.warning(warn_ln)
-        st.pyplot(fig_ln, width="stretch")
-        st.download_button(
-            "Zapis wykresu (JPEG)",
-            data=_figure_to_jpeg_bytes(fig_ln),
-            file_name="pop_inbred_trend_linie.jpeg",
-            mime="image/jpeg",
-            key="dl_inb_line",
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_ln,
+            download_filename="pop_inbred_trend_linie_RIA.png",
+            download_key="pop_dl_inbred_line",
         )
 
     with tabs[13]:
@@ -1275,27 +1302,24 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             "RP (horses)": sc.THEME.BUTTON_BG2,
         }
 
-        fig, ax = plt.subplots(figsize=(9, 6))
+        fig, ax = plt.subplots(figsize=(splt.ST_FIG_SCATTER_W, splt.ST_FIG_SCATTER_H))
         for grp, sub in df_plot.groupby("Grupa"):
             c = colors_map.get(grp, sc.THEME.EDGE_PLOT)
-            ax.scatter(sub["MG"], sub["PCL_max"], s=14, alpha=0.45, color=c, label=grp)
+            ax.scatter(sub["MG"], sub["PCL_max"], s=12, alpha=0.45, color=c, label=grp)
             by_mg = sub.groupby("MG")["PCL_max"].mean().sort_index()
-            ax.plot(by_mg.index.tolist(), by_mg.values.tolist(), color=c, linewidth=2, alpha=0.9)
+            ax.plot(by_mg.index.tolist(), by_mg.values.tolist(), color=c, linewidth=1.55, alpha=0.9)
 
-        ax.set_title("PCL_max (a_MG/2^MG) względem MG — ANC vs RP")
-        ax.set_xlabel("MG (maksymalna liczba prześledzonych pokoleń)")
-        ax.set_ylabel("PCL_max = a_MG / 2^MG")
+        ax.set_title("PCL_max (a_MG/2^MG) względem MG — ANC vs RP", fontsize=splt.ST_FS_TITLE)
+        ax.set_xlabel("MG (maksymalna liczba prześledzonych pokoleń)", fontsize=splt.ST_FS_AXIS)
+        ax.set_ylabel("PCL_max = a_MG / 2^MG", fontsize=splt.ST_FS_AXIS)
         ax.set_ylim(0, 1.05)
         ax.grid(True, alpha=0.25)
-        ax.legend(loc="best")
-        st.pyplot(fig, width="stretch")
-
-        st.download_button(
-            "Zapis wykresu (JPEG)",
-            data=_figure_to_jpeg_bytes(fig),
-            file_name="pop_PCLmax_vs_MG_ANC_RP.jpeg",
-            mime="image/jpeg",
-            key="dl_pclmax_mg",
+        ax.tick_params(axis="both", labelsize=splt.ST_FS_TICK)
+        ax.legend(loc="best", fontsize=splt.ST_FS_TICK)
+        splt.show_matplotlib_figure_in_streamlit(
+            fig,
+            download_filename="pop_PCLmax_vs_MG_ANC_RP.png",
+            download_key="pop_dl_pcl_scatter",
         )
 
 

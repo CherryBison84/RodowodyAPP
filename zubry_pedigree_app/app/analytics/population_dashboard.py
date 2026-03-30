@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import pandas as pd
 
@@ -62,8 +61,7 @@ def pct_individuals_incomplete_parents(df: pd.DataFrame) -> float:
     return 100.0 * float(m.sum()) / float(len(df))
 
 
-@dataclass(frozen=True)
-class ActiveCohortSummary:
+class ActiveCohortSummary(NamedTuple):
     """
     Kohorta „aktywna”: urodzeni w ostatnich `window_years` latach.
     Reproduktorzy: unikalne ID ojca/matki przy urodzeniach potomstwa w tym samym oknie.

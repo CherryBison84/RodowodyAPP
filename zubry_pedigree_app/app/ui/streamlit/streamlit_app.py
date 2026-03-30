@@ -68,8 +68,14 @@ def run_streamlit_direct() -> None:
     with st.sidebar:
         _logo_path = Path(__file__).resolve().parents[2] / "logo.png"
         if _logo_path.exists():
-            st.image(str(_logo_path), width=320)
+            st.image(str(_logo_path), width=228)
         st.caption("Analiza rodowodów żubrów")
+        st.markdown(
+            f'<p style="margin:0.6rem 0 0.35rem 0;font-size:0.78rem;font-weight:700;'
+            f"letter-spacing:0.04em;text-transform:uppercase;color:{sc.THEME.MUTED};"
+            f'">Nawigacja</p>',
+            unsafe_allow_html=True,
+        )
         section = st.radio(
             "Nawigacja",
             NAV_SECTIONS,
@@ -94,12 +100,7 @@ def run_streamlit_direct() -> None:
             key="sidebar_methods_pdf",
         )
 
-    st.markdown(
-        f'<p style="color:{sc.THEME.MUTED};font-family:{sc.FONT_FAMILY_CSS};font-size:1.05rem;line-height:1.5;margin-top:0;">'
-        "Import → walidacja spójności → rejestr osobniczy → analiza osobnicza → pary → parametry populacji → raport"
-        "</p>",
-        unsafe_allow_html=True,
-    )
+    sc.render_main_header()
 
     if section == NAV_IMPORT:
         section_import()

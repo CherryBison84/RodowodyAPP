@@ -1,4 +1,4 @@
-"""CLI: `--ui tk` lub `streamlit` — wybór interfejsu."""
+"""CLI: domyślnie Qt (na macOS + Python 3.14 — fallback do Streamlit w przeglądarce)."""
 
 from __future__ import annotations
 
@@ -15,16 +15,29 @@ if str(_pkg_root) not in sys.path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="WisentPedigree Pro+ — analiza rodowodów żubrów")
-    parser.add_argument("--ui", choices=["tk", "streamlit"], default="tk")
+    parser.add_argument(
+        "--ui",
+        choices=["qt", "tk", "streamlit", "web"],
+        default="qt",
+        help="qt — PySide6 (Mac+3.14→ Streamlit w przeglądarce); web — jak wyżej jawnie; tk; streamlit — ten sam skrypt w tym procesie",
+    )
     args = parser.parse_args()
 
-    if args.ui == "tk":
+    if args.ui == "qt":
+        from app.ui.qt.main import run_qt
+
+        run_qt()
+    elif args.ui == "web":
+        from app.ui.web_launcher import run_streamlit_in_browser
+
+        run_streamlit_in_browser()
+    elif args.ui == "tk":
         from app.ui.tk.main import run_tk
 
         run_tk()
     else:
         # Streamlit jest uruchamiany jako osobny proces.
-        # Ta ściezka jest tylko dla wygody uruchomienia.
+        # Ta ścieżka jest tylko dla wygody uruchomienia.
         from app.ui.streamlit.streamlit_app import run_streamlit_direct
 
         run_streamlit_direct()
