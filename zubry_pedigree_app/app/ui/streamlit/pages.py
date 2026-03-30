@@ -168,7 +168,7 @@ def section_validation() -> None:
     fig_miss = splt.fig_column_missing_heatmap(df_std)
     splt.display_matplotlib_figure_in_streamlit(fig_miss)
     _miss_raw = splt.column_missing_percentages(df_std).round(2)
-    _miss_ord = splt.registry_like_column_order(_miss_raw.index)
+    _miss_ord = splt.registry_tree_only_order(_miss_raw.index)
     _miss_pct = _miss_raw.reindex(_miss_ord)
     with st.expander("Tabela % braków (według kolumn)", expanded=False):
         st.dataframe(_miss_pct.to_frame("% braków"), width="stretch")
@@ -1277,8 +1277,8 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             by_mg = sub.groupby("MG")["PCL_max"].mean().sort_index()
             ax.plot(by_mg.index.tolist(), by_mg.values.tolist(), color=c, linewidth=2, alpha=0.9)
 
-        ax.set_title("PCL_max (a_MG/2^MG) vs MG — ANC vs RP")
-        ax.set_xlabel("MG (Maximum Generations Traced)")
+        ax.set_title("PCL_max (a_MG/2^MG) względem MG — ANC vs RP")
+        ax.set_xlabel("MG (maksymalna liczba prześledzonych pokoleń)")
         ax.set_ylabel("PCL_max = a_MG / 2^MG")
         ax.set_ylim(0, 1.05)
         ax.grid(True, alpha=0.25)

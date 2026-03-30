@@ -60,6 +60,7 @@ def _filter_candidates(
     min_age: int,
     max_age: int,
     line_mode: str,
+    origin_mode: str,
     candidate_limit: int,
     current_year: Optional[int] = None,
 ) -> list[str]:
@@ -91,6 +92,16 @@ def _filter_candidates(
         dfc = dfc[dfc["_line_norm"] == "NA"]
     # else: bez filtra
 
+    # Filtr kraju/pochodzenia (na podstawie kolumny birth_location).
+    omode = str(origin_mode or "").strip()
+    if omode and omode.lower() != "bez filtra":
+        if "birth_location" in dfc.columns:
+            bl = dfc["birth_location"].astype(str).str.strip()
+            bl = bl.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+            dfc = dfc[bl == omode]
+        else:
+            return []
+
     if dfc.empty:
         return []
 
@@ -108,6 +119,7 @@ def suggest_pairs_with_constraints(
     min_age: int,
     max_age: int,
     line_mode: str,
+    origin_mode: str,
     candidate_limit: int,
     top_n: int,
     max_generations_back: int | None,
@@ -129,6 +141,7 @@ def suggest_pairs_with_constraints(
         min_age=min_age,
         max_age=max_age,
         line_mode=line_mode,
+        origin_mode=origin_mode,
         candidate_limit=candidate_limit,
         current_year=current_year,
     )
@@ -138,6 +151,7 @@ def suggest_pairs_with_constraints(
         min_age=min_age,
         max_age=max_age,
         line_mode=line_mode,
+        origin_mode=origin_mode,
         candidate_limit=candidate_limit,
         current_year=current_year,
     )

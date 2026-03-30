@@ -40,6 +40,7 @@ _REGISTRY_TREE_ORDER: tuple[str, ...] = (
     "name",
     "sex",
     "birth_year",
+    "birth_location",
     "father_id",
     "mother_id",
     "line",
@@ -65,6 +66,13 @@ def registry_like_column_order(df_columns: pd.Index | list[str]) -> list[str]:
     ordered = [c for c in preferred if c in colset]
     rest = sorted(c for c in colset if c not in ordered)
     return ordered + rest
+
+
+def registry_tree_only_order(df_columns: pd.Index | list[str]) -> list[str]:
+    """Tylko kolumny widoczne w rejestrze osobników (w dokładnie tej kolejności)."""
+    names = [str(c) for c in df_columns]
+    colset = set(names)
+    return [c for c in _REGISTRY_TREE_ORDER if c in colset]
 
 
 def display_matplotlib_figure_in_streamlit(fig: plt.Figure) -> None:
@@ -153,8 +161,14 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
         ax.axis("off")
         return fig
-    order = registry_like_column_order(pct.index)
+    order = registry_tree_only_order(pct.index)
     pct = pct.reindex(order)
+    pct = pct.dropna()
+    if pct.empty:
+        fig, ax = plt.subplots(figsize=(6, 2))
+        ax.text(0.5, 0.5, "Brak kolumn rejestru osobników w danych", ha="center", va="center")
+        ax.axis("off")
+        return fig
     ncol = len(pct)
     cmap = _forest_missing_segment_cmap(th)
     fig_w = min(22, max(8.0, 0.62 * ncol + 2.2))
@@ -406,7 +420,7 @@ def fig_female_male_ratio(df: pd.DataFrame) -> plt.Figure:
     xs3 = list(range(len(ratio_decades)))
     ax.plot(xs3, ratio_vals, marker="o", linewidth=2, color=MUTED)
     ax.axhline(1.0, color=ACCENT, linewidth=1, alpha=0.8)
-    ax.set_title("Female/Male ratio w dekadach (F/M) od 1900")
+    ax.set_title("Stosunek samic do samców (F/M) w dekadach od 1900")
     ax.set_xlabel("dekada")
     ax.set_ylabel("F/M")
     ax.set_xticks(xs3)

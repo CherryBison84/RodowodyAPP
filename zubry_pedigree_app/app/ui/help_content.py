@@ -33,7 +33,7 @@ GLOSSARY = """
 - **f_e** — **efektywna liczba założycieli**: z udziałów genów *p_i* liczymy `1 / suma(p_i²)`. Duże f_e ≈ wiele przodków realnie „wnosi” geny; małe ≈ niewielu dominuje. (Powiązane z klasycznymi miarami różnorodności genów pochodzących od fundatorów — zob. Boichard i wsp. 1997 oraz Lacy 1989 w literaturze poniżej.)
 - **f_a** — druga miara z tej samej rodziny, liczona **w tej samej logice co reszta programu** (z founder-stop); pomaga porównać „ile linii” z „ile efektywnie widać w genach”.
 - **Stosunek f_e / f_a** — jeśli jest wyraźnie mniejszy niż 1, bywa interpretowany jako sygnał, że **niewielu przodków dominuje** w stosunku do liczby linii — tylko jako podpowiedź, nie jako twarde rozstrzygnięcie.
-- **p_i** i wykres **Top 20** — kto z przodków (w rozumieniu founder-stop) ma **największy udział** w puli genów w populacji; wysoki słupek = duży wpływ jednej linii lub osoby.
+- **p_i** i wykres **Top 20** — kto z przodków (w rozumieniu founder-stop) ma **największy udział** w puli genów w populacji; wysoki słupek = duży wpływ jednej linii lub osobnika.
 - **Linie LB / LC** — etykiety z kolumny linii w danych; reszta trafia do **NA**.
 
 ### Odstępy międzypokoleniowe i rodziny
@@ -218,6 +218,12 @@ CHART_HIST_F = (
     "„Ogon” w prawo = część osobników ma **wyższe F**."
 )
 
+CHART_F_SCATTER_BIRTH = (
+    "Wykres punktowy: każda kropka to jeden osobnik (oś X = rok urodzenia, oś Y = F). "
+    "Przy dużej liczbie punktów ważniejszy od pojedynczej kropki jest **trend** i zagęszczenie obszarów; "
+    "nakładanie punktów jest normalne przy powtarzalnych wartościach F."
+)
+
 CHART_FOUNDERS_PI = (
     "**Dwadzieścia największych** udziałów **p_i** — kto z przodków (w rozumieniu obliczeń programu) **najbardziej zdominował** pulę genów. "
     "Wysoki słupek może oznaczać silny wpływ kilku linii albo wąskie „gardło” w pochodzeniu materiału genetycznego. "
@@ -333,6 +339,8 @@ def all_charts_text() -> str:
         CHART_COMP_LINE,
         "\n\n### Rozkład F\n",
         CHART_HIST_F,
+        "\n\n### F vs rok urodzenia\n",
+        CHART_F_SCATTER_BIRTH,
         "\n\n### Założyciele p_i\n",
         CHART_FOUNDERS_PI,
         "\n\n### GI (średni)\n",
