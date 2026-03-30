@@ -55,6 +55,7 @@ GLOSSARY = """
 
 ### Mapowanie kolumn
 - Do pełnej analizy najlepiej mieć sensownie zmapowane pola **id, sex, line, birth_year, father_id, mother_id**. Bez części z nich niektóre wykresy lub podziały (np. na płeć) nie będą działać.
+- Pole **birth_location** (miejsce urodzenia) jest opcjonalne, ale warto je mapować: po imporcie można po nim filtrować rejestr osobników oraz pulę kandydatów do rankingu kojarzeń.
 """
 
 
@@ -90,6 +91,8 @@ SECTION_PERSONS = """
 
 Widzisz listę rekordów z możliwością sortowania. **Szukaj po ID** (pełne lub fragment) szybko zawęża listę; w wersji na pulpicie jest też przycisk **Znajdź**, który zaznacza pierwszy pasujący wiersz w tabeli.
 
+Nowy filtr **Miejsce ur. (birth_location)** zawęża tabelę do wybranej lokalizacji (lub do **NA**, gdy pole jest puste/brak danych).
+
 Kolumna z **linią (ojciec/matka)** to skrót: **skąd pochodzi linia** po stronie ojca i matki w drzewie — bez otwierania wykresu rodowodu możesz szybko zobaczyć strukturę kojarzeń w stadzie.
 
 **Udział założycieli** w szczegółach osobnika to rozkład genów w modelu **founder-stop** (jak przy F): brak ojca lub matki kończy gałąź; wartości procentowe sumują się do 100 % przy pełnym opisie przodków w bazie.
@@ -124,6 +127,7 @@ SECTION_MATING = """
 - **Macierz Φ**: po obliczeniu rankingu możesz zapisać tabelę **wszystkich par sire×dam** z aktualnego zestawu kandydatów (CSV) — wiersze = samce, kolumny = samice, komórka = Φ.
 - **Kinship dowolnej pary**: dwa wybrane ID z bazy — **Φ** i **R**; **Φ(A,B) = Φ(B,A)** (symetria współzgodności Malecota). **F potomka** z hipotetycznego kojarzenia tych osobników jako rodziców jest równe **Φ**.
 - **Dlaczego taki wynik?** (Streamlit / zakładka „Para” w Tk): rozkład na **wspólnych przodków**, **wkład do Φ** (w tym skalowanie do wartości z rekurencji, gdy suma surowych ścieżek przekracza Φ przez nakładanie się dróg genów) oraz **liczba par niezależnych ścieżek** w grafie rodowym.
+- **Filtr miejsca urodzenia** (birth_location) może dodatkowo zawęzić kandydatów do par — przydatne, gdy chcesz porównywać kojarzenia tylko w wybranej grupie.
 - **Limity** liczby samców, samic i pokoleń **skracają czas** i nie muszą obejmować całej populacji.
 """
 
@@ -152,7 +156,8 @@ SECTION_REPORTS = """
 ## Raporty
 
 - W wersji **na pulpicie (Tk)** raport może zbierać walidację, skrót populacji i dane osobnika oraz eksport do **DOCX/PDF** z wykresami.
-- W **Streamlit** masz podgląd tekstowy i zapis **.txt**; pełny układ jak w Tk zależy od zainstalowanych modułów raportowych.
+- Raport populacji obejmuje teraz także: **mean kinship (Φ̄, R)**, skrót **GI (4 ścieżki)**, podsumowanie **rodzin pełnego rodzeństwa** oraz **top miejsc urodzenia**.
+- W **Streamlit** masz podgląd tekstowy i zapis **.txt**; zakres metryk został ujednolicony i obejmuje m.in. mean kinship, GI oraz podsumowanie miejsc urodzenia.
 """
 
 
@@ -230,6 +235,12 @@ CHART_GI_TREND = (
     "Widać, czy **odstępy międzypokoleniowe** z czasem się wydłużają czy skracają — może to wiązać się ze zmianą zarządzania hodowlą."
 )
 
+CHART_GI_4PATHS_SMOOTH = (
+    "Cztery osobne panele (ojciec→syn, ojciec→córka, matka→syn, matka→córka): "
+    "**jasna linia = wartości surowe**, **ciemna linia = wygładzenie**. "
+    "To ułatwia porównanie kierunku trendu GI między ścieżkami bez utraty surowej zmienności."
+)
+
 CHART_FAMILY = (
     "**Rodzina pełnego rodzeństwa** = te same znane **ojciec i matka**. "
     "Słupek przy liczbie **k** oznacza: tyle rodzin ma dokładnie **k** potomków w bazie; "
@@ -244,6 +255,11 @@ CHART_INBRED_TP_SEX = (
 
 CHART_INBRED_TP_LINE = (
     "Jak wykres trendu F i RIA wg płci, ale **osobno dla linii LB, LC i NA** — porównanie trendów między liniami hodowlanymi."
+)
+
+CHART_F_RIA_SMOOTH = (
+    "Dwa panele (A/B): u góry **średnie F po roku urodzenia**, na dole **RIA (%)**. "
+    "Czarna seria pokazuje przebieg surowy, czerwona — wygładzony trend, dzięki czemu łatwiej ocenić długofalowe zmiany."
 )
 
 
@@ -323,12 +339,16 @@ def all_charts_text() -> str:
         CHART_GI_BAR,
         "\n\n### GI trend\n",
         CHART_GI_TREND,
+        "\n\n### GI: 4 ścieżki (surowe + wygładzone)\n",
+        CHART_GI_4PATHS_SMOOTH,
         "\n\n### Rodziny pełne\n",
         CHART_FAMILY,
         "\n\n### Inbred TP: płeć\n",
         CHART_INBRED_TP_SEX,
         "\n\n### Inbred TP: linie\n",
         CHART_INBRED_TP_LINE,
+        "\n\n### F i RIA: surowe + wygładzone\n",
+        CHART_F_RIA_SMOOTH,
         "\n",
     ]
     return "".join(parts)

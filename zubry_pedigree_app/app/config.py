@@ -20,6 +20,18 @@ class AppConfig:
     default_pci_max_generations: int = 4
     default_tree_generations: int = 4
 
+    # Mating / ranking defaults (Tk + Streamlit)
+    mating_age_limit_years: int = 15
+    mating_ranking_top_n: int = 36
+    mating_default_male_limit: int = 200
+    mating_default_female_limit: int = 200
+
+    # Plot/report defaults
+    f_ria_smooth_window: int = 7
+    gi_smooth_window: int = 3
+    report_founders_top_n: int = 20
+    report_birth_location_top_n: int = 12
+
 
 def get_config() -> AppConfig:
     # Default to project's `data/` directory inside this repo.

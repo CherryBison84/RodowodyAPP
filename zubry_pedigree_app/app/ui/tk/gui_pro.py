@@ -58,7 +58,7 @@ from app.analytics.population_genetics import (
     compute_gi_and_family_data,
     compute_population_genetics_stats,
 )
-from app.config import app_icon_pil_best, resolve_app_icon_ico
+from app.config import app_icon_pil_best, get_config, resolve_app_icon_ico
 from app.data.validator import validate_loaded_dataset
 from app.ui.tk.breeding_helpers import suggest_pairs_with_constraints
 from app.ui.tk.report_helpers import (
@@ -72,8 +72,10 @@ from app.ui import help_content as hc
 from app.ui.typography import apply_matplotlib_fonts, tk_font
 from app.ui.streamlit.streamlit_plotting import fig_column_missing_heatmap
 
+APP_CFG = get_config()
+
 # Liczba założycieli na wykresie p_i (Metryki populacji / Analizy populacji).
-POP_FOUNDERS_PI_TOP_N = 20
+POP_FOUNDERS_PI_TOP_N = int(APP_CFG.report_founders_top_n)
 
 
 def _apply_tk_window_icon(root: tk.Misc, ico_path: Path) -> None:
@@ -151,8 +153,8 @@ def _pop_stat_row(
     """Wiersz metryki: opis (stonowany) + wartość (pogrubiona, kolor akcentu wykresów)."""
     label_kw: dict[str, Any] = {
         "text": label,
-        "font": tk_font(10),
-        "foreground": colors.MUTED,
+        "font": tk_font(11),
+        "foreground": colors.TEXT,
         "justify": "left",
         "anchor": "w",
     }
@@ -161,8 +163,8 @@ def _pop_stat_row(
     ttk.Label(parent, **label_kw).grid(row=row, column=0, sticky="nw", padx=(0, 12), pady=4)
     v_kwargs: dict[str, Any] = {
         "textvariable": value_var,
-        "font": tk_font(11, bold=True),
-        "foreground": colors.EDGE_PLOT,
+        "font": tk_font(12, bold=True),
+        "foreground": colors.TEXT,
     }
     if value_wrap > 0:
         v_kwargs["wraplength"] = value_wrap
@@ -618,6 +620,10 @@ def render_inbreeding_year_trends(
             except Exception:
                 f_map[pid] = float("nan")
 
+        # Przechowujemy wynik F na potrzeby dodatkowych wykresów (bez ponownego liczenia).
+        state["population_f_map"] = f_map
+        state["population_f_max_generations_back"] = max_generations_back
+
         dfc["_F"] = dfc["id"].apply(lambda pid: f_map.get(str(pid), float("nan")))
         dfc = dfc.dropna(subset=["_F"]).reset_index(drop=True)
         if dfc.empty:
@@ -785,6 +791,394 @@ def render_inbreeding_year_trends(
         except Exception:
             pass
 
+    except Exception:
+        return
+
+
+def render_f_distribution_charts(
+    *,
+    df_use: Any,
+    state: dict[str, Any],
+    colors: Any,
+    save_figure_fn: Callable[..., None],
+    pop_f_hist_plot_area: ttk.Frame,
+    pop_f_scatter_plot_area: ttk.Frame,
+) -> None:
+    """Dodatkowe wykresy: rozkład F w populacji oraz F vs rok urodzenia."""
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        import numpy as np
+    except Exception:
+        return
+
+    try:
+        people = state.get("people")
+        f_map: dict[str, float] = state.get("population_f_map") or {}
+        if not people or not f_map:
+            return
+        if df_use is None or getattr(df_use, "empty", True):
+            return
+        if "birth_year" not in df_use.columns:
+            return
+
+        def _parse_birth_year(v: object, *, lo: int = 1900, hi: int | None = None) -> int | None:
+            if hi is None:
+                from datetime import datetime
+
+                hi = datetime.now().year
+            if v is None:
+                return None
+            try:
+                if isinstance(v, float) and v != v:
+                    return None
+            except Exception:
+                pass
+            try:
+                y_int = int(float(v))
+            except Exception:
+                return None
+            if y_int < lo or y_int > hi:
+                return None
+            return y_int
+
+        # Budujemy listy wartości dla osób z f_map.
+        f_rows: list[tuple[int, str, str, float]] = []
+        id_list = [str(x) for x in df_use["id"].astype(str).tolist()] if "id" in df_use.columns else []
+        id_set = set(id_list)
+
+        # Szybka mapa: id -> birth_year (unikamy df_use.loc w pętli).
+        birth_map: dict[str, object] = {}
+        try:
+            if "id" in df_use.columns and "birth_year" in df_use.columns:
+                tmp_ids = df_use["id"].astype(str)
+                birth_series = df_use["birth_year"]
+                birth_map = {rid: bv for rid, bv in zip(tmp_ids.tolist(), birth_series.tolist())}
+        except Exception:
+            birth_map = {}
+
+        for pid, fv in f_map.items():
+            if pid not in id_set:
+                continue
+            if fv != fv:  # nan-safe
+                continue
+            if pid not in people:
+                continue
+            p = people.get(pid)
+            sex = (getattr(p, "sex", None) or "").strip().upper()
+            line = (getattr(p, "line", None) or "").strip().upper()
+            bval = birth_map.get(pid)
+            bint = _parse_birth_year(bval)
+            if bint is None:
+                continue
+            f_rows.append((bint, sex or "NA", line or "NA", float(fv)))
+
+        if len(f_rows) < 2:
+            return
+
+        # --- Histogram F ---
+        _clear_frame(pop_f_hist_plot_area)
+        f_vals = [r[3] for r in f_rows]
+        # Dla czytelności: log jeśli zakres jest duży; bezpiecznie na wartości <=0.
+        f_pos = [v for v in f_vals if v > 0]
+        use_log = (max(f_vals) / max(f_pos) > 50) if f_pos else False
+
+        fig_h = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+        ax_h = fig_h.add_subplot(1, 1, 1)
+        bins = min(30, max(10, int(np.sqrt(len(f_vals)))))
+        if use_log:
+            ax_h.hist([v for v in f_vals if v > 0], bins=bins, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
+            ax_h.set_yscale("log")
+            ax_h.set_title("Rozkład F w populacji (osoby z F>0)")
+        else:
+            ax_h.hist(f_vals, bins=bins, color=colors.BUTTON_BG2, edgecolor=colors.ACCENT)
+            ax_h.set_title("Rozkład F w populacji (histogram)")
+        ax_h.set_xlabel("F (Wright, osobnik)")
+        ax_h.set_ylabel("liczba osobników")
+        fig_h.tight_layout()
+        ttk.Button(
+            pop_f_hist_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig_h: save_figure_fn(f, default_basename="pop_F_hist"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas_h = FigureCanvasTkAgg(fig_h, master=pop_f_hist_plot_area)
+        canvas_h.draw()
+        canvas_h.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # --- Scatter: F vs rok urodzenia ---
+        _clear_frame(pop_f_scatter_plot_area)
+        fig_s = plt.Figure(figsize=(8.6, 3.4), dpi=100)
+        ax_s = fig_s.add_subplot(1, 1, 1)
+        for sex_key, col in {"M": "#9ecbff", "F": "#ffb4c1", "NA": colors.BUTTON_BG2}.items():
+            xs = [b for b, sx, _ln, fv in f_rows if sx == sex_key]
+            ys = [fv for _b, sx, _ln, fv in f_rows if sx == sex_key]
+            if not xs:
+                continue
+            ax_s.scatter(xs, ys, s=10, alpha=0.65, color=col, label=sex_key)
+
+        ax_s.set_title("F w populacji vs rok urodzenia (punktowy)")
+        ax_s.set_xlabel("rok urodzenia")
+        ax_s.set_ylabel("F (Wright)")
+        ax_s.grid(True, alpha=0.25)
+        ax_s.legend(fontsize=8)
+        fig_s.tight_layout()
+        ttk.Button(
+            pop_f_scatter_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig_s: save_figure_fn(f, default_basename="pop_F_scatter"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas_s = FigureCanvasTkAgg(fig_s, master=pop_f_scatter_plot_area)
+        canvas_s.draw()
+        canvas_s.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    except Exception:
+        return
+
+
+def render_inbreeding_year_trends_smoothed(
+    df_use: Any,
+    *,
+    state: dict[str, Any],
+    pop_depth_inb_var: tk.StringVar,
+    pop_unbounded_inb_var: tk.BooleanVar | tk.StringVar,
+    pop_inb_smooth_plot_area: ttk.Frame,
+    save_figure_fn: Callable[..., None],
+    smooth_window: int = 7,
+) -> None:
+    """Wykres: średnie F i RIA (%) w czasie z wygładzeniem (jak na przykładach)."""
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        import numpy as np
+        from datetime import datetime
+    except Exception:
+        return
+
+    try:
+        people = state.get("people")
+        if not people:
+            return
+        if df_use is None or getattr(df_use, "empty", True):
+            return
+        if "birth_year" not in df_use.columns:
+            return
+
+        # Pobieramy wcześniej policzone F (oszczędza CPU). Jeśli brak, policzymy lokalnie.
+        f_map: dict[str, float] = state.get("population_f_map") or {}
+        max_generations_back = None if bool(pop_unbounded_inb_var.get()) else None
+        try:
+            depth = int(str(pop_depth_inb_var.get()).strip())
+        except Exception:
+            depth = 4
+        if not bool(pop_unbounded_inb_var.get()):
+            depth = max(0, min(30, depth))
+            max_generations_back = depth
+        state_max_gen = state.get("population_f_max_generations_back")
+        if not f_map or (state_max_gen is not None and max_generations_back is not None and state_max_gen != max_generations_back):
+            # F może być z innego limitu pokoleń — nie mieszajmy. Przeliczmy na szybko dla wykresu.
+            unique_ids = sorted(set(df_use["id"].astype(str).tolist()))
+            f_map = {}
+            for pid in unique_ids:
+                if pid not in people:
+                    continue
+                try:
+                    f_map[pid] = float(
+                        wright_inbreeding_F(
+                            person_id=pid,
+                            people=people,  # type: ignore[arg-type]
+                            max_generations_back=max_generations_back,
+                        ).F
+                    )
+                except Exception:
+                    f_map[pid] = float("nan")
+
+        def _parse_birth_year(v: object) -> int | None:
+            if v is None:
+                return None
+            try:
+                if isinstance(v, float) and v != v:
+                    return None
+            except Exception:
+                pass
+            try:
+                y_int = int(float(v))
+            except Exception:
+                return None
+            now_year = datetime.now().year
+            if y_int < 1900 or y_int > now_year:
+                return None
+            return y_int
+
+        dfc = df_use.copy()
+        dfc["id"] = dfc["id"].astype(str)
+        dfc["birth_year_int"] = dfc["birth_year"].apply(_parse_birth_year)
+        dfc = dfc.dropna(subset=["birth_year_int"]).reset_index(drop=True)
+        if dfc.empty:
+            return
+        dfc["birth_year_int"] = dfc["birth_year_int"].astype(int)
+        dfc["_F"] = dfc["id"].apply(lambda pid: f_map.get(str(pid), float("nan")))
+        dfc = dfc.dropna(subset=["_F"]).reset_index(drop=True)
+        if dfc.empty:
+            return
+
+        years = sorted(set(dfc["birth_year_int"].tolist()))
+        eps_inbred = 1e-15  # F>0 (w sensie numerycznym)
+
+        avgF: list[float] = []
+        ria: list[float] = []
+        for y in years:
+            g = dfc[dfc["birth_year_int"] == y]
+            if g.empty:
+                avgF.append(float("nan"))
+                ria.append(float("nan"))
+                continue
+            vals = g["_F"].tolist()
+            avgF.append(float(sum(vals)) / float(len(vals)))
+            ria.append(100.0 * float(sum(1 for v in vals if v > eps_inbred)) / float(len(vals)))
+
+        def _smooth(arr: list[float], w: int) -> list[float]:
+            a = np.array(arr, dtype=float)
+            valid = ~np.isnan(a)
+            if valid.sum() < 3:
+                return arr
+            a0 = np.where(valid, a, 0.0)
+            kernel = np.ones(w, dtype=float)
+            s = np.convolve(a0, kernel, mode="same")
+            c = np.convolve(valid.astype(float), kernel, mode="same")
+            out = np.where(c > 0, s / c, np.nan)
+            return out.tolist()
+
+        smooth_w = max(3, int(smooth_window))
+        sm_avgF = _smooth(avgF, smooth_w)
+        sm_ria = _smooth(ria, smooth_w)
+
+        _clear_frame(pop_inb_smooth_plot_area)
+        fig = plt.Figure(figsize=(10.0, 6.2), dpi=100)
+        ax_avg = fig.add_subplot(2, 1, 1)
+        ax_ria = fig.add_subplot(2, 1, 2)
+
+        # Surowe (czarne, półprzezroczyste) + trend wygładzony (czerwony).
+        ax_avg.plot(years, avgF, color="black", alpha=0.22, linewidth=1)
+        ax_avg.plot(years, sm_avgF, color=colors.ACCENT, linewidth=2.5)
+        ax_avg.set_title("Average F (raw + smooth)")
+        ax_avg.set_ylabel("F")
+        ax_avg.grid(True, alpha=0.25)
+
+        ax_ria.plot(years, ria, color="black", alpha=0.22, linewidth=1)
+        ax_ria.plot(years, sm_ria, color=colors.ACCENT, linewidth=2.5)
+        ax_ria.set_title("RIA (%) (raw + smooth)")
+        ax_ria.set_xlabel("Year of Birth")
+        ax_ria.set_ylabel("RIA (%) — F>0")
+        ax_ria.grid(True, alpha=0.25)
+
+        # Dopasowania jak na przykładach: litery paneli + korelacja F vs RIA.
+        try:
+            a = np.array(sm_avgF, dtype=float)
+            b = np.array(sm_ria, dtype=float)
+            mask = ~np.isnan(a) & ~np.isnan(b)
+            r_val = float(np.corrcoef(a[mask], b[mask])[0, 1]) if int(mask.sum()) >= 3 else None
+        except Exception:
+            r_val = None
+        ax_avg.text(0.98, 0.08, "A", transform=ax_avg.transAxes, ha="right", va="bottom", fontsize=18, color="black")
+        ax_ria.text(0.98, 0.08, "B", transform=ax_ria.transAxes, ha="right", va="bottom", fontsize=18, color="black")
+        if r_val is not None:
+            fig.text(0.01, 0.01, f"F i RIA — korelacja (r) = {r_val:.3f}", fontsize=9)
+
+        fig.tight_layout()
+        ttk.Button(
+            pop_inb_smooth_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig: save_figure_fn(f, default_basename="pop_F_RIA_smooth"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas = FigureCanvasTkAgg(fig, master=pop_inb_smooth_plot_area)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    except Exception:
+        return
+
+
+def render_gi_four_paths_smoothed(
+    *,
+    gi_data: dict[str, Any],
+    colors: Any,
+    save_figure_fn: Callable[..., None],
+    pop_gi_4paths_plot_area: ttk.Frame,
+    smooth_window: int = 3,
+) -> None:
+    """GI w 4 podoknach (Sire–Son, Sire–Daughter, Dam–Son, Dam–Daughter) + wygładzenie."""
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        import numpy as np
+    except Exception:
+        return
+
+    try:
+        gi_decades: dict[str, dict[int, list[float]]] = gi_data.get("gi_decades") or {}
+        all_decades = sorted(
+            set().union(*[set(gi_decades.get(k, {}).keys()) for k in gi_decades.keys()])
+        )
+        if not all_decades:
+            return
+
+        def _means_for(path_key: str) -> list[float]:
+            out: list[float] = []
+            for d in all_decades:
+                xs = gi_decades.get(path_key, {}).get(d, [])
+                out.append(float(sum(xs)) / float(len(xs)) if xs else float("nan"))
+            return out
+
+        series = {
+            "FS": ("Sire-Son", "M→syn", _means_for("FS"), colors.BUTTON_BG2),
+            "FD": ("Sire-Daughter", "M→córka", _means_for("FD"), colors.BUTTON_BG),
+            "MS": ("Dam-Son", "F→syn", _means_for("MS"), colors.MUTED),
+            "MD": ("Dam-Daughter", "F→córka", _means_for("MD"), colors.ACCENT),
+        }
+
+        def _smooth(arr: list[float], w: int) -> list[float]:
+            a = np.array(arr, dtype=float)
+            valid = ~np.isnan(a)
+            if valid.sum() < 3:
+                return arr
+            a0 = np.where(valid, a, 0.0)
+            kernel = np.ones(w, dtype=float)
+            s = np.convolve(a0, kernel, mode="same")
+            c = np.convolve(valid.astype(float), kernel, mode="same")
+            out = np.where(c > 0, s / c, np.nan)
+            return out.tolist()
+
+        sw = max(3, int(smooth_window))
+
+        _clear_frame(pop_gi_4paths_plot_area)
+        fig = plt.Figure(figsize=(10.6, 7.2), dpi=100)
+        ax_ss = fig.add_subplot(2, 2, 1)
+        ax_sd = fig.add_subplot(2, 2, 2)
+        ax_ds = fig.add_subplot(2, 2, 3)
+        ax_dd = fig.add_subplot(2, 2, 4)
+        axes = [ax_ss, ax_sd, ax_ds, ax_dd]
+        keys = ["FS", "FD", "MS", "MD"]
+
+        for ax, k in zip(axes, keys):
+            title = series[k][0]
+            raw_vals = series[k][2]
+            sm_vals = _smooth(raw_vals, sw)
+            ax.plot(all_decades, raw_vals, color=series[k][3], alpha=0.25, linewidth=1.2)
+            ax.plot(all_decades, sm_vals, color="black", linewidth=2.2)
+            ax.set_title(title)
+            ax.set_xlabel("Year of Birth")
+            ax.set_ylabel("GI")
+            ax.grid(True, alpha=0.25)
+
+        fig.suptitle("Generation Intervals over Birth Decades (4 paths)", y=0.99, fontsize=12)
+        fig.tight_layout(rect=[0, 0, 1, 0.97])
+
+        ttk.Button(
+            pop_gi_4paths_plot_area,
+            text="Zapis wykresu (jpeg)",
+            command=lambda f=fig: save_figure_fn(f, default_basename="pop_GI_4paths_smooth"),
+        ).pack(anchor="w", pady=(0, 6))
+        canvas = FigureCanvasTkAgg(fig, master=pop_gi_4paths_plot_area)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
     except Exception:
         return
 
@@ -1039,6 +1433,20 @@ def run_tk_pro() -> None:
         _apply_tk_window_icon(root, _ico)
 
     colors = setup_theme(root)
+
+    # Lokalny styl dla fragmentu „Wskaźniki genetyczne i demograficzne”
+    # — ma być czarny i spójny z resztą UI.
+    try:
+        st = root.style
+        st.configure("PopMeta.TLabelframe", background=colors.PANEL_BG)
+        st.configure(
+            "PopMeta.TLabelframe.Label",
+            background=colors.PANEL_BG,
+            foreground=colors.TEXT,
+            font=tk_font(12, bold=True),
+        )
+    except Exception:
+        pass
 
     # -------------------------
     # Logo + header
@@ -1344,6 +1752,7 @@ def run_tk_pro() -> None:
             lines.append(f"- Inbred (Wright F): {f_res.F:.6f} ({depth_txt})")
             lines.append(f"- Ojciec: {f_res.father_id} — {f_res.father_name}")
             lines.append(f"- Matka : {f_res.mother_id} — {f_res.mother_name}")
+            lines.append(f"- Miejsce urodzenia: {getattr(people.get(person_id), 'birth_location', None) or '—'}")
 
             # Completeness (MG/EG/PCI) — analogicznie jak w UI "Inbred (F)".
             MG = 0
@@ -1444,8 +1853,60 @@ def run_tk_pro() -> None:
                     lines.append(f"  Bottleneck f_e/f_a={stats.founders.f_e / stats.founders.f_a:.3f}")
                 lines.append(f"  Dryf (aproksymacja, f_ge=f_e): 1.000")
                 lines.append("")
+                # Mean kinship (po parach i!=j) dla tej samej populacji i limitu pokoleń co F.
+                try:
+                    id_list = [str(x) for x in df_std["id"].tolist()]
+                    mk_phi, mk_r, mk_note = mean_kinship_pairwise(
+                        people,
+                        id_list,
+                        max_generations_back=max_generations_back,
+                    )
+                    if mk_phi is not None and mk_r is not None:
+                        lines.append("- Mean kinship (pary i≠j):")
+                        lines.append(f"  śr. Φ={mk_phi:.6f}  śr. R={mk_r:.6f}")
+                        if mk_note:
+                            lines.append(f"  uwaga: {mk_note}")
+                        lines.append("")
+                except Exception:
+                    pass
+
+                # GI i rodziny pełnego rodzeństwa (jak w panelu Metryki populacji).
+                try:
+                    gi_data = compute_gi_and_family_data(df_std, people)
+                    lines.append("- Generation Interval (GI):")
+                    if gi_data.get("gi_all") is not None:
+                        lines.append(f"  GI średnio={float(gi_data['gi_all']):.2f} lat")
+                    if gi_data.get("gi_fs") is not None:
+                        lines.append(f"  Ojciec→syn={float(gi_data['gi_fs']):.2f} lat")
+                    if gi_data.get("gi_fd") is not None:
+                        lines.append(f"  Ojciec→córka={float(gi_data['gi_fd']):.2f} lat")
+                    if gi_data.get("gi_ms") is not None:
+                        lines.append(f"  Matka→syn={float(gi_data['gi_ms']):.2f} lat")
+                    if gi_data.get("gi_md") is not None:
+                        lines.append(f"  Matka→córka={float(gi_data['gi_md']):.2f} lat")
+                    fs_fam = gi_data.get("family_sizes") or []
+                    if fs_fam:
+                        lines.append(
+                            f"  Rodziny pełnego rodzeństwa: n={len(fs_fam)}, średnia wielkość={float(sum(fs_fam))/float(len(fs_fam)):.2f}"
+                        )
+                    lines.append("")
+                except Exception:
+                    pass
+
                 lines.append("- Linie (kolumna line):")
                 lines.append(f"  LB={stats.line_counts.get('LB', 0)}  LC={stats.line_counts.get('LC', 0)}  NA={stats.line_counts.get('NA', 0)}")
+                # Podsumowanie miejsc urodzenia (top) — przydatne po dodaniu filtra birth_location.
+                try:
+                    if "birth_location" in df_std.columns:
+                        loc_s = df_std["birth_location"].copy()
+                        loc_s = loc_s.astype(str).str.strip()
+                        loc_s = loc_s.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+                        counts = loc_s.value_counts(dropna=False)
+                        top_items = counts.head(8).to_dict()
+                        lines.append("- Miejsce urodzenia (top):")
+                        lines.append("  " + " | ".join([f"{k}={int(v)}" for k, v in top_items.items()]))
+                except Exception:
+                    pass
             except Exception as e:
                 lines.append(f"- Błąd liczenia metryk populacyjnych: {e}")
             lines.append("")
@@ -2385,8 +2846,18 @@ def run_tk_pro() -> None:
     # -------------------------
     # Populacja tab (podstawowe metryki)
     # -------------------------
-    pop_frame = ttk.Frame(tab_population)
-    pop_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(14, 0))
+    pop_nb = ttk.Notebook(tab_population)
+    pop_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(14, 0))
+
+    tab_pop_basic = ttk.Frame(pop_nb)
+    tab_pop_meta = ttk.Frame(pop_nb)
+    tab_pop_charts = ttk.Frame(pop_nb)
+
+    pop_nb.add(tab_pop_basic, text="Podstawowe statystyki")
+    pop_nb.add(tab_pop_meta, text="Wskaźniki genetyczne i demograficzne")
+    pop_nb.add(tab_pop_charts, text="Wykresy")
+
+    pop_frame = tab_pop_basic
 
     pop_total_var = tk.StringVar(value="-")
     pop_founders_count_var = tk.StringVar(value="-")
@@ -2492,6 +2963,7 @@ def run_tk_pro() -> None:
     pop_unbounded_inb_var.trace_add("write", lambda *_args: _sync_pop_inb_depth_state())
 
     # --- Genetyka i demografia populacji (skrót) ---
+    pop_frame = tab_pop_meta
     ttk.Label(
         pop_frame,
         text="Wskaźniki genetyczne i demograficzne",
@@ -2514,6 +2986,7 @@ def run_tk_pro() -> None:
         pop_meta_stack,
         text=" Założyciele, bottleneck, dryf, N_e, RIA ",
         padding=(12, 10),
+        style="PopMeta.TLabelframe",
     )
     lf_founders.pack(fill=tk.X, pady=(0, 8))
     founders_row = ttk.Frame(lf_founders)
@@ -2543,6 +3016,7 @@ def run_tk_pro() -> None:
         pop_meta_stack,
         text=" Mean kinship (Φ, R po parach i≠j) ",
         padding=(12, 10),
+        style="PopMeta.TLabelframe",
     )
     lf_mk.pack(fill=tk.X, pady=(0, 8))
     mk_vals = ttk.Frame(lf_mk)
@@ -2554,15 +3028,15 @@ def run_tk_pro() -> None:
     ttk.Label(
         mk_phi_col,
         text="śr. Φ (Malecot, pary i≠j)",
-        font=tk_font(10),
-        foreground=colors.MUTED,
+        font=tk_font(11),
+        foreground=colors.TEXT,
         anchor="w",
     ).pack(anchor="w")
     ttk.Label(
         mk_phi_col,
         textvariable=pop_mk_phi_var,
-        font=tk_font(12, bold=True),
-        foreground=colors.EDGE_PLOT,
+        font=tk_font(13, bold=True),
+        foreground=colors.TEXT,
         anchor="w",
     ).pack(anchor="w", pady=(2, 0))
     mk_r_col = ttk.Frame(mk_vals)
@@ -2570,22 +3044,22 @@ def run_tk_pro() -> None:
     ttk.Label(
         mk_r_col,
         text="śr. R = 2Φ (Wright, autosomy)",
-        font=tk_font(10),
-        foreground=colors.MUTED,
+        font=tk_font(11),
+        foreground=colors.TEXT,
         anchor="w",
     ).pack(anchor="w")
     ttk.Label(
         mk_r_col,
         textvariable=pop_mk_r_var,
-        font=tk_font(12, bold=True),
-        foreground=colors.EDGE_PLOT,
+        font=tk_font(13, bold=True),
+        foreground=colors.TEXT,
         anchor="w",
     ).pack(anchor="w", pady=(2, 0))
     ttk.Label(
         lf_mk,
         textvariable=pop_mk_note_var,
-        font=tk_font(9),
-        foreground=colors.MUTED,
+        font=tk_font(10),
+        foreground=colors.TEXT,
         wraplength=860,
         justify="left",
         anchor="w",
@@ -2595,6 +3069,7 @@ def run_tk_pro() -> None:
         pop_meta_stack,
         text=" Generation Interval (GI) i rodziny pełnego rodzeństwa ",
         padding=(12, 10),
+        style="PopMeta.TLabelframe",
     )
     lf_gi.pack(fill=tk.X, pady=(0, 4))
     gi_row = ttk.Frame(lf_gi)
@@ -2617,15 +3092,34 @@ def run_tk_pro() -> None:
     # -------------------------
     # Wykresy: każdy wykres = 1 zakładka
     # -------------------------
+    pop_frame = tab_pop_charts
     pop_charts_frame = ttk.Frame(pop_frame)
     pop_charts_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(14, 0))
 
-    pop_plots_nb = ttk.Notebook(pop_charts_frame)
-    pop_plots_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+    # Zamiast ttk.Notebook (który ma zwykle jeden wiersz zakładek i przy długich
+    # nazwach nie pokazuje ich wszystkich), robimy dwa rzędy przycisków-tabów
+    # przełączających jeden wspólny panel z treścią wykresu.
+    pop_tabs_bar = ttk.Frame(pop_charts_frame)
+    pop_tabs_bar.pack(side=tk.TOP, fill=tk.X, pady=(0, 6))
+    pop_tabs_row1 = ttk.Frame(pop_tabs_bar)
+    pop_tabs_row1.pack(side=tk.TOP, fill=tk.X)
+    pop_tabs_row2 = ttk.Frame(pop_tabs_bar)
+    pop_tabs_row2.pack(side=tk.TOP, fill=tk.X, pady=(4, 0))
+
+    pop_plots_container = ttk.Frame(pop_charts_frame)
+    pop_plots_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    plot_tabs: list[tuple[str, ttk.Frame]] = []
+
+    def _short_tab_text(title: str) -> str:
+        s = str(title).strip()
+        if len(s) <= 26:
+            return s
+        return s[:24] + "…"
 
     def _plot_tab(title: str) -> ttk.Frame:
-        tab = ttk.Frame(pop_plots_nb, padding=10)
-        pop_plots_nb.add(tab, text=title)
+        tab = ttk.Frame(pop_plots_container, padding=10)
+        plot_tabs.append((title, tab))
         return tab
 
     # Urodzenia (płeć)
@@ -2708,6 +3202,22 @@ def run_tk_pro() -> None:
     pop_gi_trend_plot_area = ttk.Frame(tab_gi_trend)
     pop_gi_trend_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
+    # GI — 4 podokna (jak na przykładzie z 4 ścieżkami)
+    tab_gi_4paths = _plot_tab("GI (4 ścieżki) — surowe + wygładzone")
+    ttk.Label(tab_gi_4paths, text="GI w 4 wariantach (ojciec→syn, ojciec→córka, matka→syn, matka→córka)", font=tk_font(12, bold=True)).pack(
+        anchor="w"
+    )
+    ttk.Label(
+        tab_gi_4paths,
+        text="Interpretacja: średnie GI w dekadach + wygładzenie (okrno ruchome).",
+        font=tk_font(8),
+        foreground=colors.MUTED,
+        wraplength=900,
+        justify="left",
+    ).pack(anchor="w", pady=(6, 0))
+    pop_gi_4paths_plot_area = ttk.Frame(tab_gi_4paths)
+    pop_gi_4paths_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+
     # Rodziny pełne
     tab_family = _plot_tab("Kompletność struktury rodzin")
     ttk.Label(tab_family, text="Struktura rodzin pełnego rodzeństwa", font=tk_font(12, bold=True)).pack(anchor="w")
@@ -2786,6 +3296,54 @@ def run_tk_pro() -> None:
     pop_inb_year_line_plot_area = ttk.Frame(tab_inb_year_line)
     pop_inb_year_line_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
+    # F i RIA (TP) — surowe + wygładzone
+    tab_inb_smooth = _plot_tab("F i RIA (TP) — surowe + wygładzone")
+    ttk.Label(tab_inb_smooth, text="Average F oraz RIA (%) w czasie (TP ogółem)", font=tk_font(12, bold=True)).pack(
+        anchor="w"
+    )
+    ttk.Label(
+        tab_inb_smooth,
+        text="Interpretacja: surowe punkty (czarne) i wygładzony trend (czerwony).",
+        font=tk_font(8),
+        foreground=colors.MUTED,
+        wraplength=900,
+        justify="left",
+    ).pack(anchor="w", pady=(6, 0))
+    pop_inb_smooth_plot_area = ttk.Frame(tab_inb_smooth)
+    pop_inb_smooth_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+
+    # Rozkład F w populacji
+    tab_f_hist = _plot_tab("Rozkład F (osoby)")
+    ttk.Label(tab_f_hist, text="Jak wygląda rozkład F w całej populacji", font=tk_font(12, bold=True)).pack(
+        anchor="w"
+    )
+    ttk.Label(
+        tab_f_hist,
+        text="Hist. F (Wright) — wartości użyte do wykresu są zgodne z aktualnym limitem pokoleń.",
+        font=tk_font(8),
+        foreground=colors.MUTED,
+        wraplength=900,
+        justify="left",
+    ).pack(anchor="w", pady=(6, 0))
+    pop_f_hist_plot_area = ttk.Frame(tab_f_hist)
+    pop_f_hist_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+
+    # F vs rok urodzenia
+    tab_f_scatter = _plot_tab("F vs rok urodzenia")
+    ttk.Label(tab_f_scatter, text="F (Wright) w funkcji roku urodzenia", font=tk_font(12, bold=True)).pack(
+        anchor="w"
+    )
+    ttk.Label(
+        tab_f_scatter,
+        text="Wykres punktowy: każda kropka = osobnik z liczonym F.",
+        font=tk_font(8),
+        foreground=colors.MUTED,
+        wraplength=900,
+        justify="left",
+    ).pack(anchor="w", pady=(6, 0))
+    pop_f_scatter_plot_area = ttk.Frame(tab_f_scatter)
+    pop_f_scatter_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+
     # Founder contributions
     tab_founders = _plot_tab("Ranking wkładu założycieli (p_i)")
     ttk.Label(
@@ -2803,6 +3361,29 @@ def run_tk_pro() -> None:
     ).pack(anchor="w", pady=(6, 0))
     pop_founders_plot_area = ttk.Frame(tab_founders)
     pop_founders_plot_area.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+
+    # --- Zbuduj dwurzędowy pasek zakładek (tytuły przycięte, jedna treść naraz) ---
+    split_idx = (len(plot_tabs) + 1) // 2
+    for idx, (title, tab_frame) in enumerate(plot_tabs):
+        target_row = pop_tabs_row1 if idx < split_idx else pop_tabs_row2
+        btn_txt = _short_tab_text(title)
+        # width w znakach; dzięki krótszym etykietom unikamy overflow.
+        btn = ttk.Button(
+            target_row,
+            text=btn_txt,
+            width=26,
+            command=lambda i=idx: _show_pop_plot_tab(i),
+        )
+        btn.pack(side=tk.LEFT, padx=(0, 6), pady=(2, 2))
+
+    def _show_pop_plot_tab(idx: int) -> None:
+        for _t, fr in plot_tabs:
+            fr.pack_forget()
+        plot_tabs[idx][1].pack(fill=tk.BOTH, expand=True)
+
+    # Wybór domyślny: pierwsza zakładka.
+    if plot_tabs:
+        _show_pop_plot_tab(0)
 
     def _update_population_metrics(df_std) -> None:
         TEST_ID = "99999"
@@ -2996,6 +3577,25 @@ def run_tk_pro() -> None:
                 save_figure_fn=_save_figure_as_jpeg,
             )
 
+            render_inbreeding_year_trends_smoothed(
+                df_use,
+                state=state,
+                pop_depth_inb_var=pop_depth_inb_var,
+                pop_unbounded_inb_var=pop_unbounded_inb_var,
+                pop_inb_smooth_plot_area=pop_inb_smooth_plot_area,
+                save_figure_fn=_save_figure_as_jpeg,
+                smooth_window=int(APP_CFG.f_ria_smooth_window),
+            )
+
+            render_f_distribution_charts(
+                df_use=df_use,
+                state=state,
+                colors=colors,
+                save_figure_fn=_save_figure_as_jpeg,
+                pop_f_hist_plot_area=pop_f_hist_plot_area,
+                pop_f_scatter_plot_area=pop_f_scatter_plot_area,
+            )
+
             render_founders_pi_chart(
                 state=state,
                 colors=colors,
@@ -3012,6 +3612,14 @@ def run_tk_pro() -> None:
                 pop_gi_plot_area=pop_gi_plot_area,
                 pop_gi_trend_plot_area=pop_gi_trend_plot_area,
                 pop_family_plot_area=pop_family_plot_area,
+            )
+
+            render_gi_four_paths_smoothed(
+                gi_data=gi_data,
+                colors=colors,
+                save_figure_fn=_save_figure_as_jpeg,
+                pop_gi_4paths_plot_area=pop_gi_4paths_plot_area,
+                smooth_window=int(APP_CFG.gi_smooth_window),
             )
         except Exception:
             pass
@@ -3033,6 +3641,32 @@ def run_tk_pro() -> None:
     persons_search_entry.pack(side=tk.LEFT)
     find_person_btn = ttk.Button(persons_left, text="Znajdź", state="disabled")
     find_person_btn.pack(side=tk.LEFT, padx=(8, 0))
+
+    # Dodatkowy filtr do rejestru i (opcjonalnie) pod „mating”.
+    birth_location_filter_var = tk.StringVar(value="Bez filtra")
+    ttk.Label(persons_left, text="Miejsce ur.:", foreground=colors.MUTED).pack(side=tk.LEFT, padx=(16, 6))
+    persons_birth_location_filter_cb = ttk.Combobox(
+        persons_left,
+        textvariable=birth_location_filter_var,
+        state="disabled",
+        width=22,
+        values=["Bez filtra"],
+    )
+    persons_birth_location_filter_cb.pack(side=tk.LEFT, padx=(0, 0))
+
+    def _norm_birth_location_val(v: object) -> str:
+        """Normalizacja pod filtr: puste/NaN → 'NA', reszta → string bez otaczających spacji."""
+        if v is None:
+            return "NA"
+        try:
+            if isinstance(v, float) and v != v:
+                return "NA"
+        except Exception:
+            pass
+        s = str(v).strip()
+        if not s or s.lower() in {"nan", "none", "null"}:
+            return "NA"
+        return s
 
     ttk.Button(
         persons_controls,
@@ -3213,6 +3847,7 @@ def run_tk_pro() -> None:
     map_sex_var = tk.StringVar(value=LOAD_NONE)
     map_line_var = tk.StringVar(value=LOAD_NONE)
     map_birth_year_var = tk.StringVar(value=LOAD_NONE)
+    map_birth_location_var = tk.StringVar(value=LOAD_NONE)
     map_father_id_var = tk.StringVar(value=LOAD_NONE)
     map_mother_id_var = tk.StringVar(value=LOAD_NONE)
     map_name_var = tk.StringVar(value=LOAD_NONE)
@@ -3244,29 +3879,35 @@ def run_tk_pro() -> None:
     cb_birth_year = ttk.Combobox(map_grid, textvariable=map_birth_year_var, width=45)
     cb_birth_year.grid(row=3, column=1, sticky="ew", padx=(10, 0), pady=4)
 
-    ttk.Label(map_grid, text="Ojciec (father_id)", foreground=colors.MUTED).grid(row=4, column=0, sticky="w", pady=4)
+    ttk.Label(map_grid, text="Miejsce urodzenia (birth_location) [opcjonalnie]", foreground=colors.MUTED).grid(
+        row=4, column=0, sticky="w", pady=4
+    )
+    cb_birth_location = ttk.Combobox(map_grid, textvariable=map_birth_location_var, width=45)
+    cb_birth_location.grid(row=4, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Ojciec (father_id)", foreground=colors.MUTED).grid(row=5, column=0, sticky="w", pady=4)
     cb_father_id = ttk.Combobox(map_grid, textvariable=map_father_id_var, width=45)
-    cb_father_id.grid(row=4, column=1, sticky="ew", padx=(10, 0), pady=4)
+    cb_father_id.grid(row=5, column=1, sticky="ew", padx=(10, 0), pady=4)
 
-    ttk.Label(map_grid, text="Matka (mother_id)", foreground=colors.MUTED).grid(row=5, column=0, sticky="w", pady=4)
+    ttk.Label(map_grid, text="Matka (mother_id)", foreground=colors.MUTED).grid(row=6, column=0, sticky="w", pady=4)
     cb_mother_id = ttk.Combobox(map_grid, textvariable=map_mother_id_var, width=45)
-    cb_mother_id.grid(row=5, column=1, sticky="ew", padx=(10, 0), pady=4)
+    cb_mother_id.grid(row=6, column=1, sticky="ew", padx=(10, 0), pady=4)
 
-    ttk.Label(map_grid, text="Imię (name) [opcjonalnie]", foreground=colors.MUTED).grid(row=6, column=0, sticky="w", pady=4)
+    ttk.Label(map_grid, text="Imię (name) [opcjonalnie]", foreground=colors.MUTED).grid(row=7, column=0, sticky="w", pady=4)
     cb_name = ttk.Combobox(map_grid, textvariable=map_name_var, width=45)
-    cb_name.grid(row=6, column=1, sticky="ew", padx=(10, 0), pady=4)
+    cb_name.grid(row=7, column=1, sticky="ew", padx=(10, 0), pady=4)
 
     ttk.Label(map_grid, text="Linia ojca (father_line) [opcjonalnie]", foreground=colors.MUTED).grid(
-        row=7, column=0, sticky="w", pady=4
-    )
-    cb_father_line = ttk.Combobox(map_grid, textvariable=map_father_line_var, width=45)
-    cb_father_line.grid(row=7, column=1, sticky="ew", padx=(10, 0), pady=4)
-
-    ttk.Label(map_grid, text="Linia matki (mother_line) [opcjonalnie]", foreground=colors.MUTED).grid(
         row=8, column=0, sticky="w", pady=4
     )
+    cb_father_line = ttk.Combobox(map_grid, textvariable=map_father_line_var, width=45)
+    cb_father_line.grid(row=8, column=1, sticky="ew", padx=(10, 0), pady=4)
+
+    ttk.Label(map_grid, text="Linia matki (mother_line) [opcjonalnie]", foreground=colors.MUTED).grid(
+        row=9, column=0, sticky="w", pady=4
+    )
     cb_mother_line = ttk.Combobox(map_grid, textvariable=map_mother_line_var, width=45)
-    cb_mother_line.grid(row=8, column=1, sticky="ew", padx=(10, 0), pady=4)
+    cb_mother_line.grid(row=9, column=1, sticky="ew", padx=(10, 0), pady=4)
 
     # kolumny muszą się zmieścić
     map_grid.columnconfigure(1, weight=1)
@@ -3277,6 +3918,7 @@ def run_tk_pro() -> None:
             map_sex_var,
             map_line_var,
             map_birth_year_var,
+            map_birth_location_var,
             map_father_id_var,
             map_mother_id_var,
             map_name_var,
@@ -3300,6 +3942,9 @@ def run_tk_pro() -> None:
         map_sex_var.set(pick(["Sex", "sex", "Gender", "gender"]) or LOAD_NONE)
         map_line_var.set(pick(["Line", "line"]) or LOAD_NONE)
         map_birth_year_var.set(pick(["Birth year", "birth_year", "BirthYear"]) or LOAD_NONE)
+        map_birth_location_var.set(
+            pick(["Birth location", "birth_location", "Birth place", "birth_place"]) or LOAD_NONE
+        )
         map_father_id_var.set(pick(["Father", "father_id", "Father ID", "father"]) or LOAD_NONE)
         map_mother_id_var.set(pick(["Mother", "mother_id", "Mother ID", "mother"]) or LOAD_NONE)
         map_name_var.set(pick(["Name", "name", "Alt name", "alt_name"]) or LOAD_NONE)
@@ -3317,6 +3962,7 @@ def run_tk_pro() -> None:
         _set_cb_options(cb_sex, cols_clean)
         _set_cb_options(cb_line, cols_clean)
         _set_cb_options(cb_birth_year, cols_clean)
+        _set_cb_options(cb_birth_location, cols_clean)
         _set_cb_options(cb_father_id, cols_clean)
         _set_cb_options(cb_mother_id, cols_clean)
         _set_cb_options(cb_name, cols_clean)
@@ -3343,6 +3989,7 @@ def run_tk_pro() -> None:
             "sex": _sel(map_sex_var.get()),
             "line": _sel(map_line_var.get()),
             "birth_year": _sel(map_birth_year_var.get()),
+            "birth_location": _sel(map_birth_location_var.get()),
             "father_id": _sel(map_father_id_var.get()),
             "mother_id": _sel(map_mother_id_var.get()),
             "name": _sel(map_name_var.get()),
@@ -3507,6 +4154,7 @@ def run_tk_pro() -> None:
         "name",
         "sex",
         "birth_year",
+        "birth_location",
         "father_id",
         "mother_id",
         "SireFounder",
@@ -3525,6 +4173,8 @@ def run_tk_pro() -> None:
         arrow = "▲" if asc else "▼"
         if col == "id":
             base = "id (A->Z)"
+        elif col == "birth_location":
+            base = "Miejsce ur. (birth_location)"
         else:
             base = col
         # command utrzymujemy przez ponowne ustawienie, żeby nie gubić sortowania.
@@ -3632,6 +4282,7 @@ def run_tk_pro() -> None:
             f"Imię: {p.name or '—'}",
             f"Płeć: {getattr(p, 'sex', None) or '—'}  •  Linia (kolumna): {getattr(p, 'line', None) or '—'}",
             f"Rok ur.: {getattr(p, 'birth_year', None) or '—'}",
+            f"Miejsce ur.: {getattr(p, 'birth_location', None) or '—'}",
             f"Ojciec: {p.father_id or '—'}  •  Matka: {p.mother_id or '—'}",
             "",
             "Udział genów od założycieli (suma 100 % przy pełnym drzewie w modelu founder-stop):",
@@ -3888,8 +4539,8 @@ def run_tk_pro() -> None:
     )
     mating_note_lbl.pack(anchor="w", pady=(2, 8))
 
-    mating_age_limit_years = 15  # fixed by requirement
-    mating_ranking_top_n = 36
+    mating_age_limit_years = int(APP_CFG.mating_age_limit_years)
+    mating_ranking_top_n = int(APP_CFG.mating_ranking_top_n)
     mating_ranking_max_uses_per_id = 3  # sire i dam liczone osobno w liście wynikowej
 
     mating_unbounded_var = tk.BooleanVar(value=False)
@@ -3912,17 +4563,21 @@ def run_tk_pro() -> None:
     mating_limits_frame = ttk.LabelFrame(tab_mating, text="Limit kandydatów (dla wydajności)")
     mating_limits_frame.pack(anchor="w", pady=(0, 8), fill=tk.X)
     ttk.Label(mating_limits_frame, text="Samce (M) max:").grid(row=0, column=0, sticky="w", padx=(10, 8), pady=(10, 6))
-    mating_male_limit_var = tk.StringVar(value="200")
+    mating_male_limit_var = tk.StringVar(value=str(APP_CFG.mating_default_male_limit))
     mating_male_limit_entry = ttk.Entry(mating_limits_frame, textvariable=mating_male_limit_var, width=8, state="disabled")
     mating_male_limit_entry.grid(row=0, column=1, sticky="w", pady=(10, 6))
     ttk.Label(mating_limits_frame, text="Samice (F) max:").grid(row=1, column=0, sticky="w", padx=(10, 8), pady=(0, 10))
-    mating_female_limit_var = tk.StringVar(value="200")
+    mating_female_limit_var = tk.StringVar(value=str(APP_CFG.mating_default_female_limit))
     mating_female_limit_entry = ttk.Entry(mating_limits_frame, textvariable=mating_female_limit_var, width=8, state="disabled")
     mating_female_limit_entry.grid(row=1, column=1, sticky="w", pady=(0, 10))
 
     mating_btn_row = ttk.Frame(tab_mating)
     mating_btn_row.pack(anchor="w", pady=(0, 8))
-    mating_calc_btn = ttk.Button(mating_btn_row, text="Oblicz ranking kojarzeń (TOP 36)", state="disabled")
+    mating_calc_btn = ttk.Button(
+        mating_btn_row,
+        text=f"Oblicz ranking kojarzeń (TOP {mating_ranking_top_n})",
+        state="disabled",
+    )
     mating_calc_btn.pack(side=tk.LEFT)
     mating_export_phi_btn = ttk.Button(
         mating_btn_row,
@@ -4034,8 +4689,13 @@ def run_tk_pro() -> None:
 
         current_year = datetime.now().year
         cutoff_birth_year = current_year - mating_age_limit_years
+
+        _loc_part = ""
+        _loc_sel_raw_for_note = str(birth_location_filter_var.get()).strip()
+        if _loc_sel_raw_for_note and _loc_sel_raw_for_note.lower() != "bez filtra":
+            _loc_part = f" • Filtr miejsca ur.: {_norm_birth_location_val(_loc_sel_raw_for_note)}"
         mating_current_year_note_var.set(
-            f"Filtr wieku: wiek <= {mating_age_limit_years} lat => birth_year >= {cutoff_birth_year} (rok {current_year}). "
+            f"Filtr wieku: wiek <= {mating_age_limit_years} lat => birth_year >= {cutoff_birth_year} (rok {current_year}).{_loc_part} "
             f"Ranking: do {mating_ranking_top_n} par (najmniejsze Φ=F potomka); R=2Φ; w liście każdy osobnik (jako sire lub dam) "
             f"maks. {mating_ranking_max_uses_per_id} razy."
         )
@@ -4052,6 +4712,19 @@ def run_tk_pro() -> None:
         df_tmp = df_tmp[df_tmp["sex"].isin(["M", "F"])]
         df_tmp = df_tmp[df_tmp["birth_year_num"].notna()]
         df_tmp = df_tmp[df_tmp["birth_year_num"] >= float(cutoff_birth_year)]
+
+        # Filtr miejsca urodzenia (wspólny z rejestrem osobników).
+        loc_sel_raw = str(birth_location_filter_var.get()).strip()
+        if loc_sel_raw and loc_sel_raw.lower() != "bez filtra":
+            loc_sel_norm = _norm_birth_location_val(loc_sel_raw)
+            try:
+                # Normalizacja do 'NA' dla braków (NaN/None/None/'nan').
+                loc_norm = df_tmp["birth_location"].astype(str).str.strip()
+                loc_norm = loc_norm.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+                df_tmp = df_tmp[loc_norm == loc_sel_norm]
+            except Exception:
+                # Jeśli brakuje kolumny / typ jest nietypowy — nie filtrujemy (bez ryzyka wywalenia UI).
+                pass
 
         males_df = df_tmp[df_tmp["sex"] == "M"].sort_values("birth_year_num", ascending=False)
         females_df = df_tmp[df_tmp["sex"] == "F"].sort_values("birth_year_num", ascending=False)
@@ -4290,6 +4963,7 @@ def run_tk_pro() -> None:
         st = "normal" if enabled else "disabled"
         find_person_btn.configure(state=st)
         persons_search_entry.configure(state=st)
+        persons_birth_location_filter_cb.configure(state="readonly" if enabled else "disabled")
         if not enabled:
             _set_persons_detail_text("Wczytaj bazę, aby zobaczyć rejestr i szczegóły osobnika.")
         id_anc_entry.configure(state=st)
@@ -4368,8 +5042,8 @@ def run_tk_pro() -> None:
             # Domyślne parametry rankingu kojarzeń (Mating).
             mating_unbounded_var.set(False)
             mating_depth_var.set(str(settings_inb_depth_var.get()).strip() or "4")
-            mating_male_limit_var.set("200")
-            mating_female_limit_var.set("200")
+            mating_male_limit_var.set(str(APP_CFG.mating_default_male_limit))
+            mating_female_limit_var.set(str(APP_CFG.mating_default_female_limit))
             mating_current_year_note_var.set("")
             mating_pair_stats_var.set("")
 
@@ -4420,6 +5094,108 @@ def run_tk_pro() -> None:
         if not m:
             return (10**30, s)
         return (int(m.group(1)), m.group(2) or "")
+
+    def _refresh_persons_tree_rows(df_std_in) -> None:
+        """Rebuild tabelę Osobników według aktualnego filtra 'birth_location'."""
+        try:
+            for item in tree.get_children():
+                tree.delete(item)
+        except Exception:
+            pass
+
+        df_std_sorted = df_std_in
+        try:
+            df_std_sorted = df_std_in.sort_values(
+                by="id",
+                key=lambda s: s.astype(str).map(_id_sort_key),
+            ).reset_index(drop=True)
+        except Exception:
+            df_std_sorted = df_std_in
+
+        loc_sel_raw = str(birth_location_filter_var.get()).strip()
+        loc_sel_norm: str | None = None
+        if loc_sel_raw and loc_sel_raw.lower() != "bez filtra":
+            loc_sel_norm = _norm_birth_location_val(loc_sel_raw)
+
+        if loc_sel_norm and "birth_location" in df_std_sorted.columns:
+            try:
+                df_std_sorted = df_std_sorted.copy()
+                df_std_sorted["_birth_loc_norm"] = df_std_sorted["birth_location"].apply(_norm_birth_location_val)
+                df_std_sorted = df_std_sorted[df_std_sorted["_birth_loc_norm"] == loc_sel_norm].reset_index(drop=True)
+            except Exception:
+                # Jeżeli filtr nie zadziała (np. nietypowy typ kolumny), pokazujemy pełną listę.
+                pass
+
+        # Insert all rows in A->Z order by ID.
+        for _, row in df_std_sorted.iterrows():
+            pid = str(row.get("id"))
+            lm = state.get("line_memberships", {}).get(pid, None)
+
+            def _cell(v: object) -> str:
+                if v is None:
+                    return ""
+                # NaN check (bez numpy).
+                if isinstance(v, float) and v != v:
+                    return ""
+                return str(v)
+
+            sire_founder = ""
+            sire_steps = ""
+            dam_founder = ""
+            dam_steps = ""
+            if lm is not None:
+                sire_founder = _cell(lm.sire_founder_id) + (f" ({_cell(lm.sire_founder_name)})" if lm.sire_founder_name else "")
+                sire_steps = _cell(lm.sire_steps)
+                dam_founder = _cell(lm.dam_founder_id) + (f" ({_cell(lm.dam_founder_name)})" if lm.dam_founder_name else "")
+                dam_steps = _cell(lm.dam_steps)
+
+            def _norm_line(line_val: object) -> str:
+                if line_val is None:
+                    return "NA"
+                if isinstance(line_val, float) and line_val != line_val:
+                    return "NA"
+                s = str(line_val).strip().upper()
+                if s in {"LB", "LC"}:
+                    return s
+                return "NA"
+
+            line = _norm_line(row.get("line"))
+
+            # Rodzice mogą być poza bazą jako rekordy - wtedy "NA".
+            # Wartości pochodzą bezpośrednio z kolumn Excela (E/J/M):
+            father_line = _norm_line(row.get("father_line"))
+            mother_line = _norm_line(row.get("mother_line"))
+
+            tree.insert(
+                "",
+                "end",
+                values=(
+                    _cell(row.get("id")),
+                    _cell(row.get("name")),
+                    _cell(row.get("sex")),
+                    _cell(row.get("birth_year")),
+                    _cell(row.get("birth_location")),
+                    _cell(row.get("father_id")),
+                    _cell(row.get("mother_id")),
+                    sire_founder,
+                    sire_steps,
+                    dam_founder,
+                    dam_steps,
+                    line,
+                    father_line,
+                    mother_line,
+                ),
+            )
+
+    def _on_birth_location_filter_change(_event: tk.Event | None = None) -> None:
+        if not controls_enabled_ref[0]:
+            return
+        df_cur = state.get("df_std")
+        if df_cur is None or getattr(df_cur, "empty", True):
+            return
+        _refresh_persons_tree_rows(df_cur)
+
+    persons_birth_location_filter_cb.bind("<<ComboboxSelected>>", _on_birth_location_filter_change)
 
     def _apply_dataset(df_std, people, source: str) -> None:
         state["df_std"] = df_std
@@ -4480,75 +5256,28 @@ def run_tk_pro() -> None:
         _set_status(source + f" • {len(df_std)} wierszy")
 
         # Wczytujemy CAŁĄ bazę (bez limitu podglądu).
-        for item in tree.get_children():
-            tree.delete(item)
-        # Insert all rows in A->Z order by ID.
+        # Aktualizacja listy opcji filtra miejsca urodzenia.
         try:
-            df_std_sorted = df_std.sort_values(
-                by="id",
-                key=lambda s: s.astype(str).map(_id_sort_key),
-            ).reset_index(drop=True)
+            if "birth_location" in df_std.columns:
+                uniq: set[str] = set()
+                has_na = False
+                for v in df_std["birth_location"].tolist():
+                    nv = _norm_birth_location_val(v)
+                    if nv == "NA":
+                        has_na = True
+                    else:
+                        uniq.add(nv)
+                opts = ["Bez filtra"] + sorted(uniq, key=lambda s: str(s).lower())
+                if has_na:
+                    opts.append("NA")
+                persons_birth_location_filter_cb.configure(values=opts)
+            else:
+                persons_birth_location_filter_cb.configure(values=["Bez filtra"])
         except Exception:
-            df_std_sorted = df_std
+            persons_birth_location_filter_cb.configure(values=["Bez filtra"])
+        birth_location_filter_var.set("Bez filtra")
 
-        for _, row in df_std_sorted.iterrows():
-            pid = str(row.get("id"))
-            lm = state.get("line_memberships", {}).get(pid, None)
-
-            def _cell(v: object) -> str:
-                if v is None:
-                    return ""
-                # NaN check (bez numpy).
-                if isinstance(v, float) and v != v:
-                    return ""
-                return str(v)
-
-            sire_founder = ""
-            sire_steps = ""
-            dam_founder = ""
-            dam_steps = ""
-            if lm is not None:
-                sire_founder = _cell(lm.sire_founder_id) + (f" ({_cell(lm.sire_founder_name)})" if lm.sire_founder_name else "")
-                sire_steps = _cell(lm.sire_steps)
-                dam_founder = _cell(lm.dam_founder_id) + (f" ({_cell(lm.dam_founder_name)})" if lm.dam_founder_name else "")
-                dam_steps = _cell(lm.dam_steps)
-
-            def _norm_line(line_val: object) -> str:
-                if line_val is None:
-                    return "NA"
-                if isinstance(line_val, float) and line_val != line_val:
-                    return "NA"
-                s = str(line_val).strip().upper()
-                if s in {"LB", "LC"}:
-                    return s
-                return "NA"
-
-            line = _norm_line(row.get("line"))
-
-            # Rodzice mogą być poza bazą jako rekordy - wtedy "NA".
-            # Wartości pochodzą bezpośrednio z kolumn Excela (E/J/M):
-            father_line = _norm_line(row.get("father_line"))
-            mother_line = _norm_line(row.get("mother_line"))
-
-            tree.insert(
-                "",
-                "end",
-                values=(
-                    _cell(row.get("id")),
-                    _cell(row.get("name")),
-                    _cell(row.get("sex")),
-                    _cell(row.get("birth_year")),
-                    _cell(row.get("father_id")),
-                    _cell(row.get("mother_id")),
-                    sire_founder,
-                    sire_steps,
-                    dam_founder,
-                    dam_steps,
-                    line,
-                    father_line,
-                    mother_line,
-                ),
-            )
+        _refresh_persons_tree_rows(df_std)
 
         # Default IDs: first person with at least one parent.
         if not df_std.empty:

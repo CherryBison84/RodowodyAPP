@@ -43,6 +43,7 @@ from app.data.dataset_loader import (
     load_raw_dataframe_from_url,
     standardize_bison_report_dataframe_with_column_mapping,
 )
+from app.config import get_config
 from app.pedigree.ancestor_pedigree import (
     ensure_people_for_nodes,
     get_ancestor_levels_and_edges,
@@ -52,6 +53,8 @@ from app.ui import help_content as hc
 from app.ui.streamlit import common as sc
 import app.ui.streamlit.streamlit_plotting as splt
 from app.visualizations.ancestor_plot import plot_ancestor_pedigree
+
+CFG = get_config()
 
 
 def section_import() -> None:
@@ -106,6 +109,7 @@ def section_import() -> None:
             with m2:
                 line_col = st.selectbox("line", cols, key="map_line")
                 birth_col = st.selectbox("birth_year", cols, key="map_by")
+                birth_loc_col = st.selectbox("birth_location (opcjonalnie)", cols, key="map_bl")
             with m3:
                 father_col = st.selectbox("father_id", cols, key="map_f")
                 mother_col = st.selectbox("mother_id", cols, key="map_m")
@@ -115,6 +119,7 @@ def section_import() -> None:
                     "sex": None if sex_col == "<brak>" else sex_col,
                     "line": None if line_col == "<brak>" else line_col,
                     "birth_year": None if birth_col == "<brak>" else birth_col,
+                    "birth_location": None if birth_loc_col == "<brak>" else birth_loc_col,
                     "father_id": None if father_col == "<brak>" else father_col,
                     "mother_id": None if mother_col == "<brak>" else mother_col,
                 }
@@ -216,10 +221,31 @@ def section_persons(df_std: pd.DataFrame) -> None:
     )
     q = str(search_q).strip()
     filtered = base
+
+    # Filtr miejsca urodzenia (birth_location) — wspólny z Tk.
+    bl_opts: list[str] = ["Bez filtra"]
+    if "birth_location" in base.columns:
+        bl_norm = base["birth_location"].astype(str).str.strip()
+        bl_norm = bl_norm.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+        uniq = sorted(set(bl_norm.tolist()) - {"nan", "None"}, key=str.lower)
+        if "NA" in uniq:
+            uniq = [x for x in uniq if x != "NA"]
+            bl_opts = bl_opts + uniq + ["NA"]
+        else:
+            bl_opts = bl_opts + uniq
+
+    birth_loc_filter = st.selectbox("Filtr miejsca urodzenia (birth_location)", bl_opts, index=0, key="p_birth_loc")
+    if birth_loc_filter and birth_loc_filter != "Bez filtra":
+        loc_norm = filtered["birth_location"].astype(str).str.strip()
+        loc_norm = loc_norm.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+        filtered = filtered.loc[loc_norm == birth_loc_filter].copy()
+        st.caption(f"Po filtrze miejsca ur.: **{len(filtered)}** wierszy (z {len(base)}).")
+
     if q:
-        mask = base["id"].astype(str).str.contains(q, case=False, na=False, regex=False)
-        filtered = base.loc[mask].copy()
-        st.caption(f"Po filtrze ID: **{len(filtered)}** wierszy (z {len(base)}).")
+        before_n = len(filtered)
+        mask = filtered["id"].astype(str).str.contains(q, case=False, na=False, regex=False)
+        filtered = filtered.loc[mask].copy()
+        st.caption(f"Po filtrze ID: **{len(filtered)}** wierszy (z {before_n}).")
 
     sort_col = st.selectbox("Sortuj po kolumnie", options=list(filtered.columns), index=0, key="p_sort")
     asc = st.toggle("Rosnąco (A→Z / małe→duże)", value=True, key="p_asc")
@@ -696,8 +722,10 @@ def section_pair_kinship_analysis(df_std: pd.DataFrame, people: dict) -> None:
 def section_mating_ranking(df_std: pd.DataFrame, people: dict) -> None:
     st.markdown("#### Optymalizacja kojarzeń (ranking par, minimalne F potomka)")
     sc.help_expander("Optymalizacja kojarzeń — interpretacja rankingu", hc.SECTION_MATING)
+    top_n_cfg = int(CFG.mating_ranking_top_n)
+    age_limit_cfg = int(CFG.mating_age_limit_years)
     st.caption(
-        "Filtr wieku: ostatnie 15 lat (jak w Tk). Ranking: do 36 par (najmniejsze Φ = F potomka), "
+        f"Filtr wieku: ostatnie {age_limit_cfg} lat (jak w Tk). Ranking: do {top_n_cfg} par (najmniejsze Φ = F potomka), "
         "R = 2Φ; każdy osobnik w liście wynikowej max 3×. Limity kandydatów ograniczają czas obliczeń."
     )
 
@@ -705,15 +733,29 @@ def section_mating_ranking(df_std: pd.DataFrame, people: dict) -> None:
     mating_depth = st.number_input("Max pokoleń (gdy limit)", 0, 30, 4, key="mat_d", disabled=mating_unbounded)
     c1, c2 = st.columns(2)
     with c1:
-        male_limit = st.number_input("Max samców (M)", 1, 500, 200)
+        male_limit = st.number_input("Max samców (M)", 1, 500, int(CFG.mating_default_male_limit))
     with c2:
-        female_limit = st.number_input("Max samic (F)", 1, 500, 200)
+        female_limit = st.number_input("Max samic (F)", 1, 500, int(CFG.mating_default_female_limit))
 
     cy = datetime.now().year
-    cutoff = cy - 15
+    cutoff = cy - age_limit_cfg
     st.caption(f"Rok odniesienia {cy}: używane osobniki z birth_year ≥ {cutoff}.")
 
-    if st.button("Oblicz ranking kojarzeń (TOP 36)", type="primary", key="mat_go"):
+    # Filtr miejsca urodzenia (spójny z Tk).
+    bl_opts: list[str] = ["Bez filtra"]
+    if "birth_location" in df_std.columns:
+        bl_norm = df_std["birth_location"].astype(str).str.strip()
+        bl_norm = bl_norm.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+        uniq = sorted(set(bl_norm.tolist()) - {"nan", "None"}, key=str.lower)
+        if "NA" in uniq:
+            uniq = [x for x in uniq if x != "NA"]
+            bl_opts = bl_opts + uniq + ["NA"]
+        else:
+            bl_opts = bl_opts + uniq
+
+    birth_loc_filter = st.selectbox("Filtr miejsca urodzenia (birth_location)", bl_opts, index=0)
+
+    if st.button(f"Oblicz ranking kojarzeń (TOP {top_n_cfg})", type="primary", key="mat_go"):
         df_tmp = df_std.copy()
         df_tmp["id"] = df_tmp["id"].astype(str)
         df_tmp["birth_year_num"] = pd.to_numeric(df_tmp.get("birth_year"), errors="coerce")
@@ -722,6 +764,14 @@ def section_mating_ranking(df_std: pd.DataFrame, people: dict) -> None:
         df_tmp = df_tmp[df_tmp["sex"].isin(["M", "F"])]
         df_tmp = df_tmp[df_tmp["birth_year_num"].notna()]
         df_tmp = df_tmp[df_tmp["birth_year_num"] >= float(cutoff)]
+
+        if birth_loc_filter and birth_loc_filter != "Bez filtra":
+            try:
+                loc_norm = df_tmp["birth_location"].astype(str).str.strip()
+                loc_norm = loc_norm.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+                df_tmp = df_tmp[loc_norm == birth_loc_filter]
+            except Exception:
+                pass
 
         males_df = df_tmp[df_tmp["sex"] == "M"].sort_values("birth_year_num", ascending=False)
         females_df = df_tmp[df_tmp["sex"] == "F"].sort_values("birth_year_num", ascending=False)
@@ -738,7 +788,7 @@ def section_mating_ranking(df_std: pd.DataFrame, people: dict) -> None:
             Fs = batch_offspring_inbreeding_F_from_parent_pairs(pairs, people, max_generations_back=max_back)
         ranked_all = sorted(zip(Fs, pairs), key=lambda x: x[0])
         use_count: dict[str, int] = {}
-        top_n = 36
+        top_n = top_n_cfg
         max_uses = 3
         ranked: list[tuple[float, tuple[str, str]]] = []
         for fv, (sire_id, dam_id) in ranked_all:
@@ -956,6 +1006,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         "Kompletność struktury rodzin",
         "Trend F i RIA — płeć",
         "Trend F i RIA — linie",
+        "PCL vs MG — ANC i RP",
     ]
     tabs = st.tabs(tab_names)
 
@@ -1094,6 +1145,154 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             key="dl_inb_line",
         )
 
+    with tabs[13]:
+        st.caption("PCL_max (a_MG/2^MG) w funkcji MG: Ancestors (ANC) vs Reference Population (RP).")
+
+        # Pamiętaj: ten wykres jest kosztowny na dużych bazach.
+        MAX_RP_IDS = 160
+        MAX_ANC_IDS = 450
+
+        # RP: kohorta aktywna (jak w poprzednich metrykach) => birth_year >= birth_year_min.
+        cy = int(act.reference_year)
+        lo = int(act.birth_year_min)
+
+        def _parse_year(v: object) -> int | None:
+            if v is None:
+                return None
+            try:
+                if isinstance(v, float) and v != v:
+                    return None
+            except Exception:
+                pass
+            try:
+                y = int(float(v))
+            except Exception:
+                return None
+            if y < 1800 or y > cy + 1:
+                return None
+            return y
+
+        df_rp = df_std.copy()
+        df_rp["id"] = df_rp["id"].astype(str)
+        df_rp = df_rp[df_rp["id"] != TEST_ID].reset_index(drop=True)
+        if "birth_year" not in df_rp.columns:
+            st.info("Brak kolumny `birth_year` — nie da się zdefiniować RP.")
+            st.stop()
+
+        df_rp["_y"] = df_rp["birth_year"].map(_parse_year)
+        df_rp = df_rp[df_rp["_y"].notna() & (df_rp["_y"] >= lo)]
+        rp_ids_all = sorted(df_rp["id"].astype(str).unique().tolist(), key=sc.id_sort_key)
+        if not rp_ids_all:
+            st.info("Brak osób w RP (kohorcie aktywnej) dla bieżących ustawień.")
+            st.stop()
+
+        rp_ids = rp_ids_all
+        rp_note = ""
+        if len(rp_ids_all) > MAX_RP_IDS:
+            rp_ids = rp_ids_all[:MAX_RP_IDS]
+            rp_note = f" (z próby {MAX_RP_IDS} z {len(rp_ids_all)})"
+
+        # ANC: unia przodków wszystkich RP (tylko identyfikatory obecne w `people`).
+        anc_ids_set: set[str] = set()
+        with st.spinner("Liczenie MG i kompletności dla ANC/RP…"):
+            for pid in rp_ids:
+                levels = get_ancestor_levels_unbounded(person_id=str(pid), people=people)
+                for aid, lvl in levels.items():
+                    if lvl is None:
+                        continue
+                    try:
+                        g = int(lvl)
+                    except Exception:
+                        continue
+                    if g <= 0:
+                        continue
+                    if aid in people:
+                        anc_ids_set.add(str(aid))
+
+            anc_ids_all = sorted(anc_ids_set, key=sc.id_sort_key)
+            if anc_ids_all:
+                anc_ids = anc_ids_all
+            else:
+                anc_ids = []
+
+            anc_note = ""
+            if len(anc_ids_all) > MAX_ANC_IDS:
+                anc_ids = anc_ids_all[:MAX_ANC_IDS]
+                anc_note = f" (z próby {MAX_ANC_IDS} z {len(anc_ids_all)})"
+
+            pcl_mg_cache: dict[str, tuple[int, float]] = {}
+
+            def _pcl_max_and_mg(pid: str) -> tuple[int, float]:
+                if pid in pcl_mg_cache:
+                    return pcl_mg_cache[pid]
+                levels_u = get_ancestor_levels_unbounded(person_id=str(pid), people=people)
+                by_gen: dict[int, int] = {}
+                for _aid, lvl in levels_u.items():
+                    if lvl is None:
+                        continue
+                    try:
+                        g = int(lvl)
+                    except Exception:
+                        continue
+                    if g <= 0:
+                        continue
+                    by_gen[g] = by_gen.get(g, 0) + 1
+                if not by_gen:
+                    pcl_mg_cache[pid] = (0, 0.0)
+                    return 0, 0.0
+                mg = int(max(by_gen.keys()))
+                a_mg = float(by_gen.get(mg, 0))
+                pcl_max = a_mg / float(2**mg) if mg > 0 else 0.0
+                pcl_mg_cache[pid] = (mg, pcl_max)
+                return mg, pcl_max
+
+            rp_rows = []
+            for pid in rp_ids:
+                mg, pcl_max = _pcl_max_and_mg(str(pid))
+                if mg > 0:
+                    rp_rows.append({"MG": mg, "PCL_max": pcl_max, "Grupa": "RP (horses)"})
+
+            anc_rows = []
+            for pid in anc_ids:
+                mg, pcl_max = _pcl_max_and_mg(str(pid))
+                if mg > 0:
+                    anc_rows.append({"MG": mg, "PCL_max": pcl_max, "Grupa": "ANC (ancestors)"})
+
+        if not rp_rows and not anc_rows:
+            st.info("Brak danych do wykresu PCL_max vs MG (MG=0 dla wszystkich).")
+            st.stop()
+
+        df_plot = pd.DataFrame(rp_rows + anc_rows)
+        st.caption(f"RP={len(rp_rows)} wykresowych koni{rp_note}; ANC={len(anc_rows)} przodków{anc_note}.")
+
+        colors_map = {
+            "ANC (ancestors)": sc.THEME.BUTTON_BG,
+            "RP (horses)": sc.THEME.BUTTON_BG2,
+        }
+
+        fig, ax = plt.subplots(figsize=(9, 6))
+        for grp, sub in df_plot.groupby("Grupa"):
+            c = colors_map.get(grp, sc.THEME.EDGE_PLOT)
+            ax.scatter(sub["MG"], sub["PCL_max"], s=14, alpha=0.45, color=c, label=grp)
+            by_mg = sub.groupby("MG")["PCL_max"].mean().sort_index()
+            ax.plot(by_mg.index.tolist(), by_mg.values.tolist(), color=c, linewidth=2, alpha=0.9)
+
+        ax.set_title("PCL_max (a_MG/2^MG) vs MG — ANC vs RP")
+        ax.set_xlabel("MG (Maximum Generations Traced)")
+        ax.set_ylabel("PCL_max = a_MG / 2^MG")
+        ax.set_ylim(0, 1.05)
+        ax.grid(True, alpha=0.25)
+        ax.legend(loc="best")
+        st.pyplot(fig, width="stretch")
+
+        st.download_button(
+            "Zapis wykresu (JPEG)",
+            data=_figure_to_jpeg_bytes(fig),
+            file_name="pop_PCLmax_vs_MG_ANC_RP.jpeg",
+            mime="image/jpeg",
+            key="dl_pclmax_mg",
+        )
+
 
 def section_reports() -> None:
     st.markdown("### Raportowanie")
@@ -1120,6 +1319,59 @@ def section_reports() -> None:
             )
             lines.append("=== Populacja (skrót) ===")
             lines.append(f"n={stats.n}, mean F={stats.inbreeding.mean_F:.6f}, mean PCI={stats.completeness.mean_PCI:.4f}")
+            lines.append(f"f_e={stats.founders.f_e:.4f}, f_a={stats.founders.f_a:.4f}")
+            lines.append(
+                f"LB={stats.line_counts.get('LB', 0)}, LC={stats.line_counts.get('LC', 0)}, NA={stats.line_counts.get('NA', 0)}"
+            )
+
+            # Mean kinship dla spójności z Tk.
+            try:
+                id_list = [str(x) for x in df_std["id"].tolist()]
+                mk_phi, mk_r, mk_note = mean_kinship_pairwise(
+                    people,  # type: ignore[arg-type]
+                    id_list,
+                    max_generations_back=4,
+                )
+                if mk_phi is not None and mk_r is not None:
+                    lines.append(f"mean kinship: Φ={mk_phi:.6f}, R={mk_r:.6f}")
+                    if mk_note:
+                        lines.append(f"mean kinship — uwaga: {mk_note}")
+            except Exception:
+                pass
+
+            # GI i rodziny pełnego rodzeństwa.
+            try:
+                gi_data = compute_gi_and_family_data(df_std, people)
+                gi_bits: list[str] = []
+                if gi_data.get("gi_all") is not None:
+                    gi_bits.append(f"GI={float(gi_data['gi_all']):.2f} lat")
+                if gi_data.get("gi_fs") is not None:
+                    gi_bits.append(f"O->S={float(gi_data['gi_fs']):.2f}")
+                if gi_data.get("gi_fd") is not None:
+                    gi_bits.append(f"O->C={float(gi_data['gi_fd']):.2f}")
+                if gi_data.get("gi_ms") is not None:
+                    gi_bits.append(f"M->S={float(gi_data['gi_ms']):.2f}")
+                if gi_data.get("gi_md") is not None:
+                    gi_bits.append(f"M->C={float(gi_data['gi_md']):.2f}")
+                if gi_bits:
+                    lines.append("GI: " + ", ".join(gi_bits))
+                fam = gi_data.get("family_sizes") or []
+                if fam:
+                    lines.append(
+                        f"rodziny pełnego rodzeństwa: n={len(fam)}, średnia wielkość={float(sum(fam))/float(len(fam)):.2f}"
+                    )
+            except Exception:
+                pass
+
+            # Top miejsc urodzenia po dodaniu birth_location.
+            try:
+                if "birth_location" in df_std.columns:
+                    loc = df_std["birth_location"].astype(str).str.strip()
+                    loc = loc.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+                    top = loc.value_counts(dropna=False).head(8).to_dict()
+                    lines.append("miejsce urodzenia (top): " + " | ".join([f"{k}={int(v)}" for k, v in top.items()]))
+            except Exception:
+                pass
         except Exception as e:
             lines.append(f"Błąd metryk: {e}")
     text = "\n".join(lines)

@@ -9,13 +9,13 @@ import sys
 from typing import Any, Tuple, Union
 
 # Rozmiary (pt) — jeden zestaw dla Tk / ttk
-TK_PT_LABEL = 12
-TK_PT_BUTTON = 11
-TK_PT_ENTRY = 11
-TK_PT_TREE = 11
-TK_PT_NOTEBOOK_TAB = 11
-TK_PT_SMALL = 10
-TK_PT_HELP_BODY = 15
+TK_PT_LABEL = 13
+TK_PT_BUTTON = 12
+TK_PT_ENTRY = 12
+TK_PT_TREE = 12
+TK_PT_NOTEBOOK_TAB = 12
+TK_PT_SMALL = 11
+TK_PT_HELP_BODY = 16
 
 # Kolejność dla CSS / matplotlib (pierwsza dostępna w systemie)
 FONT_STACK_SANS: list[str] = [
@@ -117,13 +117,13 @@ def apply_matplotlib_fonts() -> None:
         {
             "font.family": "sans-serif",
             "font.sans-serif": FONT_STACK_SANS[:-1],
-            "font.size": 11,
-            "axes.titlesize": 12,
-            "axes.labelsize": 11,
-            "xtick.labelsize": 10,
-            "ytick.labelsize": 10,
-            "legend.fontsize": 10,
-            "figure.titlesize": 13,
+            "font.size": 12,
+            "axes.titlesize": 13,
+            "axes.labelsize": 12,
+            "xtick.labelsize": 11,
+            "ytick.labelsize": 11,
+            "legend.fontsize": 11,
+            "figure.titlesize": 14,
         }
     )
     _mpl_configured = True

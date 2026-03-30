@@ -11,6 +11,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from app.analytics.inbreeding_wright import wright_inbreeding_F
 from app.analytics.population_genetics import compute_population_genetics_stats
+from app.config import get_config
 from app.pedigree.ancestor_pedigree import (
     ensure_people_for_nodes,
     get_ancestor_levels_and_edges,
@@ -18,8 +19,11 @@ from app.pedigree.ancestor_pedigree import (
 )
 from app.visualizations.ancestor_plot import plot_ancestor_pedigree
 
-# Zgodnie z gui_pro.POP_FOUNDERS_PI_TOP_N (unikamy importu cyklicznego gui_pro → report_helpers).
-_POP_FOUNDERS_PI_TOP_N = 20
+_CFG = get_config()
+
+# Zgodnie z konfiguracją aplikacji (unikamy importu cyklicznego gui_pro → report_helpers).
+_POP_FOUNDERS_PI_TOP_N = int(_CFG.report_founders_top_n)
+_REPORT_BIRTH_LOC_TOP_N = int(_CFG.report_birth_location_top_n)
 
 
 def write_text_pages_to_pdf(pdf: PdfPages, *, text: str) -> None:
@@ -224,6 +228,54 @@ def build_population_report_figures(
             ax2.grid(True, alpha=0.2)
             figs.append(fig)
 
+            # Trend F po roku urodzenia (średnia roczna) + wygładzenie prostą średnią kroczącą.
+            try:
+                import pandas as pd
+
+                dft = df_std.copy()
+                dft["id"] = dft["id"].astype(str)
+                dft["birth_year_num"] = pd.to_numeric(dft.get("birth_year"), errors="coerce")
+                dft = dft[dft["birth_year_num"].notna()].copy()
+                dft["birth_year_num"] = dft["birth_year_num"].astype(int)
+
+                # F per osobnik z people (spójny limit pokoleń z raportem).
+                f_map: dict[str, float] = {}
+                for pid in dft["id"].tolist():
+                    if pid in f_map:
+                        continue
+                    if pid not in people:
+                        continue
+                    try:
+                        f_map[pid] = float(
+                            wright_inbreeding_F(
+                                person_id=pid,
+                                people=people,  # type: ignore[arg-type]
+                                max_generations_back=max_generations_back,
+                            ).F
+                        )
+                    except Exception:
+                        continue
+                dft["_F"] = dft["id"].map(lambda x: f_map.get(str(x)))
+                dft = dft[dft["_F"].notna()].copy()
+
+                if not dft.empty:
+                    grp = dft.groupby("birth_year_num")["_F"].mean().sort_index()
+                    yy = grp.index.tolist()
+                    ff = grp.values.tolist()
+                    smooth = grp.rolling(window=7, center=True, min_periods=1).mean()
+
+                    fig_t, ax_t = plt.subplots(figsize=(8.2, 4.1), dpi=100)
+                    ax_t.plot(yy, ff, color="black", alpha=0.25, linewidth=1.0, label="średnia roczna F")
+                    ax_t.plot(yy, smooth.values.tolist(), color=colors.ACCENT, linewidth=2.2, label="trend (window=7)")
+                    ax_t.set_title("Trend F po roku urodzenia")
+                    ax_t.set_xlabel("Rok urodzenia")
+                    ax_t.set_ylabel("F (średnia)")
+                    ax_t.grid(True, alpha=0.25)
+                    ax_t.legend(loc="best", fontsize=8)
+                    figs.append(fig_t)
+            except Exception:
+                pass
+
         if stats.founder_contributions:
             items = sorted(stats.founder_contributions.items(), key=lambda kv: kv[1], reverse=True)[
                 :_POP_FOUNDERS_PI_TOP_N
@@ -238,6 +290,28 @@ def build_population_report_figures(
             axb.set_ylabel("p_i (znorm.)")
             axb.tick_params(axis="x", labelsize=7, rotation=75)
             figs.append(fig_b)
+
+        # Rozkład miejsc urodzenia (top 12) po dodaniu birth_location.
+        try:
+            if "birth_location" in df_std.columns:
+                import pandas as pd
+
+                s = df_std["birth_location"].astype(str).str.strip()
+                s = s.replace({"": "NA", "nan": "NA", "None": "NA", "NaN": "NA"})
+                vc = s.value_counts(dropna=False).head(_REPORT_BIRTH_LOC_TOP_N)
+                if len(vc) > 0:
+                    fig_loc, ax_loc = plt.subplots(figsize=(9.2, 4.2), dpi=100)
+                    labels = [str(x) for x in vc.index.tolist()]
+                    vals = [int(x) for x in vc.values.tolist()]
+                    ax_loc.bar(labels, vals, color=colors.BUTTON_BG, edgecolor=colors.ACCENT)
+                    ax_loc.set_title("Miejsce urodzenia — top kategorii")
+                    ax_loc.set_xlabel("Miejsce urodzenia")
+                    ax_loc.set_ylabel("Liczba osobników")
+                    ax_loc.tick_params(axis="x", labelsize=8, rotation=45)
+                    ax_loc.grid(True, axis="y", alpha=0.2)
+                    figs.append(fig_loc)
+        except Exception:
+            pass
     except Exception:
         pass
 

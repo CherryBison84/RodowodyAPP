@@ -41,7 +41,7 @@ def apply_page_style() -> None:
         .stApp {{
             background-color: {THEME.APP_BG};
             color: {THEME.TEXT};
-            font-size: 1.0625rem;
+            font-size: 1.1458rem; /* ~+1pt względem 1.0625rem */
             line-height: 1.55;
         }}
         .stApp .main .block-container,
