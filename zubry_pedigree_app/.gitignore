@@ -1,4 +1,6 @@
 .venv/
+.venv-qt/
+.idea/
 __pycache__/
 .pytest_cache/
 .DS_Store
@@ -6,4 +8,6 @@ __pycache__/
 dist/
 build/
 *.egg-info/
-/.venv-qt/lib/python3.12/site-packages/docx/templates/default-docx-template/[Content_Types].xml
+.mplconfig/
+.mpl_cache/
+.cache/

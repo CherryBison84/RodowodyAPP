@@ -15,7 +15,7 @@ GLOSSARY = """
 - **Limit pokoleń** — możesz ograniczyć, jak głęboko program schodzi wstecz przy liczeniu F. **Bez limitu** schodzi tak daleko, jak pozwalają dane, aż do osób bez dalszych rodziców w bazie.
 - **Wykres F a maksymalna głębokość** — pokazuje, czy wynik F „ustabilizował się”, gdy zwiększasz liczbę pokoleń. Jeśli od pewnego poziomu krzywa się już prawie nie zmienia, dalsze pokolenia niewiele dodają — to częsty znak, że w tym fragmencie rodowodu dane są w miarę pełne.
 
-*(Te pojęcia wywodzą się z prac Sewalla Wrighta z lat 20. XX w.; pełne cytowania: sekcja **Literatura — źródła metod** w panelu bocznym.)*
+*(Te pojęcia wywodzą się z prac Sewalla Wrighta z lat 20. XX w.; pełne cytowania: sekcja **Literatura — źródła metod** na dole strony, w bloku pomocy.)*
 
 ### Jak „pełny” jest rodowód u jednego osobnika
 - **MG** — do jakiego **najdalszego poziomu przodków** (pokolenia wstecz) w ogóle coś wiemy w zapisanym drzewie.
@@ -76,7 +76,7 @@ SECTION_VALIDATION = """
 
 Status **OK** znaczy: **nie znaleziono błędów krytycznych**. **Ostrzeżenia** warto przejrzeć przed wnioskami hodowlanymi — często da się je zrozumieć po historii danych lub po poprawce pojedynczych pól.
 
-**Mapa braków (walidacja):** poziomy pas pól wyłącznie dla **kolumn schematu importu** (model aplikacji / raport), nie dla dodatkowych kolumn z arkusza — najpierw **kolejność jak w Rejestrze osobniczym**, potem pozostałe alfabetycznie. W każdym polu **nazwa kolumny** i **% wierszy z luką** (NaN, puste, „nan”); przy umiarkowanej liczbie kolumn także **(liczba braków / n wierszy)**. Kolory **leśne** (jasna mgła = mało braków, ciemniejszy mech/kora = więcej); pod mapą **pasek skali** 0–100 % braków.
+**Mapa braków (walidacja):** poziomy pas pól wyłącznie dla **kolumn schematu importu** (model aplikacji / raport), nie dla dodatkowych kolumn z arkusza. W pasie tylko **% wierszy z luką** (NaN, puste, „nan”); **nazwy kolumn** ukośnie pod pasem. Kolory **leśne** (jasna mgła = mało braków, ciemniejszy mech/kora = więcej), bez osobnego paska legendy — dokładne % w każdej komórce. Pełna tabela % jest w rozwijanej sekcji poniżej mapy.
 
 **Eksport CSV:** możesz pobrać listę problemów (**id**, **waga** ERROR/WARN, **typ_problemu**, **szczegoly**) — do filtrowania i poprawy w Excelu. Dla problemów dotyczących całej bazy (np. cykl w rodowodzie) w kolumnie id jest `_GLOBAL_`.
 """
@@ -129,23 +129,44 @@ SECTION_MATING = """
 
 
 SECTION_POPULATION = """
-## Populacja — liczby u góry
+## Parametry populacyjne
 
-- **n** — ile osobników jest w analizie (bez rekordu testowego).
-- **Średnie F** — średnia F po osobnikach przy wybranym limicie dla populacji.
-- **Mean kinship Φ̄** i **średnie R (2Φ̄)** — średnia współzgodności po parach i≠j (przy dużym stadzie: losowa próba; patrz słownik).
-- **f_e, f_a** — miary związane z **założycielami** i różnorodnością genów (patrz słownik).
-- **RIA % (globalna)** — odsetek osobników z F > 0 przy tym samym limicie pokoleń co reszta sekcji.
-- **f_ge** — liczba odrębnych identyfikatorów założycielskich w modelu wkładów (founder-stop), tj. rozmiar listy średnich wkładów p_i.
-- **% braków rodziców** — albo odsetek **rekordów** z brakiem ojca lub matki, albo odsetek **pustych slotów** (ojciec+matka) względem 2n.
-- **Kohorta aktywna** — osobnicy urodzeni w ostatnich X latach (rok ur.); **reproduktorzy** — unikalne ID ojca/matki przy urodzeniach potomstwa w tym samym oknie; wersja „w koh.” ogranicza do płci zgodnej z kohortą.
-- **Koncentracja ojców** — jaki udział potomstwa z **znanym ojcem** przypada na 5 lub 10 najczęściej używanych ojców.
-- Zakładka **Okresy kohortowe, ryzyko linii…** — porównanie urodzeń 1950–1980 / 1981–2000 / 2001–dziś, uproszczony ranking „ryzyka” dla linii LB i LC oraz wykresy trendu reproduktorów i udziału linii w czasie.
-- **Założyciele (brak ojca lub matki)** — ile rekordów ma **dziurę** po jednej ze stron rodziców — ważne przy interpretacji F i metryk potomstwa.
-- Ustawienia **F** (z limitem lub bez) wpływają też na histogram F i trendy **F / RIA**.
+Metryki **na dashboardzie** są pogrupowane tematycznie (nagłówki z kolorową krawędzią); **liczby** w danej grupie są w tym samym kolorze akcentu co sekcja. **Wykresy** wybiera się z pięciu zakładek (również w tych kolorach), a w każdej zakładce — konkretny podwykres. Objaśnienia: **?** przy etykiecie. Pełniejsze definicje: **Słownik parametrów** na dole strony.
 
-**N_e** w podpisie to tylko **szacunek z trendów** — nie traktuj go jak wyniku z programu hodowlanego klasy stricte eksperckiej.
+**N_e** (pod metrykami) to uproszczony Szacunek z trendów **F** i **GI** — wyłącznie orientacyjnie.
+
+Pod dashboardem: **dwa rzędy przycisków** (menu wykresów) — urodzenia, kompletność, **F**, założyciele **p_i**, **GI**, rodziny, trendy **F/RIA**, PCL itd. Tekst **Interpretacja** zależy od opcji „rozwinięte podpowiedzi” nad dashboardem.
 """
+
+# Podpowiedzi pod ikoną ? (st.metric / kontrolki) — sekcja Populacja
+POPULATION_METRIC_HELP = {
+    "n": "Liczba osobników w tej analizie (pomijany jest rekord testowy).",
+    "mean_f": "Średnia wartość współczynnika inbredu Wrighta **F** po osobnikach — przy tym samym limicie pokoleń co ustawienia powyżej (lub bez limitu).",
+    "fe": "**f_e** — efektywna liczba założycieli: 1/Σp_i² z rozkładu średnich wkładów genów **p_i** (founder-stop).",
+    "fa": "**f_a** — druga miara różnorodności założycieli (founder-stop); definicja jak w słowniku parametrów.",
+    "ria": "**RIA** — odsetek osobników z **F > 0** przy tym samym limicie liczenia **F** co reszta sekcji.",
+    "fge": "**f_ge** — liczba odrębnych identyfikatorów „założycielskich” w modelu wkładów (rozmiar listy średnich **p_i**).",
+    "eg": "**EG** — średnia z miary równoważnych pełnych pokoleń rodowodu (głębokość i kompletność); szczegóły w słowniku.",
+    "gi": "**GI** — średni odstęp międzypokoleniowy w latach (łączy ścieżki ojciec→dziecko i matka→dziecko).",
+    "ne": "**N_e** — uproszczony szacunek efektywnej wielkości populacji z trendów średniego F i GI; wyłącznie orientacyjnie.",
+    "pct_par": "Odsetek **rekordów**, w których brakuje ojca lub matki w polu.",
+    "pct_slot": "Odsetek **pustych slotów** rodziców względem 2n (dwa sloty na osobnika).",
+    "founders_n": "Liczba rekordów traktowanych jak **założyciele** (brak co najmniej jednego rodzica w danych).",
+    "conc": "Koncentracja kojarzeń: jaki % potomstwa z **znanym ojcem** przypada na 5 i 10 najczęściej występujących ojców.",
+    "coh_n": "Liczba osobników urodzonych w ostatnich X latach (rok ur.); X ustawiasz polem „Kohorta aktywna” powyżej.",
+    "coh_mf": "W tym samym oknie lat: liczba samców i samic.",
+    "repr_all": "**Reproduktorzy** w całej bazie: ile różnych ojców i matek wystąpiło jako rodzic przy znanych urodzeniach potomstwa.",
+    "repr_coh": "Reproduktorzy w odniesieniu do potomstwa z tej samej kohorty aktywnej co metryki obok.",
+}
+
+POPULATION_CONTROL_HELP = {
+    "verbose": "Gdy włączone, bloki „Interpretacja” pod wykresami w zakładkach otwierają się domyślnie rozwinięte.",
+    "f_ub": "Bez limitu: **F** liczone wstecz aż do founderów (wolniejsze na dużych bazach).",
+    "f_dep": "Przy włączonym limicie: maksymalna głębokość pokoleń wstecz przy liczeniu **F** dla populacji i trendów.",
+    "act_y": "Szerokość okna w latach (od bieżącego roku wstecz) dla **koherty aktywnej** — rok urodzenia.",
+    "vuln_r": "Dla tabeli ryzyka linii: ile ostatnich lat urodzeń wziąć pod uwagę.",
+    "vuln_a": "Szerokość okna „aktywnych” lat dla drugiej części heurystyki ryzyka linii (LB/LC).",
+}
 
 
 SECTION_REPORTS = """
@@ -271,39 +292,28 @@ Zakres obliczeń (skrót)
 — GI: odstępy międzypokoleniowe z różnic lat urodzenia (ścieżki ojciec/matka → potomek).
 — N_e: przybliżenie z trendu średniego F i średniego GI — wyłącznie orientacyjnie.
 — Walidacja: kontrola ID, referencji rodziców, cykli, self-parent, płci, lat, spójności linii.
-
-Pełniejsze objaśnienia: rozwijane sekcje w **panelu bocznym** (Słownik, Walidacja, Literatura itd.).
-Wersja oprogramowania i parametry obliczeń (limity pokoleń, filtry) należy podać przy cytowaniu
-wyników z konkretnej sesji.
 """.strip()
 
 
 SECTION_REFERENCES = """
 ## Literatura — skąd biorą się metody
 
-Poniżej **klasyczne i często cytowane** pozycje, do których nawiązują pojęcia używane w rodowodowej genetyce. **Wynik w aplikacji** zależy zawsze od **jakości i głębokości Twojej bazy** — program liczy z tego, co jest zapisane jako rodzice i daty.
+Poniżej **podstawowe i w dalszym ciągu standardowo cytowane** pozycje w genetyce ilościowej i analizie rodowodów (z aktualnymi identyfikatorami DOI, gdzie są ustalone). **Wynik w aplikacji** zależy od **jakości i kompletności Twojej bazy** (zapis rodziców i dat).
 
-1. **Współczynnik inbredu i pokrewieństwa (F, Φ)** — Wright, S. (1922). *Coefficients of inbreeding and relationship.* The American Naturalist **56**, 330–338. DOI: 10.1086/279872.  
-   Wprowadzenie podręcznikowe: Falconer, D. S., & Mackay, T. F. C. (1996). *Introduction to Quantitative Genetics* (4th ed.). Longman — rozdziały o pokrewieństwie i inbredzie.
+1. **Inbred (F), pokrewieństwo (Φ), współczynnik relacji** — Wright, S. (1922). *Coefficients of inbreeding and relationship.* The American Naturalist **56**, 330–338. https://doi.org/10.1086/279872  
+   Wprowadzenie podręcznikowe: Falconer, D. S., & Mackay, T. F. C. (1996). *Introduction to Quantitative Genetics* (4th ed.). Pearson / Longman.  
+   Współczesne ujęcie (ścieżki genealogiczne, selekcja, demografia genetyczna): Walsh, B., & Lynch, M. (2018). *Evolution and Selection of Quantitative Traits*. Oxford University Press.
 
-2. **Teoria pokrewieństwa (w tle wag Malecot dla ścieżek genealogicznych)** — Malécot, G. (1948). *Les mathématiques de l'hérédité*. Masson et Cie, Paris.  
-   Nowsze ujęcie całościowe: Lynch, M., & Walsh, B. (1998). *Genetics and Analysis of Quantitative Traits.* Sinauer.
+2. **Teoria pokrewieństwa (identity by descent, ścieżki w rodowodzie)** — Malécot, G. (1948). *Les mathématiques de l'hérédité*. Masson, Paris — klasyka modelu; formalizm i notacja w Walsh & Lynch (2018).
 
-3. **Prawdopodobieństwa pochodzenia genów, p_i, różnorodność z rodowodu** — Boichard, D., Maignel, L., & Verrier, É. (1997). *The value of using probabilities of gene origin to measure genetic variability in a population.* Genetics Selection Evolution **29**(1), 5–23.  
-   (Bardzo bliskie temu, co hodowcy nazywają analizą wkładu założycieli / „gene origin”.)
+3. **Prawdopodobieństwa pochodzenia genów (p_i, „gene origin”)** — Boichard, D., Maignel, L., & Verrier, É. (1997). *The value of using probabilities of gene origin to measure genetic variability in a population.* Genetics Selection Evolution **29**, 5–23. https://doi.org/10.1186/1297-9686-29-1-5
 
-4. **Reprezentacja fundatorów w rodowodzie (founder equivalents / genome equivalents)** — Lacy, R. C. (1989). *Analysis of founder representation in pedigrees: founder equivalents and founder genome equivalents.* Zoo Biology **8**, 111–123.
+4. **Fundatorzy w rodowodzie — founder equivalents / founder genome equivalents** — Lacy, R. C. (1989). *Analysis of founder representation in pedigrees: founder equivalents and founder genome equivalents.* Zoo Biology **8**, 111–123. https://doi.org/10.1002/zoo.1430080202
 
-5. **Przykład pracy z dużą bazą rodowodową i inbredem** — MacCluer, J. W., Boyce, A. J., Dyke, B., Weitkamp, L. R., Pfenning, D. W., & Parsons, C. J. (1983). *Inbreeding and pedigree structure in Standardbred horses.* Journal of Heredity **74**, 27–33.  
-   (Ilustruje, jak jakość rodowodu wpływa na sens metryk populacyjnych.)
+5. **Odstęp pokoleniowy (generation interval, GI)** — definicje i związek z pracą selekcji: rozdziały w Falconer & Mackay (1996) oraz w Walsh & Lynch (2018).
 
-6. **Długość pokolenia (Generation Interval)** — definicje i zastosowania w hodowli: Falconer & Mackay (1996); u zwierząt gospodarskich także prace przeglądowe w czasopismach typu *Journal of Animal Science* / *Journal of Animal Breeding and Genetics*.
-
-7. **Efektywna wielkość populacji N_e a tempo inbredu** — klasyczny związek w idealizowanych modelach: Wright, S. (1931). *Evolution in Mendelian populations.* Genetics **16**, 97–159; omówienia w Falconer & Mackay oraz Lynch & Walsh. **Szacunek N_e w tej aplikacji** jest uproszczony i oparty na trendach z Twoich danych — traktuj go orientacyjnie.
-
-*Jeśli cytujesz wyniki z programu w pracy naukowej lub raporcie hodowlanym, opisz proszę wersję oprogramowania, parametry (limity pokoleń, filtry) oraz źródło danych.*
-
-**PDF do cytowań:** przycisk **Pobierz przewodnik metod (PDF)** w panelu bocznym udostępnia skrócony **Przewodnik metod** (ten skrót + bibliografia poniżej).
+6. **Efektywna wielkość populacji (N_e) a tempo inbredu** — Wright, S. (1931). *Evolution in Mendelian populations.* Genetics **16**, 97–159. https://doi.org/10.1093/genetics/16.2.97  
+   Omówienia: Falconer & Mackay (1996); Walsh & Lynch (2018). **W programie** szacunek N_e jest uproszczony (trendy z wczytanych danych) — **tylko orientacyjnie**.
 """
 
 

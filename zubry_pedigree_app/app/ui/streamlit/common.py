@@ -5,6 +5,7 @@ oraz skróty do bloków „Pomoc” na stronie.
 
 from __future__ import annotations
 
+import html
 import re
 
 import pandas as pd
@@ -18,6 +19,77 @@ from app.ui.theme import Theme
 from app.ui.typography import apply_matplotlib_fonts, css_font_family
 
 THEME = Theme()
+
+
+def population_dashboard_metric(
+    label: str,
+    value: str,
+    *,
+    accent: str,
+    panel_bg: str,
+    help_text: str | None = None,
+) -> None:
+    """Jedna metryka dashboardu populacji: wartość w kolorze akcentu sekcji (jak nagłówek grupy)."""
+    th = THEME
+    lab = html.escape(label)
+    val = html.escape(value)
+    tip = html.escape(help_text) if help_text else ""
+    help_badge = (
+        f'<span style="cursor:help;color:{th.MUTED};font-size:0.78rem;margin-left:5px;" title="{tip}">?</span>'
+        if tip
+        else ""
+    )
+    st.markdown(
+        f'<div style="background:{panel_bg};border-left:4px solid {accent};border-radius:10px;'
+        f"padding:10px 14px 12px;border:1px solid rgba(30,43,36,0.1);min-height:4.6rem;\">"
+        f'<div style="display:flex;align-items:baseline;flex-wrap:wrap;color:{th.MUTED};font-size:0.875rem;">'
+        f"<span>{lab}</span>{help_badge}</div>"
+        f'<div style="color:{accent};font-weight:700;font-size:1.48rem;line-height:1.2;margin-top:7px;'
+        f'font-variant-numeric: tabular-nums;">{val}</div>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def population_viz_tabs_css(*, widget_key: str = "pop_chart_viz_tabs") -> str:
+    """
+    Style zakładek wykresów populacji — kolory jak sekcje dashboardu.
+    Wymaga `st.tabs(..., key=widget_key)`; Streamlit dodaje klasę `st-key-<key>`.
+    """
+    th = THEME
+    pairs = [
+        (th.EDGE_PLOT, th.PANEL_BG2),
+        (th.ACCENT, th.ENTRY_BG),
+        (th.LINK, th.PANEL_BG),
+        (th.COMPLETENESS_ACCENT, th.TREE_BG),
+        (th.EDGE_PLOT, th.TAB_BG),
+    ]
+    sel = f".st-key-{widget_key}"
+    parts: list[str] = []
+    for i, (ac, bg) in enumerate(pairs, start=1):
+        parts.append(
+            f"{sel} [data-baseweb=\"tab-list\"] [data-baseweb=\"tab\"]:nth-child({i}){{"
+            f"background-color:{bg}!important;border-top:3px solid {ac}!important;"
+            f"color:{th.TEXT}!important;}}"
+            f"{sel} [data-baseweb=\"tab-list\"] [data-baseweb=\"tab\"]:nth-child({i})[aria-selected=\"true\"]{{"
+            f"box-shadow:inset 0 -3px 0 {ac}!important;font-weight:600!important;}}"
+        )
+    return f"<style>{''.join(parts)}</style>"
+
+
+def population_dashboard_group_header(
+    title: str, description: str, *, accent: str, background: str
+) -> None:
+    """Tematyczna grupa metryk: nagłówek z kolorową krawędzią (dashboard populacji)."""
+    th = THEME
+    st.markdown(
+        f'<div style="background:{background};border-left:4px solid {accent};padding:11px 14px 9px;'
+        f"border-radius:10px;margin:14px 0 6px 0;border:1px solid rgba(30,43,36,0.11);\">"
+        f'<div style="font-weight:700;font-size:1.02rem;color:{th.TEXT};letter-spacing:0.01em;">{title}</div>'
+        f'<div style="font-size:0.82rem;color:{th.MUTED};margin-top:4px;line-height:1.4;">{description}</div>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def help_expander(title: str, body: str, *, expanded: bool = False) -> None:
@@ -161,10 +233,6 @@ def apply_page_style() -> None:
             color: {THEME.TEXT} !important;
             border: 1px solid {THEME.ACCENT} !important;
         }}
-        /* PDF „przewodnik metod” w sidebarze — ten sam kolor co wyżej, czcionka ~2–3 pt mniejsza */
-        [data-testid="stSidebar"] .stDownloadButton > button {{
-            font-size: calc(1em - 2.5pt) !important;
-        }}
         /* Pobierz wykres (PNG) i inne pobrania w treści — mniejsza czcionka (~2–3 pt) */
         [data-testid="stMain"] .stDownloadButton > button,
         .stMain .stDownloadButton > button,
@@ -299,7 +367,7 @@ def fmt_line_block(mem: object) -> str:
 # Ta sama rodzina co w CSS (np. do inline HTML w streamlit_app)
 FONT_FAMILY_CSS = css_font_family()
 
-# Eksport help_content dla sekcji (sidebar)
+# Eksport help_content dla sekcji (stopka strony / sidebar gdy używane)
 GLOSSARY = hc.GLOSSARY
 SECTION_VALIDATION = hc.SECTION_VALIDATION
 SECTION_REFERENCES = hc.SECTION_REFERENCES

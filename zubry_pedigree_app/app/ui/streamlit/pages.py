@@ -58,6 +58,25 @@ import app.ui.streamlit.streamlit_plotting as splt
 
 CFG = get_config()
 
+# Grupy zakładek wykresów (Populacja) — kolejność i indeksy spójne z dashboardem.
+_SECTION_POP_CHART_TAB_GROUPS: tuple[tuple[str, tuple[int, ...]], ...] = (
+    ("Populacja i urodzenia", (0, 1, 2, 3)),
+    ("Inbred i trendy", (6, 11, 12)),
+    ("Założyciele (p_i)", (7,)),
+    ("Kompletność i PCL", (4, 5, 13)),
+    ("GI i rodziny", (8, 9, 10)),
+)
+
+
+def _on_pop_chart_viz_tab_changed() -> None:
+    lab = st.session_state.get("pop_chart_viz_tabs")
+    if lab is None:
+        return
+    for title, ids in _SECTION_POP_CHART_TAB_GROUPS:
+        if title == lab:
+            st.session_state.pop_chart_idx = ids[0]
+            return
+
 
 def section_import() -> None:
     st.markdown("### Import i standaryzacja danych")
@@ -155,7 +174,7 @@ def section_validation() -> None:
     )
     df_std = st.session_state.get("df_std")
     if df_std is None or df_std.empty:
-        st.info("Brak wczytanej bazy — użyj **Import i standaryzacja danych**.")
+        st.info("Brak wczytanej bazy — użyj **Import danych**.")
         return
     st.info(f"**Źródło:** {st.session_state.get('source', '-')} • **n =** {len(df_std)}")
     ids = df_std["id"].dropna().astype(str)
@@ -165,18 +184,13 @@ def section_validation() -> None:
             f"max **{max(ids.tolist(), key=sc.id_sort_key)}**"
         )
     st.markdown("**Braki danych — heatmapa**")
-    st.caption(
-        "**Kolumny schematu importu** (jak w modelu aplikacji): kolejność jak w **Rejestrze**, potem pozostałe alfabetycznie. "
-        "**% wierszy** z brakiem (NaN, puste lub „nan”) oraz — przy mniejszej liczbie kolumn — **(braki / n)**. "
-        "Sąsiadujące pola: góra = nazwa, środek = %; pasek pod mapą = skala 0–100 %. "
-        "Jasna zieleń = mało braków, ciemniejszy mech / kora = więcej."
-    )
     df_miss = dataframe_app_schema_columns(df_std)
     fig_miss = splt.fig_column_missing_heatmap(df_miss)
     splt.show_matplotlib_figure_in_streamlit(
         fig_miss,
         download_filename="walidacja_mapa_brakow.png",
         download_key="val_miss_heatmap_png",
+        width="stretch",
     )
     _miss_raw = splt.column_missing_percentages(df_miss).round(2)
     _miss_ord = splt.registry_like_column_order(_miss_raw.index)
@@ -375,7 +389,7 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                         fig,
                         download_filename=f"rodowod_{pid}.png",
                         download_key=f"hub_rod_png_{pid}",
-                        use_container_width=True,
+                        width="stretch",
                     )
 
     with st2:
@@ -766,45 +780,60 @@ def section_mating_ranking(df_std: pd.DataFrame, people: dict) -> None:
 
 def section_population(df_std: pd.DataFrame, people: dict) -> None:
     st.markdown("### Parametry populacyjne i genetyka grupy")
-    sc.help_expander(
-        "Parametry populacyjne (średnie F, f_e, f_a, GI, N_e, mean kinship…)",
-        hc.SECTION_POPULATION + "\n\n*Pełny słownik skrótów: panel boczny → „Słownik parametrów”.*",
-        expanded=False,
-    )
+    _ph = hc.POPULATION_METRIC_HELP
+    _ch = hc.POPULATION_CONTROL_HELP
+    sc.help_expander("Krótki opis sekcji", hc.SECTION_POPULATION, expanded=False)
     verbose = st.checkbox(
-        "Domyślnie rozwinięte bloki „Interpretacja wykresu” przy wykresach populacji",
+        "Rozwijaj domyślnie „Interpretacja” pod wykresami",
         value=True,
         key="st_verbose_pop_captions",
+        help=_ch["verbose"],
     )
     c1, c2, c3 = st.columns(3)
     with c1:
-        pop_ub = st.checkbox("F populacji: bez limitu (do founderów)", value=False, key="pop_ub")
+        pop_ub = st.checkbox(
+            "F populacji: bez limitu (do founderów)",
+            value=False,
+            key="pop_ub",
+            help=_ch["f_ub"],
+        )
     with c2:
-        pop_depth = st.number_input("Max pokoleń (gdy limit)", 0, 30, 4, disabled=pop_ub, key="pop_dep")
+        pop_depth = st.number_input(
+            "Max pokoleń (gdy limit)",
+            0,
+            30,
+            4,
+            disabled=pop_ub,
+            key="pop_dep",
+            help=_ch["f_dep"],
+        )
     with c3:
         act_years = st.number_input(
-            "Kohorta „aktywna”: lata wstecz od dziś (rok ur.)",
+            "Kohorta aktywna: lat wstecz (rok ur.)",
             min_value=5,
             max_value=60,
             value=20,
             key="pop_act_y",
+            help=_ch["act_y"],
         )
     c4, c5 = st.columns(2)
     with c4:
         vuln_recent = st.number_input(
-            "Tabela ryzyka linii: urodzenia z ostatnich N lat",
+            "Ryzyko linii: urodzenia z ostatnich N lat",
             min_value=5,
             max_value=80,
             value=30,
             key="pop_vuln_r",
+            help=_ch["vuln_r"],
         )
     with c5:
         vuln_active = st.number_input(
-            "Tabela ryzyka linii: okno kohorty aktywnych (lat)",
+            "Ryzyko linii: okno kohorty aktywnych (lat)",
             min_value=5,
             max_value=60,
             value=20,
             key="pop_vuln_a",
+            help=_ch["vuln_a"],
         )
 
     max_gen = None if pop_ub else int(pop_depth)
@@ -853,95 +882,265 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         dfc_trend, warn_trend = splt.prepare_inbreeding_trends_dataframe(df_use, people, max_gen)
 
     gi_all = gi_data.get("gi_all")
-
-    st.markdown("#### Dashboard startowy")
-    st.caption(
-        "**RIA** — odsetek osobników z F>0 (jak na wykresach trendów). **f_ge** — liczba odrębnych „węzłów” "
-        "założycielskich w modelu wkładów (founder-stop). **Koncentracja** — udział potomstwa z znanym ojcem "
-        "przypisany do 5 / 10 najczęstszych ojców."
-    )
-    d1, d2, d3, d4 = st.columns(4)
-    d1.metric("n (bez test ID)", str(stats.n))
-    d2.metric("Średnie F", f"{stats.inbreeding.mean_F:.4f}")
-    d3.metric("f_e", f"{stats.founders.f_e:.4f}")
-    d4.metric("f_a", f"{stats.founders.f_a:.4f}")
-    d5, d6, d7, d8 = st.columns(4)
-    d5.metric("RIA % (F > 0)", f"{ria_pct:.1f}")
-    d6.metric("f_ge (węzły założ.)", str(f_ge_n))
-    d7.metric("Średni EG", f"{stats.completeness.mean_EG:.4f}")
-    d8.metric("Średni GI (lat)", f"{gi_all:.2f}" if gi_all is not None else "—")
-    mk_help = (mk_note[:480] + "…") if mk_note and len(mk_note) > 480 else mk_note
-    d8a, d8b, _, _ = st.columns(4)
-    _mk_h = mk_help or "Średnia Φ po parach i≠j; przy dużym n — losowa próba osobników."
-    d8a.metric(
-        "Mean kinship Φ̄",
-        f"{mk_phi:.6f}" if mk_phi is not None else "—",
-        help=_mk_h,
-    )
-    d8b.metric(
-        "Średnie R (2Φ̄)",
-        f"{mk_r:.6f}" if mk_r is not None else "—",
-        help=_mk_h,
-    )
-    d9, d10, d11, d12 = st.columns(4)
-    d9.metric("% rek. z brakiem ojca lub matki", f"{pct_inc_par:.1f}%")
-    d10.metric("% pustych slotów (2n)", f"{pct_slot:.1f}%")
-    d11.metric("Założyciele (rek. z ≥1 brakiem)", str(stats.n_founders_any_missing_parent))
-    if _n_fa:
-        d12.metric(
-            "Konc. ojców top5 / top10",
-            f"{p5:.1f}% / {p10:.1f}%",
-            help=f"Potomstwo z znanym ojcem: n = {_n_fa}",
-        )
-    else:
-        d12.metric("Konc. ojców top5 / top10", f"{p5:.1f}% / {p10:.1f}%")
-    d13, d14, d15, d16 = st.columns(4)
-    d13.metric(f"Kohorta ur. ({act_years} lat): n", str(act.n_total))
-    d14.metric("Kohorta: M / F", f"{act.n_males} / {act.n_females}")
-    d15.metric("Reprod. (unik. ojc./mat.)", f"{act.n_reproducer_males} / {act.n_reproducer_females}")
-    d16.metric("Reprod. w koh. (M / F)", f"{act.n_reproducer_males_in_cohort} / {act.n_reproducer_females_in_cohort}")
     fam_sizes: list = gi_data.get("family_sizes") or []
     fam_n = len(fam_sizes)
     fam_mean = float(sum(fam_sizes)) / float(fam_n) if fam_n else None
     ne_est = splt.estimate_ne_from_f_trend(
         df_use, people, gi_all, max_gen, dfc_precomputed=dfc_trend
     )
+    _ne_disp = f"{ne_est:.1f}" if ne_est is not None else "—"
+    mk_help = (mk_note[:480] + "…") if mk_note and len(mk_note) > 480 else mk_note
+    _mk_h = mk_help or "Średnia Φ po parach i≠j; przy dużym n — losowa próba osobników."
+    _conc_help = _ph["conc"] + (f" Potomstwo z znanym ojcem: n = {_n_fa}." if _n_fa else "")
 
-    st.caption(
-        f"Założyciele (brak ojca lub matki): {stats.n_founders_any_missing_parent}. "
-        f"Linie LB/LC/NA: {stats.line_counts}"
+    st.markdown("#### Dashboard")
+    _t = sc.THEME
+
+    sc.population_dashboard_group_header(
+        "Populacja, kohorta i reprodukcja",
+        "Wielkość zbioru, kohorta wg ustawień lat, struktura płci oraz reproduktorzy globalnie i w kohordzie.",
+        accent=_t.EDGE_PLOT,
+        background=_t.PANEL_BG2,
     )
+    _g1a = st.columns(3)
+    with _g1a[0]:
+        sc.population_dashboard_metric(
+            "n (bez test ID)",
+            str(stats.n),
+            accent=_t.EDGE_PLOT,
+            panel_bg=_t.PANEL_BG2,
+            help_text=_ph["n"],
+        )
+    with _g1a[1]:
+        sc.population_dashboard_metric(
+            f"Kohorta ({act_years} lat): n",
+            str(act.n_total),
+            accent=_t.EDGE_PLOT,
+            panel_bg=_t.PANEL_BG2,
+            help_text=_ph["coh_n"],
+        )
+    with _g1a[2]:
+        sc.population_dashboard_metric(
+            "Kohorta: M / F",
+            f"{act.n_males} / {act.n_females}",
+            accent=_t.EDGE_PLOT,
+            panel_bg=_t.PANEL_BG2,
+            help_text=_ph["coh_mf"],
+        )
+    _g1b = st.columns(3)
+    with _g1b[0]:
+        sc.population_dashboard_metric(
+            "Założyciele (rek. z ≥1 brakiem)",
+            str(stats.n_founders_any_missing_parent),
+            accent=_t.EDGE_PLOT,
+            panel_bg=_t.PANEL_BG2,
+            help_text=_ph["founders_n"],
+        )
+    with _g1b[1]:
+        sc.population_dashboard_metric(
+            "Reprod. (unik. ojc./mat.)",
+            f"{act.n_reproducer_males} / {act.n_reproducer_females}",
+            accent=_t.EDGE_PLOT,
+            panel_bg=_t.PANEL_BG2,
+            help_text=_ph["repr_all"],
+        )
+    with _g1b[2]:
+        sc.population_dashboard_metric(
+            "Reprod. w koh. (M / F)",
+            f"{act.n_reproducer_males_in_cohort} / {act.n_reproducer_females_in_cohort}",
+            accent=_t.EDGE_PLOT,
+            panel_bg=_t.PANEL_BG2,
+            help_text=_ph["repr_coh"],
+        )
+
+    sc.population_dashboard_group_header(
+        "Inbred i średnie pokrewieństwo",
+        "Średni współczynnik F, udział inbrednych (RIA), mean kinship Φ̄ oraz średnie R = 2Φ̄.",
+        accent=_t.ACCENT,
+        background=_t.ENTRY_BG,
+    )
+    _g2 = st.columns(4)
+    with _g2[0]:
+        sc.population_dashboard_metric(
+            "Średnie F",
+            f"{stats.inbreeding.mean_F:.4f}",
+            accent=_t.ACCENT,
+            panel_bg=_t.ENTRY_BG,
+            help_text=_ph["mean_f"],
+        )
+    with _g2[1]:
+        sc.population_dashboard_metric(
+            "RIA % (F > 0)",
+            f"{ria_pct:.1f}",
+            accent=_t.ACCENT,
+            panel_bg=_t.ENTRY_BG,
+            help_text=_ph["ria"],
+        )
+    with _g2[2]:
+        sc.population_dashboard_metric(
+            "Mean kinship Φ̄",
+            f"{mk_phi:.6f}" if mk_phi is not None else "—",
+            accent=_t.ACCENT,
+            panel_bg=_t.ENTRY_BG,
+            help_text=_mk_h,
+        )
+    with _g2[3]:
+        sc.population_dashboard_metric(
+            "Średnie R (2Φ̄)",
+            f"{mk_r:.6f}" if mk_r is not None else "—",
+            accent=_t.ACCENT,
+            panel_bg=_t.ENTRY_BG,
+            help_text=_mk_h,
+        )
+
+    sc.population_dashboard_group_header(
+        "Efektywna różnorodność założycielska",
+        "Liczby efektywne z rozkładu wkładów (f_e, f_a), liczba węzłów f_ge oraz orientacyjne N_e.",
+        accent=_t.LINK,
+        background=_t.PANEL_BG,
+    )
+    _g3 = st.columns(4)
+    with _g3[0]:
+        sc.population_dashboard_metric(
+            "f_e",
+            f"{stats.founders.f_e:.4f}",
+            accent=_t.LINK,
+            panel_bg=_t.PANEL_BG,
+            help_text=_ph["fe"],
+        )
+    with _g3[1]:
+        sc.population_dashboard_metric(
+            "f_a",
+            f"{stats.founders.f_a:.4f}",
+            accent=_t.LINK,
+            panel_bg=_t.PANEL_BG,
+            help_text=_ph["fa"],
+        )
+    with _g3[2]:
+        sc.population_dashboard_metric(
+            "f_ge",
+            str(f_ge_n),
+            accent=_t.LINK,
+            panel_bg=_t.PANEL_BG,
+            help_text=_ph["fge"],
+        )
+    with _g3[3]:
+        sc.population_dashboard_metric(
+            "N_e (orient.)",
+            _ne_disp,
+            accent=_t.LINK,
+            panel_bg=_t.PANEL_BG,
+            help_text=_ph["ne"],
+        )
+
+    sc.population_dashboard_group_header(
+        "Kompletność zapisu rodowodu",
+        "Braki po stronie rodziców, puste sloty w modelu 2n oraz średnia miara głębokości EG.",
+        accent=_t.COMPLETENESS_ACCENT,
+        background=_t.TREE_BG,
+    )
+    _g4 = st.columns(3)
+    with _g4[0]:
+        sc.population_dashboard_metric(
+            "% rek. z brakiem ojca lub matki",
+            f"{pct_inc_par:.1f}%",
+            accent=_t.COMPLETENESS_ACCENT,
+            panel_bg=_t.TREE_BG,
+            help_text=_ph["pct_par"],
+        )
+    with _g4[1]:
+        sc.population_dashboard_metric(
+            "% pustych slotów (2n)",
+            f"{pct_slot:.1f}%",
+            accent=_t.COMPLETENESS_ACCENT,
+            panel_bg=_t.TREE_BG,
+            help_text=_ph["pct_slot"],
+        )
+    with _g4[2]:
+        sc.population_dashboard_metric(
+            "Średni EG",
+            f"{stats.completeness.mean_EG:.4f}",
+            accent=_t.COMPLETENESS_ACCENT,
+            panel_bg=_t.TREE_BG,
+            help_text=_ph["eg"],
+        )
+
+    sc.population_dashboard_group_header(
+        "Odstęp pokoleniowy i koncentracja kojarzeń",
+        "Średni interwał pokoleniowy (GI) oraz koncentracja najczęstszych ojców u potomstwa z znanym ojcem.",
+        accent=_t.EDGE_PLOT,
+        background=_t.TAB_BG,
+    )
+    _g5 = st.columns(2)
+    with _g5[0]:
+        sc.population_dashboard_metric(
+            "Średni GI (lat)",
+            f"{gi_all:.2f}" if gi_all is not None else "—",
+            accent=_t.EDGE_PLOT,
+            panel_bg=_t.TAB_BG,
+            help_text=_ph["gi"],
+        )
+    with _g5[1]:
+        sc.population_dashboard_metric(
+            "Konc. ojców top5 / top10",
+            f"{p5:.1f}% / {p10:.1f}%",
+            accent=_t.EDGE_PLOT,
+            panel_bg=_t.TAB_BG,
+            help_text=_conc_help,
+        )
+
     gi_txt = f"{gi_all:.2f} lat" if gi_all is not None else "—"
-    fam_txt = f"{fam_n} rodzin, śr. wielkość {fam_mean:.2f}" if fam_n else "—"
-    ne_txt = f"{ne_est:.1f}" if ne_est is not None else "— (wymaga wzrostu F i GI)"
-    st.caption(
-        f"**GI** (średni, 4 ścieżki łącznie): {gi_txt} • **Rodziny pełne** (para rodziców): {fam_txt} • "
-        f"**N_e** (z trendu F×GI): {ne_txt}"
+    fam_txt = f"{fam_n} rodzin, śr. {fam_mean:.2f}" if fam_n else "—"
+    st.caption(f"Linie: {stats.line_counts} · **GI** (śr.): {gi_txt} · **Rodziny pełne**: {fam_txt}")
+
+    _pop_short = (
+        "Okresy, ryzyko, reprodukcja",
+        "Urodzenia: płeć",
+        "Urodzenia: linie",
+        "Stosunek F/M",
+        "Kompletność: płeć",
+        "Kompletność: linie",
+        "Histogram F",
+        "Założyciele (p_i)",
+        "GI średni",
+        "GI w czasie",
+        "Rodziny rodzeństwa",
+        "Trend F/RIA: płeć",
+        "Trend F/RIA: linie",
+        "PCL vs MG",
     )
+    if "pop_chart_idx" not in st.session_state:
+        st.session_state.pop_chart_idx = 0
+    _pop_clicked: int | None = None
+    _sel_ui = max(0, min(len(_pop_short) - 1, int(st.session_state.pop_chart_idx)))
+    st.markdown("#### Wykresy")
+    st.markdown(sc.population_viz_tabs_css(), unsafe_allow_html=True)
+    # Bez st.rerun() przy wyborze wykresu — wymuszony rerun zrywał MediaFileStorage („Missing file …png”).
+    _viz_tabs = st.tabs(
+        [g[0] for g in _SECTION_POP_CHART_TAB_GROUPS],
+        key="pop_chart_viz_tabs",
+        on_change=_on_pop_chart_viz_tab_changed,
+    )
+    for _ti, (_tab_title, _indices) in enumerate(_SECTION_POP_CHART_TAB_GROUPS):
+        with _viz_tabs[_ti]:
+            _row = st.columns(len(_indices))
+            for _ci, _pidx in enumerate(_indices):
+                with _row[_ci]:
+                    if st.button(
+                        _pop_short[_pidx],
+                        key=f"pop_chart_btn_{_pidx}",
+                        use_container_width=True,
+                        type="primary" if _sel_ui == _pidx else "secondary",
+                    ):
+                        _pop_clicked = _pidx
+    if _pop_clicked is not None:
+        st.session_state.pop_chart_idx = _pop_clicked
+    sel = max(0, min(len(_pop_short) - 1, int(st.session_state.pop_chart_idx)))
+    st.caption(f"**Wyświetlany wykres:** {_pop_short[sel]}")
 
-    tab_names = [
-        "Okresy kohortowe, ryzyko linii, reprodukcja, udział LB/LC",
-        "Rozkład urodzeń w podziale dekad i płci",
-        "Rozkład urodzeń według linii hodowlanych (LB/LC)",
-        "Współczynnik płci F/M (ur. ≥ 1900)",
-        "Kompletność rodowodu według płci (MG, CG, EG)",
-        "Kompletność rodowodu według linii (MG, CG, EG)",
-        "Rozkład współczynnika inbringu F",
-        "Wkład genetyczny założycieli (ranking p_i)",
-        "Średni interwał pokoleniowy (GI, lata)",
-        "Dynamika interwału pokoleniowego",
-        "Struktura rodzin pełnego rodzeństwa",
-        "Trend inbringu (F, RIA) według płci",
-        "Trend inbringu (F, RIA) według linii",
-        "PCL vs MG — przodkowie (ANC) i populacja referencyjna (RP)",
-    ]
-    tabs = st.tabs(tab_names)
-
-    with tabs[0]:
+    if sel == 0:
         st.caption(
-            "Porównanie trzech przedziałów urodzeń (1950–1980, 1981–2000, 2001–dziś) przy tym samym limicie F co powyżej. "
-            "Ryzyko linii — heurystyka dla LB/LC (wyższy score = mniej urodzeń / mniej aktywnych ID). "
-            "W bazie są tylko dwie nazwane linie hodowlane; „rzadka” linia to ta z niższymi liczbami w tabeli."
+            "Trzy przedziały urodzeń (1950–1980, 1981–2000, 2001–dziś), ranking ryzyka LB/LC, reproduktorzy i udział linii."
         )
         st.markdown("**Porównanie okresów**")
         st.dataframe(periods_df, width="stretch", hide_index=True)
@@ -965,7 +1164,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_line_share",
         )
 
-    with tabs[1]:
+    elif sel == 1:
         st.caption("Liczba urodzeń w dekadach (1881–obecny rok), podział M/F.")
         sc.help_expander("Interpretacja: Urodzenia wg płci", hc.CHART_BIRTH_SEX, expanded=verbose)
         fig = splt.fig_birth_decades_sex(df_std)
@@ -975,7 +1174,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_birth_sex",
         )
 
-    with tabs[2]:
+    elif sel == 2:
         st.caption("Urodzenia w dekadach wg linii (LB vs LC).")
         sc.help_expander("Interpretacja: Urodzenia wg linii", hc.CHART_BIRTH_LINE, expanded=verbose)
         fig = splt.fig_birth_decades_line(df_std)
@@ -985,7 +1184,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_birth_line",
         )
 
-    with tabs[3]:
+    elif sel == 3:
         st.caption("Stosunek F/M w dekadach od 1900.")
         sc.help_expander("Interpretacja: Female/Male ratio", hc.CHART_FM_RATIO, expanded=verbose)
         fig = splt.fig_female_male_ratio(df_std)
@@ -995,7 +1194,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_fm_ratio",
         )
 
-    with tabs[4]:
+    elif sel == 4:
         st.caption("Średnie MG, CG, EG wg płci.")
         sc.help_expander("Interpretacja: Kompletność (MG/CG/EG) wg płci", hc.CHART_COMP_SEX, expanded=verbose)
         fc, _ = splt.fig_completeness_sex_line(df_std, people)
@@ -1005,7 +1204,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_comp_sex",
         )
 
-    with tabs[5]:
+    elif sel == 5:
         st.caption("Średnie MG, CG, EG wg linii LB/LC/NA.")
         sc.help_expander("Interpretacja: Kompletność wg linii", hc.CHART_COMP_LINE, expanded=verbose)
         _, fl = splt.fig_completeness_sex_line(df_std, people)
@@ -1015,7 +1214,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_comp_line",
         )
 
-    with tabs[6]:
+    elif sel == 6:
         st.caption("Histogram F w populacji (przy wybranym limicie pokoleń).")
         sc.help_expander("Interpretacja: rozkład F", hc.CHART_HIST_F, expanded=verbose)
         fig = splt.fig_histogram_f(stats.f_values or [])
@@ -1025,7 +1224,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_hist_f",
         )
 
-    with tabs[7]:
+    elif sel == 7:
         st.caption("Top 20 wkładu genetycznego założycieli (p_i).")
         sc.help_expander("Interpretacja: założyciele p_i", hc.CHART_FOUNDERS_PI, expanded=verbose)
         fig = splt.fig_founder_contributions(stats.founder_contributions or {}, people)
@@ -1035,7 +1234,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_founders_pi",
         )
 
-    with tabs[8]:
+    elif sel == 8:
         st.caption("Średni odstęp międzypokoleniowy (GI) — ojciec/matka vs syn/córka.")
         sc.help_expander("Interpretacja: GI (średni)", hc.CHART_GI_BAR, expanded=verbose)
         fig_gi = splt.fig_gi_mean_bar(gi_data)
@@ -1045,7 +1244,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_gi_bar",
         )
 
-    with tabs[9]:
+    elif sel == 9:
         st.caption("Trend średniego GI w dekadach urodzenia potomstwa.")
         sc.help_expander("Interpretacja: GI trend", hc.CHART_GI_TREND, expanded=verbose)
         fig_tr = splt.fig_gi_trend_decades(gi_data)
@@ -1055,7 +1254,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_gi_trend",
         )
 
-    with tabs[10]:
+    elif sel == 10:
         st.caption("Histogram wielkości rodzin pełnego rodzeństwa (ta sama para rodziców).")
         sc.help_expander("Interpretacja: rodziny pełnego rodzeństwa", hc.CHART_FAMILY, expanded=verbose)
         fig_fam = splt.fig_family_full_siblings(fam_sizes)
@@ -1065,7 +1264,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_families",
         )
 
-    with tabs[11]:
+    elif sel == 11:
         st.caption("Średnie F oraz RIA (% z F>0) w roku urodzenia — wg płci (F liczone raz na wejściu do Populacja).")
         sc.help_expander("Interpretacja: trendy F i RIA wg płci", hc.CHART_INBRED_TP_SEX, expanded=verbose)
         fig_sex, warn_sex = splt.fig_inbreeding_year_trends_sex(
@@ -1079,7 +1278,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_inbred_sex",
         )
 
-    with tabs[12]:
+    elif sel == 12:
         st.caption("Średnie F oraz RIA w roku urodzenia — wg linii LB/LC/NA.")
         sc.help_expander("Interpretacja: trendy F i RIA wg linii", hc.CHART_INBRED_TP_LINE, expanded=verbose)
         fig_ln, warn_ln = splt.fig_inbreeding_year_trends_line(
@@ -1093,7 +1292,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
             download_key="pop_dl_inbred_line",
         )
 
-    with tabs[13]:
+    elif sel == 13:
         st.caption("PCL_max (a_MG/2^MG) w funkcji MG: Ancestors (ANC) vs Reference Population (RP).")
 
         # Pamiętaj: ten wykres jest kosztowny na dużych bazach.
@@ -1242,7 +1441,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
 def section_reports() -> None:
     st.markdown("### Raporty i eksport wyników")
     sc.help_expander("Raporty — co zawierają", hc.SECTION_REPORTS)
-    st.caption("Podgląd poniżej — pobierz raport jako **.txt** lub **.docx**. Wykresy z zakładek populacji możesz zapisać osobno (**Pobierz wykres PNG**).")
+    st.caption("Podgląd poniżej — pobierz raport jako **.txt** lub **.docx**. Wykresy z sekcji populacji możesz zapisać osobno (**Pobierz wykres PNG**).")
     df_std = st.session_state.get("df_std")
     people = st.session_state.get("people")
     rep = st.session_state.get("validation_report")
@@ -1558,7 +1757,7 @@ def section_breeding(df_std: pd.DataFrame, people: dict) -> None:
             fig_h,
             download_filename=f"plan_potomek_{dam_id}_{sire_id}.png",
             download_key=f"plan_hypo_png_{dam_id}_{sire_id}",
-            use_container_width=True,
+            width="stretch",
         )
 
 

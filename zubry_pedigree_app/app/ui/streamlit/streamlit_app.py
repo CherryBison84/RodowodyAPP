@@ -22,33 +22,36 @@ from app.ui.streamlit.pages import (
     section_validation,
 )
 
-# Etykiety nawigacji (nomenklatura sekcji aplikacji).
-NAV_IMPORT = "Import i standaryzacja danych"
-NAV_VALIDATION = "Walidacja spójności zbioru"
-NAV_PERSONS = "Rejestr osobniczy populacji"
-NAV_ANALYSIS_IND = "Analiza osobnicza: inbred i kompletność"
-NAV_ANALYSIS_PAIRS = "Analiza par i optymalizacja kojarzeń"
-NAV_POPULATION = "Parametry populacyjne i genetyka grupy"
-NAV_REPORTS = "Raporty i eksport wyników"
-NAV_BREEDING = "Scenariusze planu hodowlanego"
+# Etykiety nawigacji (krótkie; pełny opis w nagłówkach sekcji).
+NAV_IMPORT = "Import danych"
+NAV_VALIDATION = "Walidacja"
+NAV_PERSONS = "Rejestr"
+NAV_ANALYSIS_IND = "Analiza osobnicza"
+NAV_ANALYSIS_PAIRS = "Pary i kojarzenia"
+NAV_POPULATION = "Populacja"
+NAV_BREEDING = "Plan hodowlany"
+NAV_REPORTS = "Raporty"
 
 NAV_SECTIONS = [
     NAV_IMPORT,
     NAV_VALIDATION,
     NAV_PERSONS,
     NAV_ANALYSIS_IND,
-    NAV_ANALYSIS_PAIRS,
     NAV_POPULATION,
-    NAV_REPORTS,
+    NAV_ANALYSIS_PAIRS,
     NAV_BREEDING,
+    NAV_REPORTS,
 ]
 
 
-@st.cache_data(show_spinner=False)
-def _methods_guide_pdf_cached() -> bytes:
-    from app.ui.methods_guide_pdf import methods_guide_pdf_bytes
-
-    return methods_guide_pdf_bytes()
+def _render_page_footer() -> None:
+    """Pomoc na dole strony: słownik i literatura (zwinięte)."""
+    st.markdown("---")
+    st.caption("Pomoc, skróty i materiały")
+    with st.expander("Słownik parametrów (F, GI, f_e, RIA…)", expanded=False):
+        st.markdown(sc.GLOSSARY)
+    with st.expander("Literatura — źródła metod (F, p_i, N_e…)", expanded=False):
+        st.markdown(sc.SECTION_REFERENCES)
 
 
 def run_streamlit_direct() -> None:
@@ -65,8 +68,7 @@ def run_streamlit_direct() -> None:
     with st.sidebar:
         _logo_path = Path(__file__).resolve().parents[2] / "logo.png"
         if _logo_path.exists():
-            st.image(str(_logo_path), use_container_width=True)
-        st.caption("Analiza rodowodów żubrów")
+            st.image(str(_logo_path), width="stretch")
         st.markdown(
             f'<p style="margin:0.6rem 0 0.35rem 0;font-size:0.78rem;font-weight:700;'
             f"letter-spacing:0.04em;text-transform:uppercase;color:{sc.THEME.MUTED};"
@@ -78,55 +80,35 @@ def run_streamlit_direct() -> None:
             NAV_SECTIONS,
             label_visibility="collapsed",
         )
-        st.caption(
-            "Przepływ: import → walidacja → rejestr → analiza osobnicza → pary → populacja → plan hodowlany → raport."
-        )
         st.markdown("---")
         st.caption("Autor: Magdalena Perlińska-Teresiak • 2026")
-        with st.expander("Słownik parametrów (F, GI, f_e, RIA…)", expanded=False):
-            st.markdown(sc.GLOSSARY)
-        with st.expander("Walidacja spójności zbioru — skrót (po imporcie)", expanded=False):
-            st.markdown(sc.SECTION_VALIDATION)
-        with st.expander("Literatura — źródła metod (F, p_i, N_e…)", expanded=False):
-            st.markdown(sc.SECTION_REFERENCES)
-        st.download_button(
-            "Pobierz przewodnik metod (PDF — cytowania)",
-            data=_methods_guide_pdf_cached(),
-            file_name="WisentPedigree_Pro_przewodnik_metod_2026.pdf",
-            mime="application/pdf",
-            key="sidebar_methods_pdf",
-        )
-
-    if section == NAV_IMPORT:
-        section_import()
-        return
 
     df_std = st.session_state.get("df_std")
     people = st.session_state.get("people")
 
-    if section == NAV_VALIDATION:
+    if section == NAV_IMPORT:
+        section_import()
+    elif section == NAV_VALIDATION:
         if df_std is None or people is None or len(df_std) == 0:
             st.warning(f"Najpierw wczytaj dane w sekcji **{NAV_IMPORT}**.")
-            return
-        section_validation()
-        return
-
-    if df_std is None or people is None or len(df_std) == 0:
+        else:
+            section_validation()
+    elif df_std is None or people is None or len(df_std) == 0:
         st.warning(f"Najpierw wczytaj dane w sekcji **{NAV_IMPORT}**.")
-        return
-
-    if section == NAV_PERSONS:
+    elif section == NAV_PERSONS:
         section_persons(df_std)
     elif section == NAV_ANALYSIS_IND:
         section_analysis_individual(df_std, people)
-    elif section == NAV_ANALYSIS_PAIRS:
-        section_analysis_pairs_and_mating(df_std, people)
     elif section == NAV_POPULATION:
         section_population(df_std, people)
+    elif section == NAV_ANALYSIS_PAIRS:
+        section_analysis_pairs_and_mating(df_std, people)
     elif section == NAV_REPORTS:
         section_reports()
     elif section == NAV_BREEDING:
         section_breeding(df_std, people)
+
+    _render_page_footer()
 
 
 if __name__ == "__main__":

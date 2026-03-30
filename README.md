@@ -17,4 +17,4 @@ cd zubry_pedigree_app
 python run_streamlit.py
 ```
 
-Z katalogu nadrzędnego (repo root): `run_streamlit.py` lub `run_tk.py` (alias uruchamiający Streamlit) — dodają `zubry_pedigree_app` do `PYTHONPATH`.
+Z katalogu nadrzędnego (repo root): `python run_streamlit.py` — dodaje `zubry_pedigree_app` do `PYTHONPATH`.

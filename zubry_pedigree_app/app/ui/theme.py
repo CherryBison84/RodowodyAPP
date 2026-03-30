@@ -23,6 +23,7 @@ class Theme:
     ENTRY_BG: str = "#f4f8f4"
     EDGE_PLOT: str = "#3d634d"
     TREE_BG: str = "#e4efe6"
+    COMPLETENESS_ACCENT: str = "#5d7a66"
     TABLE_TEXT: str = "#1e2b24"
     TABLE_HEADER_TEXT: str = "#243529"
     BORDER_SUBTLE: str = "#9aaa9e"

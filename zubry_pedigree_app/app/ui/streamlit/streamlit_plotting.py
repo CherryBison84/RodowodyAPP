@@ -1,8 +1,8 @@
 """
 Rysowanie wykresów w przeglądarce (urodzenia, trendy inbredu, GI, rodziny itp.).
 
-Wyświetlanie: `show_matplotlib_figure_in_streamlit` — PNG; domyślnie stała szerokość (`ST_CHART_DISPLAY_WIDTH_PX`),
-opcjonalnie `use_container_width=True` (np. rodowód na całą szerokość kolumny); przy wielu kategorii na osi X — `_figsize_for_n_x_categories`.
+Wyświetlanie: `show_matplotlib_figure_in_streamlit` — PNG (podgląd przezroczysty, **pobieranie z białym tłem**); domyślnie `width="stretch"`;
+opcjonalnie stała szerokość w px (`ST_CHART_DISPLAY_WIDTH_PX` lub int). Przy wielu kategoriach na X — `_figsize_for_n_x_categories`.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -35,12 +36,13 @@ PLOT_BAR_3RD = PLOT_THEME.TAB_TEXT
 
 POP_FOUNDERS_PI_TOP_N = int(get_config().report_founders_top_n)
 
-# Streamlit: czcionki jak w UI (~13–15px treści), figury wyższe — bez płaskiego „letterboxa”.
-ST_FS_TITLE = 11.0
-ST_FS_AXIS = 9.5
-ST_FS_TICK = 8.5
-ST_FS_DENSE = 7.5
-ST_FS_MISS_HEAD = 11.0
+# Streamlit: nieco mniejszy tekst na wykresach (czytelność przy wielu kategoriach na X).
+ST_FS_TITLE = 9.2
+ST_FS_AXIS = 7.75
+ST_FS_TICK = 6.85
+ST_FS_DENSE = 6.15
+ST_FS_MISS_HEAD = 9.2
+ST_XTICK_ROT = 47.0
 ST_DPI_EXPORT = 120
 # Domyślny rozmiar słupków / linii (średnio liczba kategorii na X)
 ST_FIG_W, ST_FIG_H = 7.5, 3.85
@@ -52,10 +54,29 @@ ST_FIG_F_DIAG_W, ST_FIG_F_DIAG_H = 7.0, 3.6
 ST_FIG_PCL_BAR_W, ST_FIG_PCL_BAR_H = 7.0, 3.45
 ST_FIG_SCATTER_W, ST_FIG_SCATTER_H = 7.5, 4.85
 ST_FIG_EMPTY = (5.2, 2.0)
-# Szerokość podglądu w px — bez rozciągania na cały monitor (proporcje jak w figurze)
+# Opcjonalna stała szerokość podglądu (px), gdy przy wywołaniu podasz width=ST_CHART_DISPLAY_WIDTH_PX
 ST_CHART_DISPLAY_WIDTH_PX = 920
 
 apply_matplotlib_fonts()
+
+
+def _slant_xlabels(ax: plt.Axes, *, rotation: float | None = None) -> None:
+    """Etykiety osi X pod kątem (domyślnie ST_XTICK_ROT), żeby się nie nakładały."""
+    rot = float(ST_XTICK_ROT if rotation is None else rotation)
+    for t in ax.get_xticklabels():
+        t.set_rotation(rot)
+        t.set_horizontalalignment("right")
+        t.set_fontsize(ST_FS_TICK)
+
+
+# Przezroczyste tło figury i osi — podgląd i PNG są spójne z tłem strony (zielonkawy APP_BG).
+mpl.rcParams.update(
+    {
+        "figure.facecolor": "none",
+        "axes.facecolor": "none",
+        "savefig.facecolor": "none",
+    }
+)
 
 
 def _figsize_for_n_x_categories(
@@ -124,38 +145,49 @@ def show_matplotlib_figure_in_streamlit(
     *,
     download_filename: str,
     download_key: str,
-    use_container_width: bool = False,
+    width: str | int = "stretch",
 ) -> None:
     """
     Wyświetla wykres jako PNG (`st.image`, stabilniej niż `st.pyplot` w części przeglądarek)
     i dodaje przycisk pobrania pliku. Figura jest zamykana po zapisie.
-    Przy `use_container_width=True` obraz rozciąga się na szerokość kontenera (np. rodowód).
+    Podgląd: tło przezroczyste (spójne ze stroną). Pobierany plik PNG: **białe tło**.
+    `width`: domyślnie `"stretch"`; albo `"content"` albo szerokość w px (np. `ST_CHART_DISPLAY_WIDTH_PX`).
     """
     import io
 
     import streamlit as st
 
-    buf = io.BytesIO()
+    buf_ui = io.BytesIO()
+    buf_dl = io.BytesIO()
+    _save_kw = dict(
+        format="png",
+        dpi=ST_DPI_EXPORT,
+        bbox_inches="tight",
+        pad_inches=0.08,
+    )
     try:
         fig.savefig(
-            buf,
-            format="png",
-            dpi=ST_DPI_EXPORT,
-            bbox_inches="tight",
-            pad_inches=0.08,
-            facecolor=fig.get_facecolor(),
+            buf_ui,
+            **_save_kw,
+            transparent=True,
+            facecolor="none",
             edgecolor="none",
+        )
+        fig.savefig(
+            buf_dl,
+            **_save_kw,
+            transparent=False,
+            facecolor="white",
+            edgecolor="white",
         )
     finally:
         plt.close(fig)
-    png = buf.getvalue()
-    if use_container_width:
-        st.image(io.BytesIO(png), use_container_width=True)
-    else:
-        st.image(io.BytesIO(png), width=ST_CHART_DISPLAY_WIDTH_PX)
+    png_ui = buf_ui.getvalue()
+    png_dl = buf_dl.getvalue()
+    st.image(io.BytesIO(png_ui), width=width)
     st.download_button(
         "Pobierz wykres (PNG)",
-        data=png,
+        data=png_dl,
         file_name=download_filename,
         mime="image/png",
         key=download_key,
@@ -189,9 +221,10 @@ def column_missing_percentages(df: pd.DataFrame) -> pd.Series:
     return pd.Series(out)
 
 
-def _truncate_col_label(name: str, ncol: int, *, cap_max: int = 22) -> str:
+def _col_label_missing_map_rotated(name: str, ncol: int) -> str:
+    """Jedna linia pod mapą (ukośna etykieta); przy bardzo długich nazwach delikatne skrócenie."""
     s = str(name).replace("\n", " ")
-    cap = max(6, min(cap_max, int(150 / max(ncol, 1))))
+    cap = max(14, min(36, int(200 / max(ncol, 1)) + 8))
     if len(s) <= cap:
         return s
     return s[: cap - 1] + "…"
@@ -215,8 +248,8 @@ def _forest_missing_segment_cmap(th: Theme) -> LinearSegmentedColormap:
 
 def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
     """
-    Pozioma mapa braków: kolumny schematu importu (bez dodatkowych pól z arkusza), kolejność jak w rejestrze (+ reszta alfabetycznie).
-    W każdym polu: etykieta i % braków; przy umiarkowanej liczbie kolumn także (braki/n). Skala leśna; pod spodem pasek 0–100 %.
+    Mapa braków: kolumny schematu importu w kolejności aplikacji.
+    W pasku koloru wyłącznie **% braków**; **nazwy kolumn** pod kątem pod paskiem (mniej nachodzą). Skala kolorów leśnych bez osobnego paska legendy.
     """
     th = PLOT_THEME
     if df is not None and not df.empty:
@@ -238,20 +271,19 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         return fig
     ncol = len(pct)
     cmap = _forest_missing_segment_cmap(th)
-    fig_w = min(18.5, max(6.5, 0.48 * float(ncol) + 2.1))
-    fig_h = max(2.85, min(4.15, 1.55 + 0.088 * float(ncol)))
+    # Pas pod pasem kolorów — ukośne etykiety potrzebują więcej miejsca niż poziome.
+    fig_w = min(19.0, max(6.8, 0.54 * float(ncol) + 2.15))
+    label_band = min(0.98, max(0.48, 0.38 + 0.028 * float(ncol)))
+    fig_h = max(3.65, min(5.85, 1.78 + 0.092 * float(ncol) + 0.42 * label_band))
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-    fig.patch.set_facecolor(th.APP_BG)
-    bottom_margin = 0.24 if ncol > 14 else 0.18
+    bottom_margin = max(0.20, min(0.28, 0.16 + 0.005 * float(ncol)))
     fig.subplots_adjust(left=0.03, right=0.97, top=0.78, bottom=bottom_margin)
     ax.set_xlim(0, ncol)
-    ax.set_ylim(0, 1)
+    ax.set_ylim(-label_band, 1)
     ax.axis("off")
-    ax.set_facecolor(th.ENTRY_BG)
 
-    cap_label = 16 if ncol <= 14 else 12
-    _miss_seg_fs = max(6.5, min(9.5, 120.0 / max(ncol, 1)))
-    _miss_small_fs = max(5.5, _miss_seg_fs - 1.2)
+    _miss_seg_fs = max(7.0, min(10.5, 128.0 / max(ncol, 1)))
+    _miss_name_fs = max(7.5, min(10.8, 100.0 / max(ncol, 1) + 2.2))
     fig.text(
         0.03,
         0.92,
@@ -264,46 +296,27 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
     fig.text(
         0.03,
         0.845,
-        f"n = {n_rows} wierszy  ·  jasny kolor = mniej braków  ·  kolejność jak w rejestrze",
+        f"n = {n_rows} wierszy  ·  jasny kolor = mniej braków",
         fontsize=ST_FS_TICK,
         color=th.MUTED,
         ha="left",
         va="top",
     )
 
-    n = float(max(n_rows, 1))
-    rot = 0.0 if ncol <= 14 else 50.0
-    y_name, y_pct, y_cnt = (0.66, 0.36, 0.14) if rot == 0 else (0.62, 0.38, 0.12)
-    va_name = "center" if rot == 0 else "top"
-    _show_counts = ncol <= 24
     for j, (col_name, v_raw) in enumerate(pct.items()):
         p = float(v_raw)
         t = np.clip(p / 100.0, 0.0, 1.0)
         rgba = cmap(t)
         r, g, b = float(rgba[0]), float(rgba[1]), float(rgba[2])
         lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-        tcol = "#f7faf7" if lum < 0.42 else th.TEXT
-        tcol_muted = "#e8f2ea" if lum < 0.42 else th.MUTED
+        tcol = "#f8fcf8" if lum < 0.45 else th.TEXT
         rect = Rectangle((j, 0), 1.0, 1.0, facecolor=rgba, edgecolor=th.BORDER_SUBTLE, linewidth=0.35, zorder=1)
         ax.add_patch(rect)
         if j > 0:
             ax.plot([j, j], [0, 1], color=th.BORDER_SUBTLE, linewidth=0.6, alpha=0.85, zorder=2)
-        miss_n = int(round(p * n / 100.0))
-        label = _truncate_col_label(col_name, ncol, cap_max=cap_label)
         ax.text(
             j + 0.5,
-            y_name,
-            label,
-            ha="center",
-            va=va_name,
-            fontsize=_miss_seg_fs,
-            color=tcol,
-            rotation=rot,
-            clip_on=True,
-        )
-        ax.text(
-            j + 0.5,
-            y_pct,
+            0.5,
             f"{p:.1f}%",
             ha="center",
             va="center",
@@ -312,17 +325,21 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
             fontweight="semibold",
             clip_on=True,
         )
-        if _show_counts:
-            ax.text(
-                j + 0.5,
-                y_cnt,
-                f"({miss_n}/{n_rows})" if n_rows else "—",
-                ha="center",
-                va="center",
-                fontsize=_miss_small_fs,
-                color=tcol_muted,
-                clip_on=True,
-            )
+        ax.text(
+            j + 0.5,
+            -0.02,
+            _col_label_missing_map_rotated(col_name, ncol),
+            rotation=52,
+            ha="right",
+            va="top",
+            rotation_mode="anchor",
+            fontsize=_miss_name_fs * 0.94,
+            color=th.TEXT,
+            clip_on=False,
+            zorder=4,
+        )
+
+    ax.plot([0, ncol], [0, 0], color=th.BORDER_SUBTLE, linewidth=1.0, zorder=3, clip_on=False)
 
     frame = Rectangle(
         (0, 0),
@@ -334,22 +351,6 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         zorder=5,
     )
     ax.add_patch(frame)
-
-    # Legenda skali (miniaturowy gradient)
-    leg_y = 0.03
-    leg_h = 0.028
-    leg_x0, leg_w = 0.28, 0.44
-    grad = np.linspace(0.0, 1.0, 256).reshape(1, -1)
-    ax_leg = fig.add_axes([leg_x0, leg_y, leg_w, leg_h])
-    ax_leg.imshow(grad, aspect="auto", cmap=cmap, vmin=0.0, vmax=1.0, extent=[0, 100, 0, 1])
-    ax_leg.set_xlim(0, 100)
-    ax_leg.set_xticks([0, 50, 100])
-    ax_leg.set_xticklabels(["0% braków", "50%", "100%"], fontsize=ST_FS_DENSE, color=th.MUTED)
-    ax_leg.set_yticks([])
-    ax_leg.tick_params(axis="x", length=2, pad=1)
-    for spine in ax_leg.spines.values():
-        spine.set_visible(False)
-    ax_leg.set_facecolor(th.APP_BG)
     return fig
 
 

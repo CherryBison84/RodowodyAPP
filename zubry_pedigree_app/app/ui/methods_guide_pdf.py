@@ -107,6 +107,7 @@ def write_methods_guide_pdf(target: PdfTarget) -> None:
             chunk = lines[idx : idx + max_lines]
             idx += max_lines
             fig = Figure(figsize=(fig_w, fig_h))
+            fig.patch.set_facecolor("white")
             ax = fig.add_axes([0, 0, 1, 1])
             ax.axis("off")
             y = margin_top
@@ -126,7 +127,7 @@ def write_methods_guide_pdf(target: PdfTarget) -> None:
 
 
 def methods_guide_pdf_bytes() -> bytes:
-    """Cały PDF w pamięci (bytes) — np. do pobrania z przeglądarki."""
+    """Cały PDF w pamięci (bytes) — eksport programowy / zapis pliku."""
     buf = io.BytesIO()
     write_methods_guide_pdf(buf)
     return buf.getvalue()
