@@ -1,8 +1,9 @@
-"""Konfiguracja: katalog danych, domyślne limity obliczeń, kojarzeń i raportów."""
+"""Konfiguracja: katalog danych, limity obliczeń i opcjonalny plik GUI JSON."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,10 +34,67 @@ class AppConfig:
     report_birth_location_top_n: int = 12
 
 
+def _config_root_dir() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _repo_root_dir() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _gui_config_path() -> Path:
+    return _config_root_dir() / "config" / "gui.json"
+
+
+def _load_gui_overrides() -> dict[str, object]:
+    path = _gui_config_path()
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return raw
+
+
 def get_config() -> AppConfig:
-    """Zwraca konfigurację z katalogiem `data/` przy root repozytorium."""
-    base_dir = Path(__file__).resolve().parents[2]
-    return AppConfig(dataset_dir=base_dir / "data")
+    """Zwraca konfigurację aplikacji, z opcjonalnymi nadpisaniami z `config/gui.json`."""
+    defaults = AppConfig(dataset_dir=_repo_root_dir() / "data")
+    overrides = _load_gui_overrides()
+    if not overrides:
+        return defaults
+
+    dataset_dir = overrides.get("dataset_dir")
+    if isinstance(dataset_dir, str) and dataset_dir.strip():
+        ds = Path(dataset_dir.strip())
+        if not ds.is_absolute():
+            ds = _repo_root_dir() / ds
+    else:
+        ds = defaults.dataset_dir
+
+    def _int_or(default_val: int, key: str) -> int:
+        v = overrides.get(key, default_val)
+        try:
+            return int(v)
+        except Exception:
+            return int(default_val)
+
+    return AppConfig(
+        dataset_dir=ds,
+        default_max_inbreeding_depth=_int_or(defaults.default_max_inbreeding_depth, "default_max_inbreeding_depth"),
+        default_pci_max_generations=_int_or(defaults.default_pci_max_generations, "default_pci_max_generations"),
+        default_tree_generations=_int_or(defaults.default_tree_generations, "default_tree_generations"),
+        mating_age_limit_years=_int_or(defaults.mating_age_limit_years, "mating_age_limit_years"),
+        mating_ranking_top_n=_int_or(defaults.mating_ranking_top_n, "mating_ranking_top_n"),
+        mating_default_male_limit=_int_or(defaults.mating_default_male_limit, "mating_default_male_limit"),
+        mating_default_female_limit=_int_or(defaults.mating_default_female_limit, "mating_default_female_limit"),
+        f_ria_smooth_window=_int_or(defaults.f_ria_smooth_window, "f_ria_smooth_window"),
+        gi_smooth_window=_int_or(defaults.gi_smooth_window, "gi_smooth_window"),
+        report_founders_top_n=_int_or(defaults.report_founders_top_n, "report_founders_top_n"),
+        report_birth_location_top_n=_int_or(defaults.report_birth_location_top_n, "report_birth_location_top_n"),
+    )
 
 
 def resolve_app_icon_ico() -> Path | None:

@@ -1,0 +1,25 @@
+{
+  "project_name": "demo_new_data_batch",
+  "output_dir": "outputs",
+  "stages": ["load", "analyze", "report"],
+  "datasets": [
+    {
+      "name": "default_ebpb",
+      "path": "EBPB_bison_report.xlsx"
+    }
+  ],
+  "variants": [
+    {
+      "name": "depth_4",
+      "max_generations_back": 4,
+      "calc_founders": true,
+      "calc_completeness": true
+    },
+    {
+      "name": "unbounded",
+      "max_generations_back": null,
+      "calc_founders": true,
+      "calc_completeness": true
+    }
+  ]
+}

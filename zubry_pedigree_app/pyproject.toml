@@ -1,6 +1,6 @@
 [project]
 name = "zubry-pedigree-app"
-version = "0.1.0"
+version = "0.3.0"
 description = "Aplikacja do analizy rodowodowej żubrów (Qt / Tkinter + Streamlit)"
 requires-python = ">=3.10"
 dependencies = []

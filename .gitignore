@@ -8,3 +8,6 @@ __pycache__/
 .idea/
 .venv-qt/
 
+# Wyniki batch / pipeline (lokalne)
+zubry_pedigree_app/outputs/
+

@@ -14,7 +14,6 @@ from app.ui.streamlit import common as sc
 from app.ui.streamlit.pages import (
     section_analysis_individual,
     section_analysis_pairs_and_mating,
-    section_breeding,
     section_import,
     section_persons,
     section_population,
@@ -27,9 +26,8 @@ NAV_IMPORT = "Import danych"
 NAV_VALIDATION = "Walidacja"
 NAV_PERSONS = "Rejestr"
 NAV_ANALYSIS_IND = "Analiza osobnicza"
-NAV_ANALYSIS_PAIRS = "Pary i kojarzenia"
+NAV_ANALYSIS_PAIRS = "Pary"
 NAV_POPULATION = "Populacja"
-NAV_BREEDING = "Plan hodowlany"
 NAV_REPORTS = "Raporty"
 
 NAV_SECTIONS = [
@@ -38,8 +36,6 @@ NAV_SECTIONS = [
     NAV_PERSONS,
     NAV_ANALYSIS_IND,
     NAV_POPULATION,
-    NAV_ANALYSIS_PAIRS,
-    NAV_BREEDING,
     NAV_REPORTS,
 ]
 
@@ -105,8 +101,6 @@ def run_streamlit_direct() -> None:
         section_analysis_pairs_and_mating(df_std, people)
     elif section == NAV_REPORTS:
         section_reports()
-    elif section == NAV_BREEDING:
-        section_breeding(df_std, people)
 
     _render_page_footer()
 

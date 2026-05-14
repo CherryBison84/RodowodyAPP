@@ -38,9 +38,10 @@ from app.analytics.population_genetics import (
 )
 from app.data.dataset_loader import (
     dataframe_app_schema_columns,
-    load_dataset_from_bytes,
     load_default_bison_report,
+    load_raw_dataframe_from_bytes,
     load_raw_dataframe_from_url,
+    standardize_bison_report_dataframe,
     standardize_bison_report_dataframe_with_column_mapping,
 )
 from app.config import get_config
@@ -85,7 +86,10 @@ def _on_pop_chart_viz_tab_changed() -> None:
 
 def section_import() -> None:
     st.markdown("### Import i standaryzacja danych")
-    st.caption("Plik CSV/XLSX lub URL z mapowaniem kolumn. Po wczytaniu przejdź do **Walidacja spójności zbioru**.")
+    st.caption(
+        "Plik CSV/XLSX (automatyczny schemat lub ręczne mapowanie kolumn) albo URL z mapowaniem. "
+        "Po wczytaniu: **Walidacja spójności zbioru**."
+    )
     sc.help_expander(
         "Co oznacza wczytywanie?",
         hc.SECTION_LOADING,
@@ -103,14 +107,103 @@ def section_import() -> None:
                 st.error(str(e))
     with c2:
         uploaded = st.file_uploader("Wybierz plik bazy", type=["csv", "xlsx", "xls"])
-        if uploaded is not None:
+        if uploaded is None:
+            for _k in ("file_import_sig", "file_import_raw", "file_import_name"):
+                st.session_state.pop(_k, None)
+        else:
             try:
-                df_std, _ = load_dataset_from_bytes(data=uploaded.read(), filename=uploaded.name)
-                sc.set_dataset(df_std, f"Plik: {uploaded.name}")
-                st.success(f"Wczytano plik: {uploaded.name}")
-                st.rerun()
-            except Exception as e:
-                st.error(str(e))
+                raw_bytes = uploaded.getvalue()
+            except Exception:
+                raw_bytes = uploaded.read()
+            sig = (str(uploaded.name), len(raw_bytes))
+            if st.session_state.get("file_import_sig") != sig:
+                st.session_state["file_import_sig"] = sig
+                st.session_state["file_import_name"] = uploaded.name
+                st.session_state["file_import_raw"] = load_raw_dataframe_from_bytes(raw_bytes, str(uploaded.name))
+            raw_df = st.session_state["file_import_raw"]
+            up_name = str(st.session_state.get("file_import_name") or uploaded.name)
+
+            st.caption(f"Plik **{up_name}**: **{len(raw_df)}** wierszy, **{len(raw_df.columns)}** kolumn.")
+            with st.expander("Podgląd surowych danych (nagłówki + pierwsze wiersze)", expanded=False):
+                st.dataframe(raw_df.head(10), width="stretch")
+
+            mode = st.radio(
+                "Sposób dopasowania kolumn",
+                ("Automatyczny (standardowy raport EBPB / znane nagłówki)", "Ręczne mapowanie najważniejszych pól"),
+                key="file_import_mode",
+            )
+
+            if mode.startswith("Automatyczny"):
+                if st.button("Wczytaj do aplikacji", key="file_import_auto_go", type="primary"):
+                    try:
+                        df_std = standardize_bison_report_dataframe(raw_df.copy())
+                        sc.set_dataset(df_std, f"Plik: {up_name}")
+                        st.success(f"Wczytano: {len(df_std)} wierszy.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+                        st.info(
+                            "Jeśli nagłówki w pliku są inne niż w szablonie EBPB, wybierz **Ręczne mapowanie** "
+                            "i przypisz kolumny poniżej."
+                        )
+            else:
+                cols = ["<brak>"] + [str(c) for c in raw_df.columns]
+                st.markdown("**Wymagane pola modelu**")
+                fm1, fm2, fm3 = st.columns(3)
+                with fm1:
+                    f_id = st.selectbox("id (numer osobnika)", cols, key="fmap_id")
+                    f_sex = st.selectbox("sex (płeć M/F)", cols, key="fmap_sex")
+                with fm2:
+                    f_line = st.selectbox("line (linia LB/LC)", cols, key="fmap_line")
+                    f_by = st.selectbox("birth_year (rok ur.)", cols, key="fmap_by")
+                    f_bl = st.selectbox("birth_location (opcjonalnie)", cols, key="fmap_bl")
+                with fm3:
+                    f_fa = st.selectbox("father_id (ojciec)", cols, key="fmap_f")
+                    f_mo = st.selectbox("mother_id (matka)", cols, key="fmap_m")
+
+                with st.expander("Dodatkowe pola (opcjonalnie — rejestr, walidacja, filtry)", expanded=False):
+                    ex1, ex2, ex3 = st.columns(3)
+                    with ex1:
+                        f_name = st.selectbox("name (imię)", cols, key="fmap_name")
+                        f_alt = st.selectbox("alt_name", cols, key="fmap_alt")
+                        f_status = st.selectbox("status", cols, key="fmap_status")
+                    with ex2:
+                        f_fn = st.selectbox("father_name", cols, key="fmap_fn")
+                        f_mn = st.selectbox("mother_name", cols, key="fmap_mn")
+                        f_fl = st.selectbox("father_line", cols, key="fmap_fl")
+                    with ex3:
+                        f_ml = st.selectbox("mother_line", cols, key="fmap_ml")
+                        f_bd = st.selectbox("birth_date", cols, key="fmap_bd")
+                        f_dd = st.selectbox("death_date", cols, key="fmap_dd")
+
+                if st.button("Zastosuj mapowanie i wczytaj", key="file_import_map_go", type="primary"):
+                    mapping = {
+                        "id": None if f_id == "<brak>" else f_id,
+                        "sex": None if f_sex == "<brak>" else f_sex,
+                        "line": None if f_line == "<brak>" else f_line,
+                        "birth_year": None if f_by == "<brak>" else f_by,
+                        "birth_location": None if f_bl == "<brak>" else f_bl,
+                        "father_id": None if f_fa == "<brak>" else f_fa,
+                        "mother_id": None if f_mo == "<brak>" else f_mo,
+                        "name": None if f_name == "<brak>" else f_name,
+                        "alt_name": None if f_alt == "<brak>" else f_alt,
+                        "status": None if f_status == "<brak>" else f_status,
+                        "father_name": None if f_fn == "<brak>" else f_fn,
+                        "mother_name": None if f_mn == "<brak>" else f_mn,
+                        "father_line": None if f_fl == "<brak>" else f_fl,
+                        "mother_line": None if f_ml == "<brak>" else f_ml,
+                        "birth_date": None if f_bd == "<brak>" else f_bd,
+                        "death_date": None if f_dd == "<brak>" else f_dd,
+                    }
+                    try:
+                        df_std = standardize_bison_report_dataframe_with_column_mapping(
+                            raw_df, mapping, test_id=TEST_ID
+                        )
+                        sc.set_dataset(df_std, f"Plik (mapowanie): {up_name}")
+                        st.success(f"Wczytano po mapowaniu: {len(df_std)} wierszy.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
 
     with st.expander("Pobieranie z internetu (URL) i mapowanie kolumn"):
         url = st.text_input("URL do pliku CSV/XLSX", key="st_url")
@@ -205,6 +298,15 @@ def section_validation() -> None:
 
     rep = st.session_state.get("validation_report")
     if rep is not None:
+        st.caption("**Wykres:** liczba wpisów błędów i ostrzeżeń (zgodnie z eksportem CSV) oraz najczęstsze typy problemów.")
+        fig_val = splt.fig_validation_findings(rep)
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_val,
+            download_filename="walidacja_podsumowanie_problemow.png",
+            download_key="val_findings_bar_png",
+            width=splt.ST_CHART_DISPLAY_WIDTH_PX,
+            export_dpi=splt.ST_DPI_EXPORT,
+        )
         st.markdown(rep.ui_summary())
         st.download_button(
             "Pobierz listę problemów walidacji (CSV — id, typ, szczegóły)",
@@ -343,15 +445,8 @@ def section_analysis_individual(df_std: pd.DataFrame, people: dict) -> None:
 
 
 def section_analysis_pairs_and_mating(df_std: pd.DataFrame, people: dict) -> None:
-    st.markdown("### Analiza par i optymalizacja kojarzeń")
-    st.caption("Pokrewieństwo par rodzicielskich (Φ, R, dekompozycja ścieżek) oraz ranking rekomendowanych kojarzeń.")
-    t1, t2 = st.tabs(
-        ["Pokrewieństwo par (Φ, R)", "Ranking rekomendowanych kojarzeń"],
-    )
-    with t1:
-        section_pair_kinship_analysis(df_std, people)
-    with t2:
-        section_mating_ranking(df_std, people)
+    st.markdown("### Analiza par")
+    st.warning("Sekcja **Pary** jest tymczasowo zablokowana.")
 
 
 def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> None:

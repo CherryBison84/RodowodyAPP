@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 from matplotlib.lines import Line2D
+from matplotlib import patheffects
 
 from app.pedigree.ancestor_pedigree import Person
 from app.ui.typography import apply_matplotlib_fonts
@@ -302,7 +303,7 @@ def plot_ancestor_pedigree(
 
         # Przy wielu węzłach na jednej warstwie limit x_span=3.0 powodował zbyt
         # małe rozstawienie etykiet. Zwiększamy span proporcjonalnie do liczby węzłów.
-        x_span = float(1.2 + max_chars / 90.0 + 0.25 * float(len(nodes)))
+        x_span = float(1.35 + max_chars / 84.0 + 0.29 * float(len(nodes)))
 
         if len(nodes) == 1:
             xs = [0.0]
@@ -317,9 +318,9 @@ def plot_ancestor_pedigree(
     # Przy wielu węzłach na poziomie etykiety zaczynają się nakładać.
     # Zwiększamy szerokość proporcjonalnie do gęstości.
     # Szersza figura = wyższa rozdzielczość przy skalowaniu do pełnej szerokości okna / kontenera.
-    fig_width = min(52.0, 13.0 + 0.82 * float(max_nodes_in_level))
+    fig_width = min(56.0, 14.0 + 0.94 * float(max_nodes_in_level))
     # Więcej miejsca pionowego, żeby “piętra” hierarchii były wyraźne.
-    fig_height = max(7.6, 5.85 + 0.65 * float(max_level))
+    fig_height = max(8.2, 6.35 + 0.74 * float(max_level))
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     ax.set_title(f"Osobnik numer: {person_id}", fontsize=11.75, fontweight="semibold", pad=10)
     ax.axis("off")
@@ -348,8 +349,8 @@ def plot_ancestor_pedigree(
     node_ids = list(G.nodes())
     node_colors = [_node_color(people.get(nid).sex if nid in people else None) for nid in node_ids]
     # node_size jest polem (area) w punktach, więc daje wyraźnie większe kółka.
-    base_node_size = 3000 if readable_mode else 2200
-    node_size = int(max(280, base_node_size / np.sqrt(max(1.0, total_nodes / 150.0))))
+    base_node_size = 3200 if readable_mode else 2400
+    node_size = int(max(340, base_node_size / np.sqrt(max(1.0, total_nodes / 150.0))))
     node_artist = nx.draw_networkx_nodes(
         G,
         pos,
@@ -431,11 +432,27 @@ def plot_ancestor_pedigree(
     if labels:
         # Dynamiczne zmniejszanie fontu przy gęstości.
         if readable_mode:
-            label_font_size = 9 if max_nodes_in_level <= 6 else (8 if max_nodes_in_level <= 10 else 7)
+            label_font_size = 10 if max_nodes_in_level <= 6 else (9 if max_nodes_in_level <= 10 else 8)
         else:
-            label_font_size = 8 if max_nodes_in_level <= 8 else 7
+            label_font_size = 9 if max_nodes_in_level <= 8 else 8
         font_color = "#0b2f22" if readable_mode else "white"
-        nx.draw_networkx_labels(G, pos, ax=ax, labels=labels, font_size=label_font_size, font_color=font_color)
+        label_artists = nx.draw_networkx_labels(
+            G,
+            pos,
+            ax=ax,
+            labels=labels,
+            font_size=label_font_size,
+            font_color=font_color,
+        )
+        # Delikatny obrys zwiększa kontrast etykiet przy gęstych układach i jasnych węzłach.
+        stroke_color = "#f7f8f4" if readable_mode else "#1a1a1a"
+        for _txt in label_artists.values():
+            try:
+                _txt.set_path_effects(
+                    [patheffects.withStroke(linewidth=1.2, foreground=stroke_color, alpha=0.9)]
+                )
+            except Exception:
+                pass
 
         _draw_line_badges(
             ax=ax,

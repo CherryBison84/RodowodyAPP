@@ -22,6 +22,7 @@ from pandas import isna
 from app.analytics.inbreeding_wright import wright_inbreeding_F
 from app.config import get_config
 from app.data.dataset_loader import dataframe_app_schema_columns
+from app.data.validator import ValidationReport
 from app.analytics.population_dashboard import reproducers_by_offspring_decade
 from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
 from app.ui.theme import Theme
@@ -46,12 +47,13 @@ ST_XTICK_ROT = 47.0
 ST_DPI_EXPORT = 168
 # Mapa braków (Walidacja): gęsty tekst w komórkach — wyższe DPI niż domyślne wykresy.
 ST_DPI_MISSING_MAP = 240
-# Rodowody i graf planu hodowlanego — więcej pikseli na węzły i drobny tekst.
-ST_DPI_PEDIGREE = 200
+# Rodowody i graf planu hodowlanego — wyższe DPI dla czytelnych etykiet po eksporcie.
+ST_DPI_PEDIGREE = 280
 # Domyślny rozmiar słupków / linii (średnio liczba kategorii na X)
 ST_FIG_W, ST_FIG_H = 8.6, 4.45
 ST_FIG_REPO_W, ST_FIG_REPO_H = 9.75, 5.0
 ST_FIG_HIST_W, ST_FIG_HIST_H = 8.0, 4.1
+ST_FIG_VALIDATION_W, ST_FIG_VALIDATION_H = 10.35, 4.72
 ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H = 10.25, 4.6
 # Panel 2×1 — trendy F/RIA (płeć i linie).
 ST_FIG_TWIN_INBRED_TREND_W, ST_FIG_TWIN_INBRED_TREND_H = 12.5, 9.65
@@ -380,6 +382,106 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         zorder=5,
     )
     ax.add_patch(frame)
+    return fig
+
+
+def fig_validation_findings(rep: ValidationReport) -> plt.Figure:
+    """
+    Wykres podsumowania walidacji: liczba wpisów ERROR/WARN w eksporcie CSV oraz rozkład wg typu problemu.
+    Gdy brak wierszy eksportu, liczy komunikaty ERROR/WARN z listy `issues`.
+    """
+    th = PLOT_THEME
+    color_err = "#a53c3c"
+    color_warn = "#8a6b58"
+
+    n_err = sum(1 for r in rep.export_rows if r.severity == "ERROR")
+    n_warn = sum(1 for r in rep.export_rows if r.severity == "WARN")
+    type_counter: Counter[str] = Counter(r.problem_type for r in rep.export_rows)
+
+    if not rep.export_rows:
+        n_err = max(n_err, sum(1 for i in rep.issues if i.severity == "ERROR"))
+        n_warn = max(n_warn, sum(1 for i in rep.issues if i.severity == "WARN"))
+        if not type_counter:
+            type_counter = Counter(i.title for i in rep.issues if i.severity in ("ERROR", "WARN"))
+
+    fig, (ax0, ax1) = plt.subplots(
+        1,
+        2,
+        figsize=(ST_FIG_VALIDATION_W, ST_FIG_VALIDATION_H),
+        gridspec_kw={"width_ratios": [1.05, 1.4], "wspace": 0.44},
+    )
+
+    labels_sev = ["Błędy\n(ERROR)", "Ostrzeżenia\n(WARN)"]
+    vals_sev = [float(n_err), float(n_warn)]
+    bars0 = ax0.bar(
+        range(2),
+        vals_sev,
+        color=[color_err, color_warn],
+        edgecolor=th.EDGE_PLOT,
+        linewidth=0.85,
+        width=0.62,
+    )
+    ax0.set_xticks(range(2))
+    ax0.set_xticklabels(labels_sev, fontsize=ST_FS_TICK)
+    ax0.set_ylabel("Liczba wpisów", fontsize=ST_FS_AXIS)
+    ax0.set_title(
+        f"Walidacja (n = {rep.total_rows} wierszy w bazie)\nWaga problemu w raporcie",
+        fontsize=ST_FS_TITLE,
+        pad=10,
+    )
+    ax0.tick_params(axis="y", labelsize=ST_FS_TICK)
+    ymax = max(1.0, max(vals_sev) * 1.12) if vals_sev else 1.0
+    ax0.set_ylim(0, ymax)
+    for b, v in zip(bars0, vals_sev):
+        if v > 0:
+            ax0.text(
+                b.get_x() + b.get_width() / 2.0,
+                b.get_height() + ymax * 0.02,
+                str(int(v)),
+                ha="center",
+                va="bottom",
+                fontsize=ST_FS_TICK,
+                color=th.TEXT,
+                fontweight="semibold",
+            )
+    ax0.grid(True, axis="y", alpha=0.28)
+
+    top_types = type_counter.most_common(12)
+    if not top_types:
+        ax1.set_xlim(0, 1)
+        ax1.set_ylim(0, 1)
+        ax1.text(
+            0.5,
+            0.5,
+            "Brak szczegółowych typów problemów\n(wszystko OK lub brak wierszy eksportu)",
+            ha="center",
+            va="center",
+            fontsize=ST_FS_AXIS,
+            color=th.MUTED,
+        )
+        ax1.set_xticks([])
+        ax1.set_yticks([])
+        for s in ax1.spines.values():
+            s.set_visible(False)
+    else:
+        types, counts = zip(*top_types, strict=True)
+
+        def _short(s: str, n: int = 46) -> str:
+            t = str(s).replace("\n", " ").strip()
+            return t if len(t) <= n else t[: n - 1] + "…"
+
+        labels = [_short(t) for t in types]
+        y = np.arange(len(labels))
+        ax1.barh(y, counts, color=BUTTON_BG2, edgecolor=th.EDGE_PLOT, linewidth=0.72)
+        ax1.set_yticks(y)
+        ax1.set_yticklabels(labels, fontsize=ST_FS_DENSE)
+        ax1.invert_yaxis()
+        ax1.set_xlabel("Liczba wykryć (wiersze / typ)", fontsize=ST_FS_AXIS)
+        ax1.set_title("Najczęstsze typy problemów", fontsize=ST_FS_TITLE, pad=10)
+        ax1.tick_params(axis="x", labelsize=ST_FS_TICK)
+        ax1.grid(True, axis="x", alpha=0.28)
+
+    fig.subplots_adjust(left=0.08, right=0.98, top=0.90, bottom=0.14, wspace=0.46)
     return fig
 
 

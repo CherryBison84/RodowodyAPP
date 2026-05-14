@@ -69,16 +69,27 @@ SECTION_LOADING = """
 SECTION_VALIDATION = """
 ## Walidacja — co jest sprawdzane
 
-- **Unikalność ID** — jeśli ten sam numer pojawia się dwa razy, program nie wie, który wiersz jest „prawdziwy” dla osobnika.
-- **Rodzice w bazie** — jeśli wpiszesz `father_id` / `mother_id`, powinny wskazywać na **istniejący** rekord (inaczej gałąź kończy się „w powietrzu”).
-- **Płeć, linia, rok urodzenia** — czy wartości mają sens (np. rok w rozsądnym zakresie).
-- **Relacje rodzic–dziecko** — m.in. oczywiste sprzeczności z płcią roli rodzica.
+Program traktuje bazę jak **drzewo rodowe** i szuka niespójności typowych dla plików hodowlanych.
+
+- **Unikalność ID** — powtórzone numery osobników; puste lub nieczytelne `id` w wierszu.
+- **Rodzice w bazie** — `father_id` / `mother_id` powinny (jeśli wypełnione) wskazywać na **istniejący** rekord; inaczej gałąź kończy się w powietrzu (ostrzeżenie przy analizach „founder-stop”).
+- **Cykle i self-parent** — niemożliwe pętle w grafie rodzic–dziecko oraz wskazanie samego siebie jako rodzica.
+- **Ta sama osoba jako ojciec i matka** — błąd krytyczny (np. zamiana kolumn lub literówka).
+- **Płeć vs rola rodzica** — w drzewie ojciec powinien być **M**, matka **F** (gdy płeć jest w bazie); wykrywa zamianę ojca z matką lub błędny zapis płci.
+- **Płeć, linia, rok urodzenia** — wartości poza sensownym zakresem lat; braki `birth_year`; wiek rodzica przy urodzeniu potomka (heurystyka 0–80 lat).
+- **Spójność linii** — `father_line` / `mother_line` vs linia zapisanego rodzica.
+- **Kompletność rodziców w rekordach** — statystyka: ile rekordów ma pełną parę, ile brakuje ojca, matki lub obojga (jakość danych o przodkach bezpośrednich).
+- **Daty tekstowe** — heurystyka na polach `birth_date` / `death_date`: czy wyciągnięte lata nie sugerują zgonu przed urodzeniem.
+
+**Relacje rodzic–dziecko** — łącznie z powyższym: program szuka błędów w pliku, powtórzeń lub luk w numerach, pomyłek przy rodzicach, nielogicznych dat i błędnych powiązań.
 
 Status **OK** znaczy: **nie znaleziono błędów krytycznych**. **Ostrzeżenia** warto przejrzeć przed wnioskami hodowlanymi — często da się je zrozumieć po historii danych lub po poprawce pojedynczych pól.
 
 **Mapa braków (walidacja):** poziomy pas pól wyłącznie dla **kolumn schematu importu** (model aplikacji / raport), nie dla dodatkowych kolumn z arkusza. W pasie tylko **% wierszy z luką** (NaN, puste, „nan”); **nazwy kolumn** ukośnie pod pasem. Kolory **leśne** (jasna mgła = mało braków, ciemniejszy mech/kora = więcej), bez osobnego paska legendy — dokładne % w każdej komórce. Pełna tabela % jest w rozwijanej sekcji poniżej mapy.
 
 **Eksport CSV:** możesz pobrać listę problemów (**id**, **waga** ERROR/WARN, **typ_problemu**, **szczegoly**) — do filtrowania i poprawy w Excelu. Dla problemów dotyczących całej bazy (np. cykl w rodowodzie) w kolumnie id jest `_GLOBAL_`.
+
+**Wykres podsumowania:** słupki z liczbą wpisów błędów i ostrzeżeń (zgodnie z eksportem) oraz najczęstsze typy problemów — ułatwia szybki przegląd jakości bazy przed pracą z tabelą i CSV.
 """
 
 

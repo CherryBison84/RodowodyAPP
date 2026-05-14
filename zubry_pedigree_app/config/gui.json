@@ -1,0 +1,14 @@
+{
+  "dataset_dir": "data",
+  "default_max_inbreeding_depth": 20,
+  "default_pci_max_generations": 4,
+  "default_tree_generations": 4,
+  "mating_age_limit_years": 15,
+  "mating_ranking_top_n": 36,
+  "mating_default_male_limit": 200,
+  "mating_default_female_limit": 200,
+  "f_ria_smooth_window": 7,
+  "gi_smooth_window": 3,
+  "report_founders_top_n": 20,
+  "report_birth_location_top_n": 12
+}

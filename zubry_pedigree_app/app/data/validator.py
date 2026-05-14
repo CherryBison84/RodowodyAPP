@@ -1,8 +1,9 @@
-"""Walidacja danych po imporcie: duplikaty ID, rodzice w bazie, lata, płeć, cykle w grafie."""
+"""Walidacja danych po imporcie: jakość drzewa rodowego (ID, rodzice, płeć, daty, cykle, braki)."""
 
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import dataclass
 from io import StringIO
 from typing import Dict, List, Optional, Tuple
@@ -123,6 +124,36 @@ def _parse_year(v: object) -> Optional[int]:
         return int(float(v))
     except Exception:
         return None
+
+
+_YEAR_TOKEN_RE = re.compile(r"\b(18\d{2}|19\d{2}|20[0-3]\d)\b")
+
+
+def _years_from_date_cell(v: object) -> List[int]:
+    """Wyciąga lata z luźnych napisów (np. „12.5.1891”, „ca. 1881”) — do porównania ur./zg."""
+    if v is None:
+        return []
+    if isinstance(v, float) and v != v:
+        return []
+    s = str(v).strip()
+    if not s or s.lower() in {"nan", "none", ""}:
+        return []
+    return [int(m.group(0)) for m in _YEAR_TOKEN_RE.finditer(s)]
+
+
+def _is_nonempty_parent(val: object) -> bool:
+    if val is None:
+        return False
+    if isinstance(val, float) and val != val:
+        return False
+    s = str(val).strip()
+    return bool(s) and s.lower() not in {"none", "nan"}
+
+
+def _str_id_cell(v: object) -> str:
+    if v is None or (isinstance(v, float) and v != v):
+        return ""
+    return str(v).strip()
 
 
 def validate_loaded_dataset(
@@ -495,6 +526,236 @@ def validate_loaded_dataset(
                     )
                 else:
                     issues.append(ValidationIssue("OK", "mother_line vs line rodzica: spójne"))
+
+    # 8) Puste / nieważne ID wierszy (spójność z modelem drzewa)
+    if "id" in df_std.columns:
+        try:
+            bad_id = 0
+            for _, row in df_std.iterrows():
+                sid = _str_id_cell(row.get("id"))
+                if not sid or sid.lower() == "nan":
+                    bad_id += 1
+            if bad_id > 0:
+                issues.append(
+                    ValidationIssue(
+                        "ERROR",
+                        "Wiersze z brakującym lub niepoprawnym `id`",
+                        details=f"count={bad_id}",
+                    )
+                )
+                export_rows.append(
+                    ValidationExportRow(
+                        "_GLOBAL_",
+                        "ERROR",
+                        "Pusty lub niepoprawny identyfikator",
+                        f"{bad_id} wierszy bez czytelnego `id` — usuń lub uzupełnij numery osobników.",
+                    )
+                )
+            else:
+                issues.append(ValidationIssue("OK", "Identyfikatory: każdy wiersz ma niepuste `id`"))
+        except Exception:
+            issues.append(ValidationIssue("WARN", "Nie udało się sprawdzić poprawności `id` w wierszach"))
+
+    # 9) Brak roku urodzenia (utrudnia analizy kohort, wiek rodziców)
+    if "birth_year" in df_std.columns:
+        try:
+            ser_y = df_std["birth_year"].map(_parse_year)
+            n_miss_y = int(ser_y.isna().sum())
+            if n_miss_y > 0:
+                issues.append(
+                    ValidationIssue(
+                        "WARN",
+                        "Brak roku urodzenia (birth_year) w części rekordów",
+                        details=f"count={n_miss_y} / {total_rows}",
+                    )
+                )
+                shown = 0
+                for _, row in df_std.iterrows():
+                    if shown >= 100:
+                        break
+                    if _parse_year(row.get("birth_year")) is None:
+                        rid = _str_id_cell(row.get("id"))
+                        if rid:
+                            export_rows.append(
+                                ValidationExportRow(
+                                    rid,
+                                    "WARN",
+                                    "Brak birth_year",
+                                    "Uzupełnij rok urodzenia lub popraw format pola.",
+                                )
+                            )
+                            shown += 1
+            else:
+                issues.append(ValidationIssue("OK", "birth_year: brak luk w rekordach"))
+        except Exception:
+            issues.append(ValidationIssue("WARN", "Nie udało się policzyć braków `birth_year`"))
+
+    # 10) Ta sama osoba jako ojciec i matka
+    same_parent_pair = 0
+    if "father_id" in df_std.columns and "mother_id" in df_std.columns and "id" in df_std.columns:
+        try:
+            for _, row in df_std.iterrows():
+                if not _is_nonempty_parent(row.get("father_id")) or not _is_nonempty_parent(row.get("mother_id")):
+                    continue
+                fa_s = _str_id_cell(row.get("father_id"))
+                mo_s = _str_id_cell(row.get("mother_id"))
+                if fa_s == mo_s:
+                    same_parent_pair += 1
+                    cid = _str_id_cell(row.get("id"))
+                    if cid:
+                        export_rows.append(
+                            ValidationExportRow(
+                                cid,
+                                "ERROR",
+                                "Ten sam ID jako ojciec i matka",
+                                f"father_id=mother_id={fa_s} — niemożliwe biologicznie; sprawdź zamianę kolumn lub literówkę.",
+                            )
+                        )
+            if same_parent_pair > 0:
+                issues.append(
+                    ValidationIssue(
+                        "ERROR",
+                        "Powiązania rodzinne: ten sam osobnik jako oba rodzice",
+                        details=f"count={same_parent_pair}",
+                    )
+                )
+            else:
+                issues.append(ValidationIssue("OK", "Para rodziców: ojciec i matka to różne ID"))
+        except Exception:
+            issues.append(ValidationIssue("WARN", "Nie udało się sprawdzić father_id == mother_id"))
+
+    # 11) Płeć rodzica vs rola (ojciec = M, matka = F) — wykrywa pomyłki / zamianę kolumn
+    wrong_father_sex = 0
+    wrong_mother_sex = 0
+    if "father_id" in df_std.columns and "mother_id" in df_std.columns and people:
+        try:
+            for _, row in df_std.iterrows():
+                cid = _str_id_cell(row.get("id"))
+                fa = row.get("father_id")
+                mo = row.get("mother_id")
+                if _is_nonempty_parent(fa):
+                    fa_s = _str_id_cell(fa)
+                    pfa = people.get(fa_s)
+                    if pfa is not None and pfa.sex in {"M", "F"} and pfa.sex != "M":
+                        wrong_father_sex += 1
+                        if cid:
+                            export_rows.append(
+                                ValidationExportRow(
+                                    cid,
+                                    "WARN",
+                                    "Ojciec ma płeć F w rekordzie osobnika",
+                                    f"father_id={fa_s} — w drzewie ojciec powinien być M; możliwa zamiana z matką lub błąd płci u rodzica.",
+                                )
+                            )
+                if _is_nonempty_parent(mo):
+                    mo_s = _str_id_cell(mo)
+                    pmo = people.get(mo_s)
+                    if pmo is not None and pmo.sex in {"M", "F"} and pmo.sex != "F":
+                        wrong_mother_sex += 1
+                        if cid:
+                            export_rows.append(
+                                ValidationExportRow(
+                                    cid,
+                                    "WARN",
+                                    "Matka ma płeć M w rekordzie osobnika",
+                                    f"mother_id={mo_s} — w drzewie matka powinna być F; możliwa zamiana z ojcem lub błąd płci u rodzica.",
+                                )
+                            )
+            if wrong_father_sex > 0 or wrong_mother_sex > 0:
+                issues.append(
+                    ValidationIssue(
+                        "WARN",
+                        "Niespójność płci z rolą rodzica (sprawdź zamianę kolumn lub dane źródłowe)",
+                        details=f"ojciec z płcią F: {wrong_father_sex}, matka z płcią M: {wrong_mother_sex}",
+                    )
+                )
+            else:
+                issues.append(
+                    ValidationIssue(
+                        "OK",
+                        "Płeć rodziców zgodna z rolą (ojciec M / matka F), gdzie płeć jest podana",
+                    )
+                )
+        except Exception:
+            issues.append(ValidationIssue("WARN", "Nie udało się zweryfikować płci rodziców względem roli"))
+
+    # 12) Kompletność wpisów o przodkach bezpośrednich (braki w danych — nie zawsze błąd)
+    if "father_id" in df_std.columns and "mother_id" in df_std.columns:
+        try:
+            n_full = n_no_f = n_no_m = n_no_both = 0
+            for _, row in df_std.iterrows():
+                hf = _is_nonempty_parent(row.get("father_id"))
+                hm = _is_nonempty_parent(row.get("mother_id"))
+                if hf and hm:
+                    n_full += 1
+                elif not hf and not hm:
+                    n_no_both += 1
+                elif not hf:
+                    n_no_f += 1
+                else:
+                    n_no_m += 1
+            pct_full = 100.0 * n_full / total_rows if total_rows else 0.0
+            issues.append(
+                ValidationIssue(
+                    "OK",
+                    "Kompletność danych o rodzicach (struktura rekordów)",
+                    details=(
+                        f"pełna para (ojciec+matka): {n_full} ({pct_full:.1f}%), "
+                        f"tylko brak ojca: {n_no_f}, tylko brak matki: {n_no_m}, brak obojga: {n_no_both}"
+                    ),
+                )
+            )
+            if n_no_both > 0 and n_no_both == total_rows:
+                issues.append(
+                    ValidationIssue(
+                        "WARN",
+                        "Wszystkie rekordy bez wskazania rodziców",
+                        details="Drzewo nie ma krawędzi rodzic–dziecko — analizy rodowodowe będą ograniczone.",
+                    )
+                )
+        except Exception:
+            issues.append(ValidationIssue("WARN", "Nie udało się policzyć kompletności rodziców"))
+
+    # 13) Spójność lat w birth_date vs death_date (heurystyka po latach w tekście)
+    if "birth_date" in df_std.columns and "death_date" in df_std.columns and "id" in df_std.columns:
+        try:
+            illogical = 0
+            for _, row in df_std.iterrows():
+                bys = _years_from_date_cell(row.get("birth_date"))
+                dys = _years_from_date_cell(row.get("death_date"))
+                if len(bys) < 1 or len(dys) < 1:
+                    continue
+                # Jeśli najpóźniejszy rok z pola „ur.” jest po najwcześniejszym roku ze „zg.” — podejrzenie błędu.
+                if max(bys) > min(dys):
+                    illogical += 1
+                    rid = _str_id_cell(row.get("id"))
+                    if rid:
+                        export_rows.append(
+                            ValidationExportRow(
+                                rid,
+                                "WARN",
+                                "Daty: podejrzenie śmierci przed urodzeniem",
+                                f"birth_date={row.get('birth_date')!r}, death_date={row.get('death_date')!r} "
+                                f"(porównanie po wyciągniętych latach: max(ur.)={max(bys)}, min(zg.)={min(dys)})",
+                            )
+                        )
+            if illogical > 0:
+                issues.append(
+                    ValidationIssue(
+                        "WARN",
+                        "Nielogiczna kolejność dat ur./zg. (wg lat w polach tekstowych)",
+                        details=f"count={illogical} (heurystyka — sprawdź ręcznie nietypowe zapisy)",
+                    )
+                )
+            else:
+                issues.append(
+                    ValidationIssue(
+                        "OK",
+                        "Daty ur./zg.: brak oczywistych sprzeczności (heurystyka lat w tekście)",
+                    )
+                )
+        except Exception:
+            issues.append(ValidationIssue("WARN", "Nie udało się sprawdzić spójności birth_date/death_date"))
 
     return ValidationReport(total_rows=total_rows, issues=issues, export_rows=tuple(export_rows))
 

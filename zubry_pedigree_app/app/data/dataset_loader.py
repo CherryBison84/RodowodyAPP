@@ -102,6 +102,44 @@ def _read_dataframe_from_ext(source: Path | BinaryIO, *, ext: str) -> pd.DataFra
     raise ValueError(f"Nieobsługiwany typ pliku: {ext}")
 
 
+def _pick_source_column(df: pd.DataFrame, logical: str, candidates: tuple[str, ...]) -> str:
+    for c in candidates:
+        if c in df.columns:
+            return c
+    raise ValueError(
+        f"Brak wymaganej kolumny „{logical}” w pliku "
+        f"(szukano jednej z nazw: {list(candidates)}). "
+        f"Kolumny w pliku: {list(df.columns)}"
+    )
+
+
+def _birth_location_series(df: pd.DataFrame) -> pd.Series:
+    """
+    Stary raport: jedna kolumna „Birth location”.
+    Nowy raport EBPB: „birth_loc_name” + „birth_country” (łączone do jednego pola w modelu).
+    """
+    if "Birth location" in df.columns:
+        return df["Birth location"]
+
+    loc_c = "birth_loc_name" if "birth_loc_name" in df.columns else None
+    cc_c = "birth_country" if "birth_country" in df.columns else None
+    if not loc_c and not cc_c:
+        return pd.Series([None] * len(df), index=df.index, dtype=object)
+
+    n = len(df)
+    loc_vals = df[loc_c].tolist() if loc_c else [None] * n
+    cc_vals = df[cc_c].tolist() if cc_c else [None] * n
+    merged: list[Optional[str]] = []
+    for lv, cv in zip(loc_vals, cc_vals):
+        loc = _optional_str(lv)
+        cc = _optional_str(cv)
+        if loc and cc:
+            merged.append(f"{loc}, {cc}")
+        else:
+            merged.append(loc or cc)
+    return pd.Series(merged, index=df.index, dtype=object)
+
+
 def _parse_id(value: object) -> Optional[str]:
     """
     Excel często zapisuje ID jako float (np. 123.0) albo jako string (np. 693a).
@@ -130,34 +168,53 @@ def _parse_id(value: object) -> Optional[str]:
 def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
     Konwertuje surowy arkusz do wspólnego schematu potrzebnego do rodowodu.
+
+    Obsługiwane są:
+    - starszy eksport z nagłówkami scalonymi (pandas: „Father”, „Unnamed: 8”…),
+    - aktualny raport EBPB (m.in. „father_number”, „mother_number”, „birth_loc_name”).
     """
     df = df.copy()
     df.columns = [_clean_column_name(c) for c in df.columns]
 
-    rename_map = {
-        "Sex": "sex",
-        "Number": "id",
-        "Name": "name",
-        "Alt name": "alt_name",
-        "Line": "line",
-        "Birth year": "birth_year",
-        "Status": "status",
-        "Father": "father_id",
-        "Unnamed: 8": "father_name",
-        "Unnamed: 9": "father_line",
-        "Mother": "mother_id",
-        "Unnamed: 11": "mother_name",
-        "Unnamed: 12": "mother_line",
-        "Birth date": "birth_date",
-        "Death date": "death_date",
-        "Birth location": "birth_location",
-    }
+    col_sex = _pick_source_column(df, "Sex", ("Sex",))
+    col_id = _pick_source_column(df, "Number", ("Number",))
+    col_name = _pick_source_column(df, "Name", ("Name",))
+    col_alt = _pick_source_column(df, "Alt name", ("Alt name",))
+    col_line = _pick_source_column(df, "Line", ("Line",))
+    col_by = _pick_source_column(df, "Birth year", ("Birth year",))
+    col_status = _pick_source_column(df, "Status", ("Status",))
+    col_fid = _pick_source_column(df, "Father / father_number", ("Father", "father_number"))
+    col_fname = _pick_source_column(df, "Father name", ("Unnamed: 8", "father_name"))
+    col_fline = _pick_source_column(df, "Father line", ("Unnamed: 9", "father_line"))
+    col_mid = _pick_source_column(df, "Mother / mother_number", ("Mother", "mother_number"))
+    col_mname = _pick_source_column(df, "Mother name", ("Unnamed: 11", "mother_name"))
+    col_mline = _pick_source_column(df, "Mother line", ("Unnamed: 12", "mother_line"))
+    col_bdate = _pick_source_column(df, "Birth date", ("Birth date", "birth_date"))
+    col_ddate = _pick_source_column(df, "Death date", ("Death date", "death_date"))
 
-    missing = [c for c in rename_map.keys() if c not in df.columns]
-    if missing:
-        raise ValueError(f"Brak wymaganych kolumn w pliku: {missing}")
+    out = pd.DataFrame(
+        {
+            "sex": df[col_sex],
+            "id": df[col_id],
+            "name": df[col_name],
+            "alt_name": df[col_alt],
+            "line": df[col_line],
+            "birth_year": df[col_by],
+            "status": df[col_status],
+            "father_id": df[col_fid],
+            "father_name": df[col_fname],
+            "father_line": df[col_fline],
+            "mother_id": df[col_mid],
+            "mother_name": df[col_mname],
+            "mother_line": df[col_mline],
+            "birth_date": df[col_bdate],
+            "death_date": df[col_ddate],
+            "birth_location": _birth_location_series(df),
+        },
+        index=df.index,
+    )
 
-    df = df.rename(columns=rename_map)
+    df = out
 
     df["id"] = df["id"].apply(_parse_id)
     df["father_id"] = df.get("father_id", pd.Series(index=df.index)).apply(_parse_id)
