@@ -1,6 +1,8 @@
 # WisentPedigree Pro+ (RodowodyAPP)
 
-Aplikacja **webowa (Streamlit)** do wczytywania baz rodowodowych, walidacji, analizy **inbredu (F Wright)**, **kompletności rodowodu**, **pokrewieństwa par**, **parametrów populacyjnych** i prostego **planu hodowlanego**. Interfejs oraz raporty są w języku polskim; motyw wizualny jest dopasowany do czytelnej pracy z dużymi zbiorami.
+**Wersja aplikacji (pakiet): 0.4.0**
+
+Aplikacja **webowa (Streamlit)** do wczytywania baz rodowodowych, **walidacji** (w tym eksport CSV, wykresy podsumowań i **automatyczne poprawki** w sesji), analizy **inbredu (F Wright)**, **kompletności rodowodu**, **parametrów populacyjnych** oraz raportów. Interfejs i treści pomocy są po polsku; motyw wizualny jest dopasowany do pracy z dużymi zbiorami.
 
 Kod źródłowy znajduje się w katalogu **`zubry_pedigree_app/`**.
 
@@ -13,7 +15,7 @@ Kod źródłowy znajduje się w katalogu **`zubry_pedigree_app/`**.
 
 ```bash
 cd zubry_pedigree_app
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
@@ -24,49 +26,48 @@ pip install -r requirements.txt
 
 ```bash
 cd zubry_pedigree_app
-python run_web.py
+python3 run_web.py
 ```
 
-Tylko serwer Streamlit (jak `streamlit run`):
+Tylko serwer Streamlit:
 
 ```bash
 cd zubry_pedigree_app
-python run_streamlit.py
+python3 run_streamlit.py
 ```
 
-Z **katalogu głównego repozytorium** (bez `cd` do podfolderu):
+Z **katalogu głównego repozytorium**:
 
 ```bash
-python run_streamlit.py
+python3 run_streamlit.py
 ```
 
-Bezpośrednio (musisz być w katalogu, gdzie moduł `app` jest na `PYTHONPATH`, zwykle `zubry_pedigree_app/`):
+Bezpośrednio (katalog roboczy: `zubry_pedigree_app/`, żeby moduł `app` był na `PYTHONPATH`):
 
 ```bash
 cd zubry_pedigree_app
-python -m streamlit run app/ui/streamlit/streamlit_app.py
+python3 -m streamlit run app/ui/streamlit/streamlit_app.py
 ```
 
-Nie uruchamiaj `streamlit_app.py` poleceniem `python streamlit_app.py` — wymagane jest `streamlit run`.
+Na macOS, przy problemach z obserwatorem plików Streamlit, można ustawić np. `STREAMLIT_SERVER_FILE_WATCHER_TYPE=none`.
 
 ## Nawigacja w aplikacji
 
 Typowy przepływ:
 
-1. **Import danych** — CSV / XLSX / URL, mapowanie kolumn, opcjonalnie baza domyślna.
-2. **Walidacja** — spójność zbioru, mapa braków w kolumnach.
+1. **Import danych** — CSV / XLSX / URL, mapowanie kolumn (w tym ręczne przy uploadzie), opcjonalnie baza domyślna (plik **`EBPB_bison_report.xlsx`** obok `run_web.py`, jeśli go dodasz lokalnie).
+2. **Walidacja** — podmenu w dwóch rzędach (m.in. arkusz/ID/rodzice/chronologia/graf/linie/przodkowie/raport), **auto-poprawki** jako osobna podsekcja, eksporty CSV, czytelniejsze wykresy podsumowań.
 3. **Rejestr** — lista osobników.
-4. **Analiza osobnicza** — graf przodków, F (Wright), kompletność (EG, PCL, PCI), linie.
-5. **Populacja** — dashboard (metryki tematyczne), wykresy (m.in. trendy F, GI, założyciele).
-6. **Pary i kojarzenia** — Φ, R dla par, ranking kojarzeń.
-7. **Plan hodowlany** — scenariusze i podpowiedzi par.
-8. **Raporty** — podgląd i eksport (TXT / DOCX).
+4. **Analiza osobnicza** — graf **przodków**, **potomków** lub **łączony** (przodkowie + potomkowie w jednym rysunku), F (Wright), kompletność (EG, PCL, PCI), linie, rozkład wspólnych przodków rodziców.
+5. **Populacja** — dashboard i wykresy (m.in. trendy F, GI, założyciele).
+6. **Pary** — sekcja może być tymczasowo ograniczona (zależnie od wersji kodu).
+7. **Raporty** — podgląd i eksport (TXT / PDF / DOCX).
 
 Na dole strony: zwinięta pomoc (**Słownik parametrów**, **Literatura**).
 
 ## Dane i dokumentacja metodyczna
 
-- Domyślna przykładowa baza: **`zubry_pedigree_app/EBPB_bison_report.xlsx`** (wczytywana z poziomu Import jako „domyślna baza”, jeśli plik istnieje).
+- Opcjonalna lokalna baza przykładowa: **`zubry_pedigree_app/EBPB_bison_report.xlsx`** (ścieżka zgodna z loaderem domyślnej bazy).
 - **`zubry_pedigree_app/metrics_definition.md`** — definicje metryk (F, GI, f_e, RIA itd.), spójne z widokami w aplikacji.
 
 ## Główne zależności (Python)

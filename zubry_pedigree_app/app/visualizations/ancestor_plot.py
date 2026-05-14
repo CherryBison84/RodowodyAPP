@@ -181,9 +181,9 @@ def _add_combined_legend(ax) -> None:
     )
 
 
-def plot_ancestor_pedigree(
+def plot_layered_pedigree(
     person_id: str,
-    levels: Dict[str, int],
+    vertical: Dict[str, int],
     edges: List[Tuple[str, str]],
     people: Dict[str, Person],
     *,
@@ -192,117 +192,112 @@ def plot_ancestor_pedigree(
     full_labels_limit: int = 220,
     readable_label_depth: int = 2,
     enable_click_highlight: bool = False,
-    # event_doubleclick=True oznacza podwójne kliknięcie na węzeł.
     on_node_click: Optional[Callable[[str, bool], None]] = None,
 ) -> plt.Figure:
-    """Warstwowy graf rodzic → dziecko z poziomami przodków."""
-    if not levels:
+    """
+    Warstwowy graf **rodzic → dziecko** z dowolnym podziałem pionowym.
+
+    `vertical[n]` to współrzędna Y węzła `n` (matplotlib): np. **ujemne** — przodkowie
+    (ojciec/matka pod osią osoby startowej, jak dotychczas), **0** — osoba startowa,
+    **dodatnie** — potomkowie (nad osią startu). Łączenie przodków i potomków w jednym
+    rysunku: `vertical = {-L_anc … 0 … +L_desc}`.
+    """
+    if not vertical:
         fig, ax = plt.subplots(figsize=(10.5, 5.25))
         ax.text(0.5, 0.5, "Brak danych", ha="center", va="center")
         ax.axis("off")
         return fig
 
-    if len(levels) > max_nodes_for_layout_warning:
-        # Layout warstwowy nadal działa, ale może być czytelność słaba.
+    if len(vertical) > max_nodes_for_layout_warning:
         pass
 
-    # Budujemy graf.
     G = nx.DiGraph()
-    for nid in levels.keys():
+    for nid in vertical.keys():
         G.add_node(nid)
     for parent, child in edges:
-        if parent in levels and child in levels:
+        if parent in vertical and child in vertical:
             G.add_edge(parent, child)
 
-    # Warstwowanie: y = -generation.
-    # Zamiast sortowania po ID, robimy prostą redukcję crossingów:
-    # przestawiamy kolejność węzłów w każdej warstwie tak, aby węzły były
-    # ułożone “bliżej” barycentru ich sąsiadów z sąsiedniej warstwy.
-    by_level: Dict[int, List[str]] = {}
-    for nid, lvl in levels.items():
-        by_level.setdefault(lvl, []).append(nid)
-    for lvl in by_level:
-        by_level[lvl].sort()
+    by_band: Dict[int, List[str]] = {}
+    for nid, band in vertical.items():
+        by_band.setdefault(int(band), []).append(nid)
+    for b in by_band:
+        by_band[b].sort()
 
-    max_level = max(by_level.keys())
-    total_nodes = len(levels)
+    bands_sorted = sorted(by_band.keys())
+    y_span = float(max(bands_sorted) - min(bands_sorted)) if bands_sorted else 0.0
+    total_nodes = len(vertical)
 
     in_neighbors: Dict[str, List[str]] = {}
     out_neighbors: Dict[str, List[str]] = {}
     for parent, child in edges:
-        if parent not in levels or child not in levels:
+        if parent not in vertical or child not in vertical:
             continue
         out_neighbors.setdefault(parent, []).append(child)
         in_neighbors.setdefault(child, []).append(parent)
 
     def _reorder_levels(iterations: int = 4) -> None:
-        # In-place: modyfikuje `by_level`.
         for _ in range(iterations):
-            # Forward: porządkujemy warstwę lvl na podstawie rodziców w lvl-1.
-            for lvl in range(1, max_level + 1):
-                prev_nodes = by_level.get(lvl - 1, [])
-                idx_prev = {nid: i for i, nid in enumerate(prev_nodes)}
+            for i in range(1, len(bands_sorted)):
+                prev_band = bands_sorted[i - 1]
+                cur_band = bands_sorted[i]
+                prev_nodes = by_band.get(prev_band, [])
+                idx_prev = {nid: j for j, nid in enumerate(prev_nodes)}
 
-                cur_nodes = by_level.get(lvl, [])
+                cur_nodes = by_band.get(cur_band, [])
                 if not cur_nodes:
                     continue
 
                 def score(nid: str) -> float:
-                    parents = [p for p in in_neighbors.get(nid, []) if levels.get(p) == (lvl - 1)]
+                    parents = [p for p in in_neighbors.get(nid, []) if vertical.get(p) == prev_band]
                     if not parents:
-                        # Brak rodziców w tej warstwie -> zostaw kolejność (score = inf).
                         return float("inf")
                     return float(sum(idx_prev.get(p, 0) for p in parents)) / float(len(parents))
 
-                cur_nodes_sorted = sorted(cur_nodes, key=lambda nid: (score(nid), str(nid)))
-                by_level[lvl] = cur_nodes_sorted
+                by_band[cur_band] = sorted(cur_nodes, key=lambda nid: (score(nid), str(nid)))
 
-            # Backward: porządkujemy warstwę lvl na podstawie dzieci w lvl+1.
-            for lvl in range(max_level - 1, -1, -1):
-                next_nodes = by_level.get(lvl + 1, [])
-                idx_next = {nid: i for i, nid in enumerate(next_nodes)}
+            for i in range(len(bands_sorted) - 2, -1, -1):
+                cur_band = bands_sorted[i]
+                next_band = bands_sorted[i + 1]
+                next_nodes = by_band.get(next_band, [])
+                idx_next = {nid: j for j, nid in enumerate(next_nodes)}
 
-                cur_nodes = by_level.get(lvl, [])
+                cur_nodes = by_band.get(cur_band, [])
                 if not cur_nodes:
                     continue
 
-                def score(nid: str) -> float:
-                    children = [c for c in out_neighbors.get(nid, []) if levels.get(c) == (lvl + 1)]
+                def score2(nid: str) -> float:
+                    children = [c for c in out_neighbors.get(nid, []) if vertical.get(c) == next_band]
                     if not children:
                         return float("inf")
                     return float(sum(idx_next.get(c, 0) for c in children)) / float(len(children))
 
-                cur_nodes_sorted = sorted(cur_nodes, key=lambda nid: (score(nid), str(nid)))
-                by_level[lvl] = cur_nodes_sorted
+                by_band[cur_band] = sorted(cur_nodes, key=lambda nid: (score2(nid), str(nid)))
 
-    # Heurystyka działa najlepiej na małych/średnich grafach (typu ancestor depth 4-8),
-    # ale nawet dla większych zmniejsza “losowość” układu.
     _reorder_levels(iterations=4)
 
     pos: Dict[str, Tuple[float, float]] = {}
-    for lvl in range(0, max_level + 1):
-        nodes = by_level.get(lvl, [])
+    for band in bands_sorted:
+        nodes = by_band.get(band, [])
         if not nodes:
             continue
 
-        # Estymacja rozstawu w poziomie (bez dokładnego liczenia szerokości fontu).
         max_chars = 0
         for nid in nodes:
             person = people.get(nid)
             name = getattr(person, "name", None) if person else None
             year_str = _birth_year_label(person)
             name_part = ""
+            v_here = vertical.get(nid, 0)
+            shallow = v_here == 0 or abs(int(v_here)) == 1
             if not readable_mode or total_nodes <= full_labels_limit:
                 name_part = str(name) if name else ""
             else:
-                # W trybie czytelnym nazwy pokazujemy tylko w płytszych pokoleniach.
-                if lvl in (0, 1) and name:
+                if shallow and name:
                     name_part = str(name)
             est = len(str(nid)) + len(name_part) + len(year_str)
             max_chars = max(max_chars, est)
 
-        # Przy wielu węzłach na jednej warstwie limit x_span=3.0 powodował zbyt
-        # małe rozstawienie etykiet. Zwiększamy span proporcjonalnie do liczby węzłów.
         x_span = float(1.35 + max_chars / 84.0 + 0.29 * float(len(nodes)))
 
         if len(nodes) == 1:
@@ -310,38 +305,31 @@ def plot_ancestor_pedigree(
         else:
             xs = np.linspace(-x_span, x_span, num=len(nodes))
 
-        y = -float(lvl)
+        y = float(band)
         for i, nid in enumerate(nodes):
             pos[nid] = (float(xs[i]), y)
 
-    max_nodes_in_level = max((len(v) for v in by_level.values()), default=1)
-    # Przy wielu węzłach na poziomie etykiety zaczynają się nakładać.
-    # Zwiększamy szerokość proporcjonalnie do gęstości.
-    # Szersza figura = wyższa rozdzielczość przy skalowaniu do pełnej szerokości okna / kontenera.
+    max_nodes_in_level = max((len(v) for v in by_band.values()), default=1)
     fig_width = min(56.0, 14.0 + 0.94 * float(max_nodes_in_level))
-    # Więcej miejsca pionowego, żeby “piętra” hierarchii były wyraźne.
-    fig_height = max(8.2, 6.35 + 0.74 * float(max_level))
+    fig_height = max(8.2, 6.35 + 0.74 * max(y_span, float(len(bands_sorted) - 1)))
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     ax.set_title(f"Osobnik numer: {person_id}", fontsize=11.75, fontweight="semibold", pad=10)
     ax.axis("off")
 
-    total_nodes = len(levels)
-    # Gdy użytkownik klika w węzły, podświetlimy też ścieżkę do przodków,
-    # więc bazowe krawędzie przyciemnimy, aby highlight był bardziej widoczny.
     base_edge_alpha = 0.55 if total_nodes <= 200 else 0.22
     edge_alpha = float(base_edge_alpha) * (0.45 if enable_click_highlight else 1.0)
     edge_width = 1.28 if total_nodes <= 200 else 0.85
     if total_nodes > 320:
-        # Przy bardzo gęstych wykresach grubsze linie potęgują “spaghetti”.
         edge_alpha = min(edge_alpha, 0.18)
         edge_width = 0.58
 
+    edge_layout_depth = max(3, len(bands_sorted), int(y_span) + 1)
     _draw_pedigree_edges(
         G=G,
         pos=pos,
         ax=ax,
         readable_mode=readable_mode,
-        max_level=max_level,
+        max_level=edge_layout_depth,
         edge_width=edge_width,
         edge_alpha=edge_alpha,
     )
@@ -369,42 +357,35 @@ def plot_ancestor_pedigree(
     line_color_map: Dict[str, str] = {}
     dense_mode = bool(readable_mode and total_nodes > full_labels_limit)
     for nid in G.nodes():
-        lvl = levels.get(nid)
+        v = vertical.get(nid)
         person = people.get(nid)
         name = person.name if person and person.name else None
         year_str = _birth_year_label(person)
         line_text, line_color = _line_text_and_color(person.line if person else None)
+        shallow = v is not None and (int(v) == 0 or abs(int(v)) == 1)
 
         if not readable_mode or total_nodes <= full_labels_limit:
-            # Pełne etykiety (dużo tekstu) - tylko gdy wykres nie jest zbyt gęsty.
             if name:
                 name = str(name)
                 if len(name) > 18:
                     name = name[:18] + "…"
                 labels[nid] = f"{nid}\n{name}\n{year_str}"
-                # 3 linie: nid + imię + rok
                 label_line_counts[nid] = 3
             else:
                 labels[nid] = f"{nid}\n{year_str}"
-                # 2 linie: nid + rok
                 label_line_counts[nid] = 2
         else:
-            # Tryb czytelny: wciąż pokazujemy birth year, żeby rysunek był jednoznaczny.
-            if lvl is None:
+            if v is None:
                 labels[nid] = f"{nid}\n{year_str}"
                 label_line_counts[nid] = 2
-            elif lvl in (0, 1):
-                if dense_mode and lvl >= 1:
-                    # W trybie gęstym (dużo węzłów) ograniczamy opis do samego ID,
-                    # żeby uniknąć nakładania się etykiet na wyższych piętrach.
+            elif shallow:
+                if dense_mode and v != 0:
                     labels[nid] = f"{nid}"
                     label_line_counts[nid] = 1
-                elif dense_mode and lvl == 0:
-                    # Top (lvl=0) jest mały — pokazujemy tylko ID (bez roku), nadal czytelnie.
+                elif dense_mode and v == 0:
                     labels[nid] = f"{nid}"
                     label_line_counts[nid] = 1
                 else:
-                    # W pierwszych pokoleniach dodatkowo krótka nazwa.
                     if name:
                         name = str(name)
                         if len(name) > 18:
@@ -415,10 +396,7 @@ def plot_ancestor_pedigree(
                         labels[nid] = f"{nid}\n{year_str}"
                         label_line_counts[nid] = 2
             else:
-                # Dla głębszych pokoleń: skrót (ID + rok).
                 if dense_mode:
-                    # Gdy graf jest gęsty, rok powoduje nakładanie się etykiet.
-                    # Zostawiamy tylko ID (1 linia).
                     labels[nid] = f"{nid}"
                     label_line_counts[nid] = 1
                 else:
@@ -465,13 +443,13 @@ def plot_ancestor_pedigree(
 
     # Delikatne linie poziome pomagają “odczytać piętra” hierarchii.
     # (Oś jest wyłączona, ale linie rysujemy mimo wszystko.)
-    for lvl in range(0, max_level + 1):
-        ax.axhline(-float(lvl), color="#ede7d8", linewidth=0.95, alpha=0.55, zorder=0)
+    for band in bands_sorted:
+        ax.axhline(float(band), color="#ede7d8", linewidth=0.95, alpha=0.55, zorder=0)
 
     _add_combined_legend(ax)
 
     # --- Interakcja: klik w węzeł -> podświetlenie ---
-    if enable_click_highlight and len(levels) > 0:
+    if enable_click_highlight and len(vertical) > 0:
         selected_marker: dict[str, object] = {"artist": None}
         highlight_edge_artists: dict[str, object] = {"artist": None}
         highlight_node_artists: dict[str, object] = {"artist": None}
@@ -592,4 +570,33 @@ def plot_ancestor_pedigree(
         fig.canvas.mpl_connect("button_press_event", _on_click)
 
     return fig
+
+
+def plot_ancestor_pedigree(
+    person_id: str,
+    levels: Dict[str, int],
+    edges: List[Tuple[str, str]],
+    people: Dict[str, Person],
+    *,
+    max_nodes_for_layout_warning: int = 250,
+    readable_mode: bool = True,
+    full_labels_limit: int = 220,
+    readable_label_depth: int = 2,
+    enable_click_highlight: bool = False,
+    on_node_click: Optional[Callable[[str, bool], None]] = None,
+) -> plt.Figure:
+    """Warstwowy graf przodków — jak dotąd: `levels` (0 = start), oś Y = −pokolenie w górę."""
+    vertical = {nid: -int(lvl) for nid, lvl in levels.items()}
+    return plot_layered_pedigree(
+        person_id,
+        vertical,
+        edges,
+        people,
+        max_nodes_for_layout_warning=max_nodes_for_layout_warning,
+        readable_mode=readable_mode,
+        full_labels_limit=full_labels_limit,
+        readable_label_depth=readable_label_depth,
+        enable_click_highlight=enable_click_highlight,
+        on_node_click=on_node_click,
+    )
 

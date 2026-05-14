@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime
+import textwrap
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib as mpl
@@ -53,7 +54,7 @@ ST_DPI_PEDIGREE = 280
 ST_FIG_W, ST_FIG_H = 8.6, 4.45
 ST_FIG_REPO_W, ST_FIG_REPO_H = 9.75, 5.0
 ST_FIG_HIST_W, ST_FIG_HIST_H = 8.0, 4.1
-ST_FIG_VALIDATION_W, ST_FIG_VALIDATION_H = 10.35, 4.72
+ST_FIG_VALIDATION_W, ST_FIG_VALIDATION_H = 11.4, 4.85
 ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H = 10.25, 4.6
 # Panel 2×1 — trendy F/RIA (płeć i linie).
 ST_FIG_TWIN_INBRED_TREND_W, ST_FIG_TWIN_INBRED_TREND_H = 12.5, 9.65
@@ -393,6 +394,8 @@ def fig_validation_findings(rep: ValidationReport) -> plt.Figure:
     th = PLOT_THEME
     color_err = "#a53c3c"
     color_warn = "#8a6b58"
+    color_type_bar = th.COMPLETENESS_ACCENT
+    color_type_text = "#f4f8f4"
 
     n_err = sum(1 for r in rep.export_rows if r.severity == "ERROR")
     n_warn = sum(1 for r in rep.export_rows if r.severity == "WARN")
@@ -404,11 +407,17 @@ def fig_validation_findings(rep: ValidationReport) -> plt.Figure:
         if not type_counter:
             type_counter = Counter(i.title for i in rep.issues if i.severity in ("ERROR", "WARN"))
 
+    top_types = type_counter.most_common(12)
+    n_bars = len(top_types) if top_types else 1
+    fig_h = max(ST_FIG_VALIDATION_H, 2.35 + 0.38 * float(n_bars))
+    fig_w = max(ST_FIG_VALIDATION_W, 10.8)
+
     fig, (ax0, ax1) = plt.subplots(
         1,
         2,
-        figsize=(ST_FIG_VALIDATION_W, ST_FIG_VALIDATION_H),
-        gridspec_kw={"width_ratios": [1.05, 1.4], "wspace": 0.44},
+        figsize=(fig_w, fig_h),
+        gridspec_kw={"width_ratios": [1.12, 2.55], "wspace": 0.36},
+        constrained_layout=True,
     )
 
     labels_sev = ["Błędy\n(ERROR)", "Ostrzeżenia\n(WARN)"]
@@ -419,34 +428,34 @@ def fig_validation_findings(rep: ValidationReport) -> plt.Figure:
         color=[color_err, color_warn],
         edgecolor=th.EDGE_PLOT,
         linewidth=0.85,
-        width=0.62,
+        width=0.58,
     )
     ax0.set_xticks(range(2))
-    ax0.set_xticklabels(labels_sev, fontsize=ST_FS_TICK)
+    ax0.set_xticklabels(labels_sev, fontsize=ST_FS_TICK + 0.25)
     ax0.set_ylabel("Liczba wpisów", fontsize=ST_FS_AXIS)
+    n_txt = f"{rep.total_rows:,}".replace(",", " ")
     ax0.set_title(
-        f"Walidacja (n = {rep.total_rows} wierszy w bazie)\nWaga problemu w raporcie",
+        f"Waga w raporcie (CSV)\nw bazie: n = {n_txt}",
         fontsize=ST_FS_TITLE,
-        pad=10,
+        pad=8,
     )
     ax0.tick_params(axis="y", labelsize=ST_FS_TICK)
-    ymax = max(1.0, max(vals_sev) * 1.12) if vals_sev else 1.0
+    ymax = max(1.0, max(vals_sev) * 1.14) if vals_sev else 1.0
     ax0.set_ylim(0, ymax)
     for b, v in zip(bars0, vals_sev):
         if v > 0:
             ax0.text(
                 b.get_x() + b.get_width() / 2.0,
-                b.get_height() + ymax * 0.02,
+                b.get_height() + ymax * 0.018,
                 str(int(v)),
                 ha="center",
                 va="bottom",
-                fontsize=ST_FS_TICK,
+                fontsize=ST_FS_TICK + 0.35,
                 color=th.TEXT,
                 fontweight="semibold",
             )
-    ax0.grid(True, axis="y", alpha=0.28)
+    ax0.grid(True, axis="y", alpha=0.32, linestyle="--", linewidth=0.7)
 
-    top_types = type_counter.most_common(12)
     if not top_types:
         ax1.set_xlim(0, 1)
         ax1.set_ylim(0, 1)
@@ -465,23 +474,65 @@ def fig_validation_findings(rep: ValidationReport) -> plt.Figure:
             s.set_visible(False)
     else:
         types, counts = zip(*top_types, strict=True)
+        counts_f = [float(c) for c in counts]
 
-        def _short(s: str, n: int = 46) -> str:
+        def _wrap_problem_label(s: str, *, width: int = 32, max_lines: int = 4) -> str:
             t = str(s).replace("\n", " ").strip()
-            return t if len(t) <= n else t[: n - 1] + "…"
+            lines = textwrap.wrap(t, width=width, break_long_words=False, break_on_hyphens=True)
+            if not lines:
+                return ""
+            if len(lines) <= max_lines:
+                return "\n".join(lines)
+            head = "\n".join(lines[: max_lines - 1])
+            return f"{head}\n{lines[max_lines - 1]}…"
 
-        labels = [_short(t) for t in types]
+        labels = [_wrap_problem_label(t) for t in types]
         y = np.arange(len(labels))
-        ax1.barh(y, counts, color=BUTTON_BG2, edgecolor=th.EDGE_PLOT, linewidth=0.72)
+        bars1 = ax1.barh(
+            y,
+            counts_f,
+            color=color_type_bar,
+            edgecolor=th.EDGE_PLOT,
+            linewidth=0.9,
+            height=0.72,
+        )
         ax1.set_yticks(y)
-        ax1.set_yticklabels(labels, fontsize=ST_FS_DENSE)
+        ax1.set_yticklabels(labels, fontsize=ST_FS_DENSE + 0.35)
         ax1.invert_yaxis()
-        ax1.set_xlabel("Liczba wykryć (wiersze / typ)", fontsize=ST_FS_AXIS)
-        ax1.set_title("Najczęstsze typy problemów", fontsize=ST_FS_TITLE, pad=10)
+        ax1.set_xlabel("Liczba wykryć (wiersze eksportu / typ)", fontsize=ST_FS_AXIS)
+        ax1.set_title("Najczęstsze typy problemów", fontsize=ST_FS_TITLE, pad=8)
         ax1.tick_params(axis="x", labelsize=ST_FS_TICK)
-        ax1.grid(True, axis="x", alpha=0.28)
+        ax1.grid(True, axis="x", alpha=0.32, linestyle="--", linewidth=0.7)
 
-    fig.subplots_adjust(left=0.08, right=0.98, top=0.90, bottom=0.14, wspace=0.46)
+        xmax = max(1.0, max(counts_f) * 1.22)
+        ax1.set_xlim(0, xmax)
+
+        for b, yi, c in zip(bars1, y, counts_f):
+            lbl = str(int(c))
+            if xmax > 0 and c >= xmax * 0.12:
+                tx = max(c - xmax * 0.012, xmax * 0.02)
+                ax1.text(
+                    tx,
+                    yi,
+                    lbl,
+                    va="center",
+                    ha="right",
+                    fontsize=ST_FS_TICK,
+                    color=color_type_text,
+                    fontweight="semibold",
+                )
+            else:
+                ax1.text(
+                    min(c + xmax * 0.012, xmax * 0.995),
+                    yi,
+                    f" {lbl}",
+                    va="center",
+                    ha="left",
+                    fontsize=ST_FS_TICK,
+                    color=th.TEXT,
+                    fontweight="semibold",
+                )
+
     return fig
 
 

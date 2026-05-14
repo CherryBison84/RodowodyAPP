@@ -330,12 +330,20 @@ def id_sort_key(s: str) -> tuple[int, str]:
     return (int(m.group(1)), m.group(2) or "")
 
 
-def set_dataset(df_std: pd.DataFrame, source: str) -> None:
+def set_dataset(df_std: pd.DataFrame, source: str, *, update_import_snapshot: bool = True) -> None:
+    """
+    Zapisuje standaryzowany zbiór w sesji Streamlit, buduje `people` i przelicza walidację.
+
+    Gdy ``update_import_snapshot`` jest True (domyślnie przy imporcie), zapamiętywana jest kopia
+    pod przycisk „Przywróć surowy zbiór z importu” w panelu auto-poprawek.
+    """
     from app.pedigree.ancestor_pedigree import build_people_map
 
     df_std = dataframe_app_schema_columns(df_std)
     st.session_state["df_std"] = df_std
     st.session_state["source"] = source
+    if update_import_snapshot:
+        st.session_state["df_std_import_snapshot"] = df_std.copy(deep=True)
     people = build_people_map(df_std)
     st.session_state["people"] = people
     st.session_state["validation_report"] = validate_loaded_dataset(df_std=df_std, people=people)

@@ -15,6 +15,8 @@ from app.pedigree.ancestor_pedigree import Person
 
 @dataclass(frozen=True)
 class ValidationIssue:
+    """Pojedynczy komunikat zbiorczej walidacji (OK / ostrzeżenie / błąd)."""
+
     severity: str  # "OK" | "WARN" | "ERROR"
     title: str
     details: str = ""
@@ -150,10 +152,22 @@ def _is_nonempty_parent(val: object) -> bool:
     return bool(s) and s.lower() not in {"none", "nan"}
 
 
+def parent_field_nonempty(val: object) -> bool:
+    """Czy pole odniesienia do rodzica (np. father_id) jest wypełnione — do podglądów kompletności w UI."""
+    return _is_nonempty_parent(val)
+
+
 def _str_id_cell(v: object) -> str:
+    """Normalizuje komórkę identyfikatora do obciętego napisu (NaN → pusty)."""
     if v is None or (isinstance(v, float) and v != v):
         return ""
     return str(v).strip()
+
+
+# Publiczne aliasy dla modułów zewnętrznych (np. `auto_fix`) — bez importowania nazw `_…`.
+parse_year_field = _parse_year
+date_cell_years = _years_from_date_cell
+id_cell_string = _str_id_cell
 
 
 def validate_loaded_dataset(
@@ -164,7 +178,11 @@ def validate_loaded_dataset(
     min_year: int = 1800,
     max_year_buffer: int = 2,
 ) -> ValidationReport:
-    """Zbiorcza walidacja ramki po standaryzacji (wymagane i opcjonalne kolumny jak w `Person`)."""
+    """
+    Zbiorcza walidacja ramki po standaryzacji (`df_std`) i słownika `people`.
+
+    Zwraca listę komunikatów oraz wiersze pod eksport CSV (`export_rows`).
+    """
     issues: List[ValidationIssue] = []
     export_rows: List[ValidationExportRow] = []
     total_rows = int(len(df_std.index))

@@ -90,6 +90,10 @@ Status **OK** znaczy: **nie znaleziono błędów krytycznych**. **Ostrzeżenia**
 **Eksport CSV:** możesz pobrać listę problemów (**id**, **waga** ERROR/WARN, **typ_problemu**, **szczegoly**) — do filtrowania i poprawy w Excelu. Dla problemów dotyczących całej bazy (np. cykl w rodowodzie) w kolumnie id jest `_GLOBAL_`.
 
 **Wykres podsumowania:** słupki z liczbą wpisów błędów i ostrzeżeń (zgodnie z eksportem) oraz najczęstsze typy problemów — ułatwia szybki przegląd jakości bazy przed pracą z tabelą i CSV.
+
+**Podmenu Walidacja:** **dziewięć** podsekcji w **dwóch rzędach** przycisków (szerokość dopasowana do krótkiej nazwy) — m.in. arkusz/braki pól, ID i płeć, rodzice, lata i daty, graf, linie Z/M, przodkowie, raport z wykresem i pełnym CSV oraz **Auto-poprawki**. W każdej (oprócz auto-poprawek) widać odpowiedni wycinek problemów; częściowy CSV jest przy tabeli, pełny eksport — w podsekcji **Raport + CSV**.
+
+**Automatyczne poprawki:** osobna podsekcja **Auto-poprawki** — reguły (duplikaty, brak ID, lata, daty tekstowe, self-parent, brakujący rodzic w bazie, kolizja płci, wiek rodzica wg progów z `config/gui.json`), podgląd logu bez zapisu, zastosowanie z przeliczeniem walidacji lub przywrócenie ostatniego stanu z importu.
 """
 
 
@@ -109,11 +113,13 @@ Kolumna z **linią (ojciec/matka)** to skrót: **skąd pochodzi linia** po stron
 SECTION_PEDIGREE = """
 ## Rodowód (graf)
 
-- **Limit pokoleń** — ile poziomów w górę (wstecz) od wybranej osoby. Przy bardzo dużym drzewie program może **ograniczyć rysunek**, żeby nadal dało się go czytać.
+- **Rodzaj grafu** — **przodkowie** (BFS w górę po `father_id` / `mother_id`), **potomkowie** (BFS w dół: wszyscy, którzy wskazują danego osobnika jako ojca lub matkę), albo **łączone drzewo**: ta sama osoba na środku (oś Y = 0), przodkowie na ujemnych poziomach, potomkowie na dodatnich — jeden duży rysunek (przy dużej liczbie węzłów program automatycznie **zmniejsza limit pokoleń** dla czytelności).
+- **Limit pokoleń** — gdy nie zaznaczasz „bez limitu”, ogranicza głębokość w górę **albo** w dół (w zależności od rodzaju grafu). Przy bardzo dużym drzewie program może dodatkowo **uciąć** rysunek wg progu liczby węzłów.
+- **Bez limitu** — pełne zejście do brakujących rodziców (przodkowie) albo do liści (potomkowie: osobnicy bez dzieci w bazie), o ile rozmiar grafu mieści się w progu; inaczej stosowany jest limit gęstości jak wcześniej.
 - **Tryb czytelny** — mniej napisów na węzłach, lepszy widok przy gęstym grafie.
 - **Linie (sireline / damline)** — pokazują **odległość do „bazy” linii** po stronie ojca i matki.
 
-**Jak czytać graf:** każdy węzeł to osobnik, strzałki to relacje **rodzic → dziecko**. Brak rodzica w bazie = **koniec gałęzi** (w danych traktujemy to jak punkt startowy rodowodu).
+**Jak czytać graf:** każdy węzeł to osobnik, strzałki to relacje **rodzic → dziecko**. Brak rodzica w bazie = **koniec gałęzi** (w danych traktujemy to jak punkt startowy rodowodu). W widoku potomków „w dół” strzałki wychodzą od rodzica do dziecka w kolejnych pokoleniach.
 """
 
 

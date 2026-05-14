@@ -217,8 +217,8 @@ def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = out
 
     df["id"] = df["id"].apply(_parse_id)
-    df["father_id"] = df.get("father_id", pd.Series(index=df.index)).apply(_parse_id)
-    df["mother_id"] = df.get("mother_id", pd.Series(index=df.index)).apply(_parse_id)
+    df["father_id"] = df["father_id"].apply(_parse_id)
+    df["mother_id"] = df["mother_id"].apply(_parse_id)
 
     # Ujednolicamy płeć do M/F (reszta -> None).
     sex = df["sex"].astype(str).str.strip().str.upper()

@@ -37,7 +37,6 @@ from app.analytics.population_genetics import (
     compute_population_genetics_stats,
 )
 from app.data.dataset_loader import (
-    dataframe_app_schema_columns,
     load_default_bison_report,
     load_raw_dataframe_from_bytes,
     load_raw_dataframe_from_url,
@@ -281,50 +280,12 @@ def section_validation() -> None:
             f"Zakres ID: min **{min(ids.tolist(), key=sc.id_sort_key)}**, "
             f"max **{max(ids.tolist(), key=sc.id_sort_key)}**"
         )
-    df_miss = dataframe_app_schema_columns(df_std)
-    fig_miss = splt.fig_column_missing_heatmap(df_miss)
-    splt.show_matplotlib_figure_in_streamlit(
-        fig_miss,
-        download_filename="walidacja_mapa_brakow.png",
-        download_key="val_miss_heatmap_png",
-        width=splt.ST_CHART_DISPLAY_WIDTH_PX,
-        export_dpi=splt.ST_DPI_MISSING_MAP,
-    )
-    _miss_raw = splt.column_missing_percentages(df_miss).round(2)
-    _miss_ord = splt.registry_like_column_order(_miss_raw.index)
-    _miss_pct = _miss_raw.reindex(_miss_ord)
-    with st.expander("Tabela % braków (według kolumn)", expanded=False):
-        st.dataframe(_miss_pct.to_frame("% braków"), width="stretch")
 
     rep = st.session_state.get("validation_report")
-    if rep is not None:
-        st.caption("**Wykres:** liczba wpisów błędów i ostrzeżeń (zgodnie z eksportem CSV) oraz najczęstsze typy problemów.")
-        fig_val = splt.fig_validation_findings(rep)
-        splt.show_matplotlib_figure_in_streamlit(
-            fig_val,
-            download_filename="walidacja_podsumowanie_problemow.png",
-            download_key="val_findings_bar_png",
-            width=splt.ST_CHART_DISPLAY_WIDTH_PX,
-            export_dpi=splt.ST_DPI_EXPORT,
-        )
-        st.markdown(rep.ui_summary())
-        st.download_button(
-            "Pobierz listę problemów walidacji (CSV — id, typ, szczegóły)",
-            data=rep.to_csv_string().encode("utf-8-sig"),
-            file_name="walidacja_problemy.csv",
-            mime="text/csv",
-            key="val_csv_dl",
-        )
-        with st.expander("Pełny raport walidacji (tekst)"):
-            st.text(rep.to_text())
-            st.download_button(
-                "Pobierz raport (.txt)",
-                data=rep.to_text(),
-                file_name="walidacja_bazy.txt",
-                mime="text/plain",
-            )
-    else:
-        st.warning("Brak raportu walidacji — wczytaj bazę ponownie.")
+
+    from app.ui.streamlit.validation_sections import render_validation_workspace
+
+    render_validation_workspace(df_std, rep)
 
 
 def section_persons(df_std: pd.DataFrame) -> None:
@@ -440,7 +401,7 @@ def section_persons(df_std: pd.DataFrame) -> None:
 
 def section_analysis_individual(df_std: pd.DataFrame, people: dict) -> None:
     st.markdown("### Analiza osobnicza: inbred i kompletność")
-    st.caption("Graf przodków, F (Wright), kompletność (EG/PCI), linie sire/dam, wspólni przodkowie rodziców.")
+    st.caption("Graf przodków / potomków / drzewo łączone, F (Wright), kompletność (EG/PCI), linie sire/dam, wspólni przodkowie rodziców.")
     section_individual_pedigree_analysis(df_std, people)
 
 
@@ -464,14 +425,35 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
 
     with st1:
         sc.help_expander("Wizualizacja rodowodu (pedigree) — linie sire / dam", hc.SECTION_PEDIGREE)
+        graph_kind = st.radio(
+            "Rodzaj grafu",
+            (
+                "Przodkowie (w górę)",
+                "Potomkowie (w dół)",
+                "Łączone: przodkowie + potomkowie",
+            ),
+            horizontal=True,
+            key="hub_rod_kind",
+        )
+        kind_map = {
+            "Przodkowie (w górę)": "ancestors",
+            "Potomkowie (w dół)": "descendants",
+            "Łączone: przodkowie + potomkowie": "combined",
+        }
+        gk = kind_map[graph_kind]
         col1, col2, col3 = st.columns(3)
         with col1:
-            unbounded = st.checkbox("Bez limitu (do founderów)", value=True, key="hub_rod_ub")
+            unbounded = st.checkbox("Bez limitu (do founderów / do liści)", value=True, key="hub_rod_ub")
         with col2:
             depth = st.slider("Max pokoleń (gdy limit)", 0, 30, 4, key="hub_rod_d", disabled=unbounded)
         with col3:
             readable = st.checkbox("Tryb czytelny (mniej etykiet)", value=True, key="hub_rod_r")
-        if st.button("Generuj graf przodków", type="primary", key="hub_rod_go"):
+        btn_label = (
+            "Generuj graf przodków"
+            if gk == "ancestors"
+            else ("Generuj graf potomków" if gk == "descendants" else "Generuj drzewo łączone")
+        )
+        if st.button(btn_label, type="primary", key="hub_rod_go"):
             if pid not in people:
                 st.error("Nieprawidłowe ID.")
             else:
@@ -481,6 +463,7 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                     unbounded=unbounded,
                     depth=int(depth),
                     readable=readable,
+                    graph_kind=gk,
                 )
                 if err:
                     st.warning(err)

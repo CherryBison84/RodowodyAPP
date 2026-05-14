@@ -10,5 +10,9 @@
   "f_ria_smooth_window": 7,
   "gi_smooth_window": 3,
   "report_founders_top_n": 20,
-  "report_birth_location_top_n": 12
+  "report_birth_location_top_n": 12,
+  "validation_min_year": 1800,
+  "validation_max_year_buffer": 2,
+  "auto_fix_parent_min_age_at_birth": 12,
+  "auto_fix_parent_max_age_at_birth": 80
 }

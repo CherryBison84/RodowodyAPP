@@ -62,7 +62,7 @@ def run_streamlit_direct() -> None:
     sc.load_default_once()
 
     with st.sidebar:
-        _logo_path = Path(__file__).resolve().parents[2] / "logo.png"
+        _logo_path = Path(__file__).resolve().parents[2] / "logo_new.png"
         if _logo_path.exists():
             st.image(str(_logo_path), width="stretch")
         st.markdown(

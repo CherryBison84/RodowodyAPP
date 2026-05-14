@@ -33,6 +33,12 @@ class AppConfig:
     report_founders_top_n: int = 20
     report_birth_location_top_n: int = 12
 
+    # Automatyczne poprawki (progi z config/gui.json)
+    validation_min_year: int = 1800
+    validation_max_year_buffer: int = 2
+    auto_fix_parent_min_age_at_birth: int = 12
+    auto_fix_parent_max_age_at_birth: int = 80
+
 
 def _config_root_dir() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -94,6 +100,14 @@ def get_config() -> AppConfig:
         gi_smooth_window=_int_or(defaults.gi_smooth_window, "gi_smooth_window"),
         report_founders_top_n=_int_or(defaults.report_founders_top_n, "report_founders_top_n"),
         report_birth_location_top_n=_int_or(defaults.report_birth_location_top_n, "report_birth_location_top_n"),
+        validation_min_year=_int_or(defaults.validation_min_year, "validation_min_year"),
+        validation_max_year_buffer=_int_or(defaults.validation_max_year_buffer, "validation_max_year_buffer"),
+        auto_fix_parent_min_age_at_birth=_int_or(
+            defaults.auto_fix_parent_min_age_at_birth, "auto_fix_parent_min_age_at_birth"
+        ),
+        auto_fix_parent_max_age_at_birth=_int_or(
+            defaults.auto_fix_parent_max_age_at_birth, "auto_fix_parent_max_age_at_birth"
+        ),
     )
 
 
