@@ -93,19 +93,54 @@ def _drop_test_id_rows(df: pd.DataFrame, *, id_col: str, test_id: str) -> pd.Dat
         return df[df[id_col] != test_id].reset_index(drop=True)
 
 
+def _detect_csv_sep(text: str) -> str:
+    """Wybiera separator po pierwszym wierszu (Excel PL często używa „;”)."""
+    first = text.split("\n", 1)[0]
+    if not first.strip():
+        return ","
+    n_semi = first.count(";")
+    n_comma = first.count(",")
+    return ";" if n_semi > n_comma else ","
+
+
+def _read_csv(source: Path | BinaryIO) -> pd.DataFrame:
+    if isinstance(source, (str, Path)):
+        return pd.read_csv(source, sep=None, engine="python")
+    raw = source.read()
+    text = raw.decode("utf-8-sig", errors="replace")
+    return pd.read_csv(BytesIO(raw), sep=_detect_csv_sep(text))
+
+
 def _read_dataframe_from_ext(source: Path | BinaryIO, *, ext: str) -> pd.DataFrame:
     ext = ext.lower()
     if ext == ".csv":
-        return pd.read_csv(source)
+        return _read_csv(source)
     if ext in {".xlsx", ".xls"}:
         return pd.read_excel(source, sheet_name=0)
     raise ValueError(f"Nieobsługiwany typ pliku: {ext}")
 
 
+def _columns_lower_map(df: pd.DataFrame) -> dict[str, str]:
+    """Pierwsza kolumna o danej nazwie (bez rozróżniania wielkości liter) → oryginalna nazwa."""
+    out: dict[str, str] = {}
+    for c in df.columns:
+        key = str(c).strip().lower()
+        if key and key not in out:
+            out[key] = c
+    return out
+
+
 def _pick_source_column(df: pd.DataFrame, logical: str, candidates: tuple[str, ...]) -> str:
+    lower_map = _columns_lower_map(df)
     for c in candidates:
         if c in df.columns:
             return c
+        key = str(c).strip().lower()
+        if key in lower_map:
+            return lower_map[key]
+    logical_key = logical.strip().lower()
+    if logical_key in lower_map:
+        return lower_map[logical_key]
     raise ValueError(
         f"Brak wymaganej kolumny „{logical}” w pliku "
         f"(szukano jednej z nazw: {list(candidates)}). "
@@ -113,16 +148,60 @@ def _pick_source_column(df: pd.DataFrame, logical: str, candidates: tuple[str, .
     )
 
 
+def _has_app_schema_headers(df: pd.DataFrame) -> bool:
+    return "id" in _columns_lower_map(df)
+
+
+def _rename_columns_to_app_schema(df: pd.DataFrame) -> pd.DataFrame:
+    lower_map = _columns_lower_map(df)
+    rename = {
+        lower_map[key]: key
+        for key in STANDARD_BISON_REPORT_COLUMNS
+        if key in lower_map and lower_map[key] != key
+    }
+    return df.rename(columns=rename)
+
+
+def _finalize_bison_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    for col in ("id", "father_id", "mother_id"):
+        if col in df.columns:
+            df[col] = df[col].apply(_parse_id)
+    if "sex" in df.columns:
+        sex = df["sex"].astype(str).str.strip().str.upper()
+        df["sex"] = sex.where(sex.isin(["M", "F"]), other=None)
+    for col in [
+        "name",
+        "alt_name",
+        "father_name",
+        "mother_name",
+        "birth_date",
+        "death_date",
+        "birth_location",
+    ]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).where(df[col].notna(), other=None)
+            df[col] = df[col].str.strip().replace({"": None})
+    if "id" in df.columns:
+        df = df[df["id"].notna()].reset_index(drop=True)
+        df = _drop_test_id_rows(df, id_col="id", test_id="99999")
+    schema = [c for c in STANDARD_BISON_REPORT_COLUMNS if c in df.columns]
+    return df.loc[:, schema].reset_index(drop=True)
+
+
 def _birth_location_series(df: pd.DataFrame) -> pd.Series:
     """
     Stary raport: jedna kolumna „Birth location”.
     Nowy raport EBPB: „birth_loc_name” + „birth_country” (łączone do jednego pola w modelu).
     """
-    if "Birth location" in df.columns:
-        return df["Birth location"]
+    lower_map = _columns_lower_map(df)
+    if "birth location" in lower_map:
+        return df[lower_map["birth location"]]
+    if "birth_location" in lower_map:
+        return df[lower_map["birth_location"]]
 
-    loc_c = "birth_loc_name" if "birth_loc_name" in df.columns else None
-    cc_c = "birth_country" if "birth_country" in df.columns else None
+    loc_c = lower_map.get("birth_loc_name")
+    cc_c = lower_map.get("birth_country")
     if not loc_c and not cc_c:
         return pd.Series([None] * len(df), index=df.index, dtype=object)
 
@@ -171,22 +250,35 @@ def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     Obsługiwane są:
     - starszy eksport z nagłówkami scalonymi (pandas: „Father”, „Unnamed: 8”…),
-    - aktualny raport EBPB (m.in. „father_number”, „mother_number”, „birth_loc_name”).
+    - aktualny raport EBPB (m.in. „father_number”, „mother_number”, „birth_loc_name”),
+    - plik już w schemacie aplikacji (np. cleaned.xlsx z kolumnami id, sex, …).
     """
     df = df.copy()
     df.columns = [_clean_column_name(c) for c in df.columns]
 
-    col_sex = _pick_source_column(df, "Sex", ("Sex",))
-    col_id = _pick_source_column(df, "Number", ("Number",))
-    col_name = _pick_source_column(df, "Name", ("Name",))
-    col_alt = _pick_source_column(df, "Alt name", ("Alt name",))
-    col_line = _pick_source_column(df, "Line", ("Line",))
-    col_by = _pick_source_column(df, "Birth year", ("Birth year",))
-    col_status = _pick_source_column(df, "Status", ("Status",))
-    col_fid = _pick_source_column(df, "Father / father_number", ("Father", "father_number"))
+    if _has_app_schema_headers(df):
+        df = _rename_columns_to_app_schema(df)
+        if "birth_location" not in df.columns:
+            loc = _birth_location_series(df)
+            if loc.notna().any():
+                df["birth_location"] = loc
+        return _finalize_bison_dataframe(df)
+
+    col_sex = _pick_source_column(df, "Sex", ("Sex", "sex"))
+    col_id = _pick_source_column(df, "Number", ("Number", "number", "id"))
+    col_name = _pick_source_column(df, "Name", ("Name", "name"))
+    col_alt = _pick_source_column(df, "Alt name", ("Alt name", "alt_name"))
+    col_line = _pick_source_column(df, "Line", ("Line", "line"))
+    col_by = _pick_source_column(df, "Birth year", ("Birth year", "birth_year"))
+    col_status = _pick_source_column(df, "Status", ("Status", "status"))
+    col_fid = _pick_source_column(
+        df, "Father / father_number", ("Father", "father_number", "father_id")
+    )
     col_fname = _pick_source_column(df, "Father name", ("Unnamed: 8", "father_name"))
     col_fline = _pick_source_column(df, "Father line", ("Unnamed: 9", "father_line"))
-    col_mid = _pick_source_column(df, "Mother / mother_number", ("Mother", "mother_number"))
+    col_mid = _pick_source_column(
+        df, "Mother / mother_number", ("Mother", "mother_number", "mother_id")
+    )
     col_mname = _pick_source_column(df, "Mother name", ("Unnamed: 11", "mother_name"))
     col_mline = _pick_source_column(df, "Mother line", ("Unnamed: 12", "mother_line"))
     col_bdate = _pick_source_column(df, "Birth date", ("Birth date", "birth_date"))
@@ -214,30 +306,7 @@ def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         index=df.index,
     )
 
-    df = out
-
-    df["id"] = df["id"].apply(_parse_id)
-    df["father_id"] = df["father_id"].apply(_parse_id)
-    df["mother_id"] = df["mother_id"].apply(_parse_id)
-
-    # Ujednolicamy płeć do M/F (reszta -> None).
-    sex = df["sex"].astype(str).str.strip().str.upper()
-    df["sex"] = sex.where(sex.isin(["M", "F"]), other=None)
-
-    # Daty/lokalizacje zostawiamy jako stringi, ale czyścimy whitespace.
-    for col in ["name", "alt_name", "father_name", "mother_name", "birth_date", "death_date", "birth_location"]:
-        if col in df.columns:
-            df[col] = df[col].astype(str).where(df[col].notna(), other=None)
-            df[col] = df[col].str.strip().replace({"": None})
-
-    df = df[df["id"].notna()].reset_index(drop=True)
-    # Pomijamy rekord testowy, jeśli występuje w pliku.
-    try:
-        df = df[df["id"].astype(str) != "99999"].reset_index(drop=True)
-    except Exception:
-        df = df[df["id"] != "99999"].reset_index(drop=True)
-    schema = [c for c in STANDARD_BISON_REPORT_COLUMNS if c in df.columns]
-    return df.loc[:, schema].reset_index(drop=True)
+    return _finalize_bison_dataframe(out)
 
 
 def load_dataset_from_path(path: str | Path) -> tuple[pd.DataFrame, DatasetInfo]:

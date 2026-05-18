@@ -1,25 +1,23 @@
 {
-  "project_name": "demo_new_data_batch",
+  "project_name": "demo_clean_batch",
   "output_dir": "outputs",
-  "stages": ["load", "analyze", "report"],
-  "datasets": [
+  "stages": ["load", "validate", "transform", "export"],
+  "inputs": [
     {
       "name": "default_ebpb",
       "path": "EBPB_bison_report.xlsx"
     }
   ],
-  "variants": [
-    {
-      "name": "depth_4",
-      "max_generations_back": 4,
-      "calc_founders": true,
-      "calc_completeness": true
-    },
-    {
-      "name": "unbounded",
-      "max_generations_back": null,
-      "calc_founders": true,
-      "calc_completeness": true
+  "rules": {
+    "apply_auto_fix": true,
+    "exclude_test_records": true,
+    "auto_fix": {
+      "dedupe_ids": true,
+      "cut_missing_parent_record": true,
+      "cut_parent_sex_collision": true
     }
-  ]
+  },
+  "output": {
+    "export_format": "xlsx"
+  }
 }

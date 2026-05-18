@@ -9,7 +9,7 @@ Metodyka opiera się na podziale bazy danych na trzy grupy:
 Dla każdego osobnika identyfikowanego przez unikalny numer (kolumna `Number` w Twojej bazie) wylicza się następujące wskaźniki jakości rodowodu i genetyki:
 
 1.1. Indywidualny współczynnik inbredu Wrighta (`F`)
-Definicja: prawdopodobieństwo (P), że dwa allele w danym locus u danego osobnika są identyczne ze względu na wspólne pochodzenie od wspólnego przodka.
+Definicja: prawdopodobieństwo (P), że dwa allele w danym locus u danego osobnika są identyczne ze względu na wspólne pochodzenie od wspólnego przodka (w praktyce hodowlanej: jak bardzo w rodowodzie powtarzają się ci sami przodkowie po stronie ojca i matki — im wyższe `F`, tym silniejsze **zinbredowanie** w rozumieniu programu).
 Metoda obliczeń: algorytm Wrighta analizuje ścieżki rodowodowe łączące rodziców osobnika przez ich wspólnych przodków. Przyjmuje się, że założyciele mają współczynnik inbredu równy `0`.
 
 1.2. Głębokość rodowodu (Pedigree Depth)
@@ -45,6 +45,9 @@ Minimalna liczba przodków (niekoniecznie założycieli) wyjaśniająca całkowi
 2.1.3. Ekwiwalent genomowy założycieli (`f_ge`)
 Liczba założycieli przy założeniu braku utraty alleli (wskaźnik zależny od przyjętej definicji/modelu).
 
+2.1.4. Udział zinbredowanych — RIA (w aplikacji)
+**RIA** to procent osobników w analizowanym zbiorze, u których współczynnik inbredu Wrighta **F** jest większy od zera (`F > 0`), liczony przy **tym samym** limicie pokoleń wstecz (albo bez limitu), co pozostałe metryki **F** na danym widoku (dashboard populacji, trendy wg roku urodzenia itd.). Osobnicy z **F = 0** w tym modelu nie są liczeni jako zinbredowani — przy niepełnych rodowodach część braków rodziców kończy gałąź jak u założycieli, co wpływa na wynik.
+
 2.2. Wskaźniki strat genetycznych
 2.2.1. Efekt wąskiego gardła (Bottleneck effect)
 Stosunek `f_e / f_a`. Wartości znacznie odbiegające od `1.0` sugerują wystąpienie wąskiego gardła.
@@ -77,7 +80,7 @@ Aby wyniki były czytelne, aplikacja powinna generować:
 
 3.3. Udziały genetyczne (wykresy słupkowe)
 1. Wkład genetyczny poszczególnych założycieli lub linii (np. Twoja linia LB) do obecnej populacji.
-2. Procentowy udział osobników zinbredowanych w populacji całkowitej.
+2. Procentowy udział osobników zinbredowanych w populacji całkowitej (w aplikacji: **RIA** — % z `F > 0` przy tym samym limicie F co analiza).
 
 3.4. Struktura rodowodowa (grafy NetworkX)
 1. Drzewo rodowodowe osobnika: interaktywny graf pokazujący ścieżki do założycieli.

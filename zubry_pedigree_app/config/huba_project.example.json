@@ -1,0 +1,35 @@
+{
+  "project_name": "demo_clean_batch",
+  "output_dir": "outputs",
+  "stages": ["load", "validate", "transform", "export"],
+  "inputs": [
+    {
+      "name": "herd_main",
+      "path": "EBPB_bison_report.xlsx"
+    }
+  ],
+  "rules": {
+    "apply_auto_fix": true,
+    "exclude_test_records": true,
+    "test_record_id": "99999",
+    "auto_fix": {
+      "dedupe_ids": true,
+      "drop_rows_without_id": false,
+      "clear_birth_year_out_of_range": true,
+      "clear_death_date_on_conflict": true,
+      "remove_self_parent": true,
+      "cut_missing_parent_record": true,
+      "cut_parent_sex_collision": true,
+      "cut_parent_too_young": true,
+      "cut_parent_too_old": false
+    }
+  },
+  "output": {
+    "datasets_subdir": "datasets",
+    "export_format": "xlsx",
+    "write_validation_issues": true,
+    "write_summary": true,
+    "write_fix_log": true,
+    "csv_delimiter": ";"
+  }
+}

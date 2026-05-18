@@ -1,4 +1,4 @@
-"""CLI: domyślnie Streamlit w przeglądarce."""
+"""CLI HUBA: UI w przeglądarce lub tryb wsadowy z pliku JSON."""
 
 from __future__ import annotations
 
@@ -13,27 +13,32 @@ if str(_pkg_root) not in sys.path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="WisentPedigree Pro+ — analiza rodowodów żubrów")
+    """Punkt wejścia CLI: UI Streamlit lub wsadowe uruchomienie z pliku JSON."""
+    parser = argparse.ArgumentParser(
+        description="HUBA — Hybrid Unified Batch Analyzer (czyszczenie baz rodowodowych)"
+    )
     parser.add_argument(
         "--project-config",
         default="",
-        help="Ścieżka do pliku JSON z konfiguracją pipeline (uruchamia tryb batch, zamiast UI).",
+        help="Ścieżka do pliku JSON projektu HUBA (tryb wsadowy, bez UI).",
     )
     parser.add_argument(
         "--ui",
         choices=["web", "streamlit"],
         default="web",
-        help="web — Streamlit + otwarcie przeglądarki (domyślnie); streamlit — `run_streamlit_direct` w tym procesie",
+        help="web — Streamlit + przeglądarka (domyślnie); streamlit — ten sam proces",
     )
     args = parser.parse_args()
 
     if str(args.project_config).strip():
-        from app.pipeline.config_io import load_project_config
-        from app.pipeline.runner import run_project
+        from app.huba.config_io import load_project_config
+        from app.huba.engine import run_project
 
         cfg = load_project_config(args.project_config)
-        out_dir = run_project(cfg)
-        print(f"[OK] Pipeline zakończony. Wyniki: {out_dir}")
+        result = run_project(cfg)
+        print(f"[OK] HUBA zakończony. Wyniki: {result.project_dir}")
+        if result.comparison_path:
+            print(f"     Porównanie: {result.comparison_path}")
         return
 
     if args.ui == "web":

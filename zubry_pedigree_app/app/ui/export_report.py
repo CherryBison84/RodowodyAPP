@@ -22,6 +22,7 @@ from app.analytics.population_genetics import (
 from app.config import get_config
 from app.data.dataset_loader import dataframe_app_schema_columns
 from app.data.validator import ValidationReport
+from app.ui.metric_copy import RIA_PLAIN_SHORT
 
 # W UI trendy populacji używają 4 pokoleń — raport jest spójny z tym ustawieniem.
 REPORT_POP_MAX_GENERATIONS_BACK = 4
@@ -120,7 +121,7 @@ def build_export_report_text(
                 f"min={stats.inbreeding.min_F:.6f}, max={stats.inbreeding.max_F:.6f}, "
                 f"F≈0 dla {stats.inbreeding.zeros} osobników"
             )
-            lines.append(f"RIA (udział z F>0): {global_ria_percent(stats.f_values):.2f}%")
+            lines.append(f"RIA — {RIA_PLAIN_SHORT}: {global_ria_percent(stats.f_values):.2f}%")
             med_eg = median(stats.eg_values) if stats.eg_values else 0.0
             med_pci = median(stats.pci_values) if stats.pci_values else 0.0
             lines.append(

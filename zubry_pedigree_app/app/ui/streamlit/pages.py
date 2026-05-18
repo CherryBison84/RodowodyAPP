@@ -46,6 +46,7 @@ from app.data.dataset_loader import (
 from app.config import get_config
 from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
 from app.ui import help_content as hc
+from app.ui.metric_copy import RIA_METRIC_LABEL
 from app.ui.export_report import build_export_report_text
 from app.ui.text_pdf import plain_text_pdf_bytes, sanitize_text_for_pdf
 from app.ui.streamlit import common as sc
@@ -511,15 +512,15 @@ def section_individual_pedigree_analysis(df_std: pd.DataFrame, people: dict) -> 
                     depths,
                     Fs,
                     marker="o",
-                    markersize=3.2,
+                    markersize=splt.ST_LINE_MARKERSIZE,
                     color=sc.THEME.EDGE_PLOT,
-                    linewidth=1.85,
+                    linewidth=splt.ST_LINE_WIDTH,
                 )
                 ax.set_title(f"Diagnostyka F vs max pokoleń (ID {pid})", fontsize=splt.ST_FS_TITLE)
                 ax.set_xlabel("max pokoleń", fontsize=splt.ST_FS_AXIS)
                 ax.set_ylabel("F", fontsize=splt.ST_FS_AXIS)
                 ax.tick_params(axis="both", labelsize=splt.ST_FS_TICK)
-                ax.grid(True, alpha=0.25)
+                ax.grid(True, alpha=splt.ST_GRID_ALPHA)
                 splt._slant_xlabels(ax)
                 fig.tight_layout()
                 splt.show_matplotlib_figure_in_streamlit(
@@ -1043,7 +1044,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
 
     sc.population_dashboard_group_header(
         "Inbred i średnie pokrewieństwo",
-        "Średni współczynnik F, udział inbrednych (RIA), mean kinship Φ̄ oraz średnie R = 2Φ̄.",
+        "Średni współczynnik F, udział zinbredowanych (RIA), mean kinship Φ̄ oraz średnie R = 2Φ̄.",
         accent=_t.ACCENT,
         background=_t.ENTRY_BG,
     )
@@ -1058,7 +1059,7 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         )
     with _g2[1]:
         sc.population_dashboard_metric(
-            "RIA % (F > 0)",
+            RIA_METRIC_LABEL,
             f"{ria_pct:.1f}",
             accent=_t.ACCENT,
             panel_bg=_t.ENTRY_BG,
@@ -1512,9 +1513,9 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         fig, ax = plt.subplots(figsize=(splt.ST_FIG_SCATTER_W, splt.ST_FIG_SCATTER_H))
         for grp, sub in df_plot.groupby("Grupa"):
             c = colors_map.get(grp, sc.THEME.EDGE_PLOT)
-            ax.scatter(sub["MG"], sub["PCL_max"], s=28, alpha=0.45, color=c, label=grp)
+            ax.scatter(sub["MG"], sub["PCL_max"], s=42, alpha=0.52, color=c, label=grp, edgecolors="none")
             by_mg = sub.groupby("MG")["PCL_max"].mean().sort_index()
-            ax.plot(by_mg.index.tolist(), by_mg.values.tolist(), color=c, linewidth=2.0, alpha=0.9)
+            ax.plot(by_mg.index.tolist(), by_mg.values.tolist(), color=c, linewidth=splt.ST_LINE_WIDTH, alpha=0.92)
 
         ax.set_title(
             "PCL_max względem MG: przodkowie (ANC) vs osobniki RP",
@@ -1523,9 +1524,9 @@ def section_population(df_std: pd.DataFrame, people: dict) -> None:
         ax.set_xlabel("MG (maks. liczba prześledzonych pokoleń)", fontsize=splt.ST_FS_AXIS)
         ax.set_ylabel("PCL_max = a_MG / 2^MG", fontsize=splt.ST_FS_AXIS)
         ax.set_ylim(0, 1.05)
-        ax.grid(True, alpha=0.25)
+        ax.grid(True, alpha=splt.ST_GRID_ALPHA)
         ax.tick_params(axis="both", labelsize=splt.ST_FS_TICK)
-        ax.legend(loc="best", fontsize=splt.ST_FS_TICK)
+        ax.legend(**splt._legend_style(loc="best"))
         splt._slant_xlabels(ax)
         fig.tight_layout()
         splt.show_matplotlib_figure_in_streamlit(

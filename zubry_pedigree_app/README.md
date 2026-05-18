@@ -1,6 +1,6 @@
 # Zubry Pedigree App — folder aplikacji
 
-**Wersja (pyproject): 0.4.0** — pełny opis, nawigacja i instalacja: **[README.md w katalogu nadrzędnym](../README.md)**.
+**Wersja (pyproject): 0.5.0** — pełny opis, nawigacja i instalacja: **[README.md w katalogu nadrzędnym](../README.md)**.
 
 W tym katalogu są skrypty startowe, pakiet **`app/`**, `requirements.txt`, **`metrics_definition.md`** oraz (opcjonalnie lokalnie) plik **`EBPB_bison_report.xlsx`** używany jako domyślna baza w imporcie.
 

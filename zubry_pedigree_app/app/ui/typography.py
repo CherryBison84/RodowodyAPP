@@ -36,13 +36,13 @@ def apply_matplotlib_fonts() -> None:
         {
             "font.family": "sans-serif",
             "font.sans-serif": FONT_STACK_SANS[:-1],
-            "font.size": 12,
-            "axes.titlesize": 13,
-            "axes.labelsize": 12,
-            "xtick.labelsize": 11,
-            "ytick.labelsize": 11,
-            "legend.fontsize": 11,
-            "figure.titlesize": 14,
+            "font.size": 13,
+            "axes.titlesize": 14,
+            "axes.labelsize": 13,
+            "xtick.labelsize": 12,
+            "ytick.labelsize": 12,
+            "legend.fontsize": 12,
+            "figure.titlesize": 15,
         }
     )
     _mpl_configured = True

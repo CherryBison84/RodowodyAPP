@@ -3,13 +3,15 @@
 
 from __future__ import annotations
 
+from app.ui.metric_copy import F_PLAIN, RIA_HELP_TOOLTIP, RIA_PLAIN, RIA_PLAIN_SHORT
+
 # --- Główny słownik (markdown) ---
 
-GLOSSARY = """
+GLOSSARY = f"""
 ## Słownik — najczęściej używane pojęcia
 
 ### Inbred i współczynnik F (Wright)
-- **F** — liczba od 0 w górę, która mówi, **jak bardzo w rodowodzie powtarzają się ci sami przodkowie**. Im wyższe F, tym większe ryzyko, że u potomka spotykają się kopie genów od tych samych osób (to właśnie nazywa się inbredem). W aplikacji F jest liczone z zapisu rodziców w bazie, z możliwym limitem „ile pokoleń wstecz brać pod uwagę”.
+- {F_PLAIN}
 - **Związek rodziców (Φ)** — klasycznie F potomka zależy od tego, jak bardzo **ojciec i matka są ze sobą spokrewnieni**. Tu Φ jest liczone z drzewa rodowego; jeśli w bazie brakuje ojca lub matki, obliczenia zatrzymują się na tym miejscu (**„founder-stop”** — tak traktujemy koniec znanej gałęzi).
 - **Mean kinship (średni kinship)** — **średnia z Φ(i,j)** po parach różnych osobników (i≠j); opisuje, jak **średnio** spokrewniona jest populacja. **Średnie R = 2Φ̄** to średni współczynnik relacji Wrighta (autosomy). Przy bardzo dużym **n** program liczy średnią po parach **w losowej próbie** osobników (szybciej); przy mniejszym n — po wszystkich parach. **Ten sam limit pokoleń** co przy F / Φ dla pojedynczej pary.
 - **Limit pokoleń** — możesz ograniczyć, jak głęboko program schodzi wstecz przy liczeniu F. **Bez limitu** schodzi tak daleko, jak pozwalają dane, aż do osób bez dalszych rodziców w bazie.
@@ -39,7 +41,7 @@ GLOSSARY = """
 ### Trendy w czasie (Inbred TP)
 - **TP** — podział według **roku urodzenia** osobnika.
 - **Średnie F w roku** — średnia F wśród osób urodzonych w danym roku.
-- **RIA (%)** — **jaki procent** osobników w roku ma F większe od zera (w sensie obliczeń numerycznych w programie).
+- {RIA_PLAIN}
 
 ### N_e (szacunek orientacyjny)
 - Program podaje **przybliżoną efektywną wielkość populacji** na podstawie trendu średniego F w czasie i średniego odstępu międzypokoleniowego (GI). To **uproszczenie**: wynik mocno zależy od kompletności rodowodów i wybranego okresu — używaj jak wskazówki, nie jak precyzyjnej stałej biologicznej.
@@ -73,7 +75,8 @@ Program traktuje bazę jak **drzewo rodowe** i szuka niespójności typowych dla
 
 - **Unikalność ID** — powtórzone numery osobników; puste lub nieczytelne `id` w wierszu.
 - **Rodzice w bazie** — `father_id` / `mother_id` powinny (jeśli wypełnione) wskazywać na **istniejący** rekord; inaczej gałąź kończy się w powietrzu (ostrzeżenie przy analizach „founder-stop”).
-- **Cykle i self-parent** — niemożliwe pętle w grafie rodzic–dziecko oraz wskazanie samego siebie jako rodzica.
+- **Cykle w grafie rodzic–dziecko** — z kolumn `father_id` / `mother_id` budowany jest graf skierowany (**dziecko → rodzic**, gdy wskazany ID istnieje w bazie). **Cykl** (pętla) oznacza, że można „zejść” łańcuchem rodziców i wrócić do punktu wyjścia — w rzeczywistości to **niemożliwe**, a w programie psuje strukturę pokoleń i obliczenia. Zwykle winne są **pomyłki w numerach**, **duplikaty ID**, **zamiana kolumn** lub zły merge arkuszy. Komunikat walidacji: ERROR **„Cykl w rodowodzie”**; w CSV eksportu: `id` = **`_GLOBAL_`** oraz przykładowe węzły na cyklu.
+- **Self-parent** — ten sam osobnik wskazany jako **własny ojciec lub matka** (osobna reguła w zakładce Rodzice).
 - **Ta sama osoba jako ojciec i matka** — błąd krytyczny (np. zamiana kolumn lub literówka).
 - **Płeć vs rola rodzica** — w drzewie ojciec powinien być **M**, matka **F** (gdy płeć jest w bazie); wykrywa zamianę ojca z matką lub błędny zapis płci.
 - **Płeć, linia, rok urodzenia** — wartości poza sensownym zakresem lat; braki `birth_year`; wiek rodzica przy urodzeniu potomka (heurystyka 0–80 lat).
@@ -85,7 +88,7 @@ Program traktuje bazę jak **drzewo rodowe** i szuka niespójności typowych dla
 
 Status **OK** znaczy: **nie znaleziono błędów krytycznych**. **Ostrzeżenia** warto przejrzeć przed wnioskami hodowlanymi — często da się je zrozumieć po historii danych lub po poprawce pojedynczych pól.
 
-**Mapa braków (walidacja):** poziomy pas pól wyłącznie dla **kolumn schematu importu** (model aplikacji / raport), nie dla dodatkowych kolumn z arkusza. W pasie tylko **% wierszy z luką** (NaN, puste, „nan”); **nazwy kolumn** ukośnie pod pasem. Kolory **leśne** (jasna mgła = mało braków, ciemniejszy mech/kora = więcej), bez osobnego paska legendy — dokładne % w każdej komórce. Pełna tabela % jest w rozwijanej sekcji poniżej mapy.
+**Mapa braków (walidacja):** poziomy pas pól wyłącznie dla **kolumn schematu importu** (model aplikacji / raport), nie dla dodatkowych kolumn z arkusza. W pasie tylko **% wierszy z luką** (NaN, puste, „nan”); **nazwy kolumn** ukośnie pod pasem. Kolory **leśne** (jasna mgła = mało braków, ciemniejszy mech/kora = więcej), bez osobnego paska legendy — dokładne % w każdej komórce mapy.
 
 **Eksport CSV:** możesz pobrać listę problemów (**id**, **waga** ERROR/WARN, **typ_problemu**, **szczegoly**) — do filtrowania i poprawy w Excelu. Dla problemów dotyczących całej bazy (np. cykl w rodowodzie) w kolumnie id jest `_GLOBAL_`.
 
@@ -126,7 +129,7 @@ SECTION_PEDIGREE = """
 SECTION_INBRED = """
 ## Inbred (F) — jeden osobnik
 
-- Wynik **F** dotyczy **wybranego numeru ID** przy ustawionym limicie pokoleń (albo bez limitu).
+- **F** (Wright) — definicja jak w **Słowniku** u góry pomocy; tutaj liczysz **F** dla jednego numeru ID przy ustawionym limicie pokoleń (albo bez limitu).
 - **Wykres F vs głębokość** — jeśli F przestaje rosnąć po kilku pokoleniach, to zwykle znaczy, że **dalej wstecz program już nic nowego nie „widzi”** albo dane się nie zmieniają; to normalne przy częściowo wypełnionych rodowodach.
 - **Wykres kompletności (PCL)** — pokazuje, **jak bardzo wypełnione** są kolejne poziomy przodków w porównaniu z maksymalną liczbą miejsc na tym poziomie.
 """
@@ -158,10 +161,10 @@ Pod dashboardem: **dwa rzędy przycisków** (menu wykresów) — urodzenia, komp
 # Podpowiedzi pod ikoną ? (st.metric / kontrolki) — sekcja Populacja
 POPULATION_METRIC_HELP = {
     "n": "Liczba osobników w tej analizie (pomijany jest rekord testowy).",
-    "mean_f": "Średnia wartość współczynnika inbredu Wrighta **F** po osobnikach — przy tym samym limicie pokoleń co ustawienia powyżej (lub bez limitu).",
+    "mean_f": "Średnia **F** (Wright) po osobnikach — jak w słowniku; przy tym samym limicie pokoleń co ustawienia powyżej (lub bez limitu).",
     "fe": "**f_e** — efektywna liczba założycieli: 1/Σp_i² z rozkładu średnich wkładów genów **p_i** (founder-stop).",
     "fa": "**f_a** — druga miara różnorodności założycieli (founder-stop); definicja jak w słowniku parametrów.",
-    "ria": "**RIA** — odsetek osobników z **F > 0** przy tym samym limicie liczenia **F** co reszta sekcji.",
+    "ria": RIA_HELP_TOOLTIP,
     "fge": "**f_ge** — liczba odrębnych identyfikatorów „założycielskich” w modelu wkładów (rozmiar listy średnich **p_i**).",
     "eg": "**EG** — średnia z miary równoważnych pełnych pokoleń rodowodu (głębokość i kompletność); szczegóły w słowniku.",
     "gi": "**GI** — średni odstęp międzypokoleniowy w latach (łączy ścieżki ojciec→dziecko i matka→dziecko).",
@@ -190,7 +193,7 @@ SECTION_REPORTS = """
 ## Raporty
 
 - **Podgląd tekstowy** oraz zapis **.pdf** (A4, tekst z zawijaniem wierszy), **.docx** i **.txt**.
-- Raport zbiorczy zawiera m.in.: **datę generacji**, **źródło danych**, **parametry liczenia** (np. głębokość F/EG/PCI), **opis zbioru** (kolumny modelu, płeć, lata urodzenia, braki slotów rodzicielskich), **skrót walidacji** (status i liczby — bez listy problemów; szczegóły i CSV w module walidacji), dalej **metryki populacji** (F z min/med/maks, RIA, EG/PCI, f_e/f_a, linie, top założyciele wg p_i), **mean kinship (Φ̄, R)**, **GI** i **rodziny pełnego rodzeństwa**, **miejsca urodzenia** (top N wg konfiguracji).
+- Raport zbiorczy zawiera m.in.: **datę generacji**, **źródło danych**, **parametry liczenia** (np. głębokość F/EG/PCI), **opis zbioru** (kolumny modelu, płeć, lata urodzenia, braki slotów rodzicielskich), **skrót walidacji** (status i liczby — bez listy problemów; szczegóły i CSV w module walidacji), dalej **metryki populacji** (F z min/med/maks, **RIA** — udział zinbredowanych, EG/PCI, f_e/f_a, linie, top założyciele wg p_i), **mean kinship (Φ̄, R)**, **GI** i **rodziny pełnego rodzeństwa**, **miejsca urodzenia** (top N wg konfiguracji).
 - **Wykresy** z modułu Populacja i **PNG rodowodów** dołączasz osobno (pobrania w aplikacji).
 """
 
@@ -237,7 +240,7 @@ CHART_COMP_LINE = (
 
 CHART_HIST_F = (
     "**Rozkład F** w całej populacji (przy wybranym limicie pokoleń dla F). "
-    "Wysoki słupek przy **0** = dużo osobników, u których w tym modelu **nie widać inbredu**; "
+    "Wysoki słupek przy **0** = dużo osobników z **F = 0** (w tym modelu brak sygnału zinbredowania); "
     "„Ogon” w prawo = część osobników ma **wyższe F**."
 )
 
@@ -278,16 +281,18 @@ CHART_FAMILY = (
 
 CHART_INBRED_TP_SEX = (
     "Górny panel: **średnie F** według roku urodzenia, osobno **M** i **F**. "
-    "Dolny: **RIA (%)** — jaki procent osobników urodzonych w danym roku ma **F > 0**. "
-    "Pozwala zobaczyć, czy inbred „w czasie” rośnie czy maleje; różnice M/F mogą wynikać z kojarzeń albo z **różnej kompletności danych**."
+    "Dolny panel: **RIA (%)** — " + RIA_PLAIN_SHORT + ". "
+    "Pozwala zobaczyć, czy udział zinbredowanych „w czasie” rośnie czy maleje; różnice M/F mogą wynikać z kojarzeń albo z **różnej kompletności danych**."
 )
 
 CHART_INBRED_TP_LINE = (
-    "Jak wykres trendu F i RIA wg płci, ale **osobno dla linii LB, LC i NA** — porównanie trendów między liniami hodowlanymi."
+    "Jak wykres trendu F i RIA wg płci, ale **osobno dla linii LB, LC i NA** — porównanie trendów między liniami hodowlanymi. "
+    "Dolny panel: **RIA (%)** — " + RIA_PLAIN_SHORT + "."
 )
 
 CHART_F_RIA_SMOOTH = (
-    "Dwa panele (A/B): u góry **średnie F po roku urodzenia**, na dole **RIA (%)**. "
+    "Dwa panele (A/B): u góry **średnie F po roku urodzenia**, na dole **RIA (%)** — "
+    + RIA_PLAIN_SHORT + ". "
     "Czarna seria pokazuje przebieg surowy, czerwona — wygładzony trend, dzięki czemu łatwiej ocenić długofalowe zmiany."
 )
 
@@ -303,6 +308,7 @@ rodzic–dziecko oraz dostępnych dat; wnioski biologiczne zależą od kompletno
 Zakres obliczeń (skrót)
 — F (Wright): współczynnik inbredu z rekurencji rodowodowej; opcjonalny limit pokoleń
   lub liczenie bez limitu (founder-stop przy braku rodzica w danych).
+— RIA: udział zinbredowanych — procent osobników z F>0 przy tym samym limicie F co metryki populacji / wykres.
 — Φ (coancestry) i R = 2Φ: dla kojarzenia F hipotetycznego potomka = Φ między ojcem a matką;
   R — współczynnik relacji Wrighta (autosomy), zgodnie z implementacją w programie.
 — MG, CG, EG, PCI: miary kompletności / głębokości rodowodu u osobnika lub w populacji.

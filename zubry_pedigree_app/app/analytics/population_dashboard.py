@@ -34,7 +34,7 @@ def _norm_line(v: object) -> str:
 
 
 def global_ria_percent(f_values: List[float], *, eps: float = 1e-12) -> float:
-    """% osobników z F > 0 (RIA w sensie z trendów F w aplikacji)."""
+    """Udział zinbredowanych (RIA): % osobników z F>0 — ten sam sens co trendy F w aplikacji."""
     if not f_values:
         return 0.0
     nz = sum(1 for f in f_values if float(f) > eps)

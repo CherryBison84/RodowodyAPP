@@ -1,3 +1,5 @@
+"""Etapy pipeline analitycznego: wczytanie, metryki populacji, raport."""
+
 from __future__ import annotations
 
 import json
@@ -10,12 +12,15 @@ import pandas as pd
 from app.analytics.population_genetics import compute_population_genetics_stats
 from app.data.dataset_loader import load_dataset_from_path
 from app.data.validator import validate_loaded_dataset
+from app.huba.validation_utils import count_validation_issues
 from app.pedigree.ancestor_pedigree import build_people_map
 from app.pipeline.models import DatasetConfig, VariantConfig
 
 
 @dataclass
 class PipelineContext:
+    """Stan jednego przebiegu: zbiór × wariant × katalog wyników."""
+
     dataset: DatasetConfig
     variant: VariantConfig
     run_dir: Path
@@ -26,19 +31,19 @@ class PipelineContext:
 
 
 def stage_load(ctx: PipelineContext) -> PipelineContext:
+    """Wczytuje bazę i zapisuje skrót liczby błędów/ostrzeżeń walidacji."""
     df_std, _ = load_dataset_from_path(ctx.dataset.path)
     people = build_people_map(df_std)
     rep = validate_loaded_dataset(df_std=df_std, people=people)
+    n_err, n_warn = count_validation_issues(rep)
     ctx.df_std = df_std
     ctx.people = people
-    ctx.validation_summary = {
-        "errors": sum(1 for i in rep.issues if i.severity == "ERROR"),
-        "warnings": sum(1 for i in rep.issues if i.severity == "WARN"),
-    }
+    ctx.validation_summary = {"errors": n_err, "warnings": n_warn}
     return ctx
 
 
 def stage_analyze(ctx: PipelineContext) -> PipelineContext:
+    """Oblicza metryki genetyki populacyjnej dla skonfigurowanego wariantu."""
     if ctx.df_std is None or ctx.people is None:
         raise RuntimeError("stage_analyze wymaga danych z stage_load.")
     stats = compute_population_genetics_stats(
@@ -70,6 +75,7 @@ def stage_analyze(ctx: PipelineContext) -> PipelineContext:
 
 
 def stage_report(ctx: PipelineContext) -> PipelineContext:
+    """Zapisuje JSON metryk, podgląd CSV i histogram roczników."""
     if ctx.metrics_row is None:
         raise RuntimeError("stage_report wymaga danych z stage_analyze.")
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
@@ -79,7 +85,6 @@ def stage_report(ctx: PipelineContext) -> PipelineContext:
     if ctx.df_std is not None:
         (ctx.run_dir / "dataset_preview.csv").write_text(ctx.df_std.head(200).to_csv(index=False), encoding="utf-8")
 
-    # Prosty wykres rozkładu roczników - szybka kontrola wejścia dla batch.
     if ctx.df_std is not None and "birth_year" in ctx.df_std.columns:
         yrs = pd.to_numeric(ctx.df_std["birth_year"], errors="coerce").dropna()
         if not yrs.empty:
@@ -99,4 +104,3 @@ STAGE_REGISTRY = {
     "analyze": stage_analyze,
     "report": stage_report,
 }
-

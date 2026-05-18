@@ -1,7 +1,7 @@
 """
 Rysowanie wykresów w przeglądarce (urodzenia, trendy inbredu, GI, rodziny itp.).
 
-Wyświetlanie: `show_matplotlib_figure_in_streamlit` — PNG (podgląd przezroczysty, **pobieranie z białym tłem**); domyślnie `width="stretch"`; **DPI eksportu** `ST_DPI_EXPORT` (ostre renderowanie w UI i PNG); rodowody/plan — `ST_DPI_PEDIGREE`; mapa braków — `ST_DPI_MISSING_MAP`.
+Wyświetlanie: `show_matplotlib_figure_in_streamlit` — PNG (podgląd przezroczysty, **pobieranie z białym tłem**); domyślnie `width="stretch"`; **DPI eksportu** `ST_DPI_EXPORT` (ostre renderowanie w UI i PNG); rodowody/plan — `ST_DPI_PEDIGREE`; mapa braków — **`ST_DPI_MISSING_MAP`** (wysoka rozdzielczość pod tekst w komórkach);
 opcjonalnie stała szerokość w px (`ST_CHART_DISPLAY_WIDTH_PX` lub int). Przy wielu kategoriach na X — `_figsize_for_n_x_categories`.
 """
 
@@ -26,6 +26,7 @@ from app.data.dataset_loader import dataframe_app_schema_columns
 from app.data.validator import ValidationReport
 from app.analytics.population_dashboard import reproducers_by_offspring_decade
 from app.pedigree.ancestor_pedigree import get_ancestor_levels_unbounded
+from app.ui.metric_copy import RIA_CHART_TITLE_BY_LINE, RIA_CHART_TITLE_BY_SEX
 from app.ui.theme import Theme
 from app.ui.typography import apply_matplotlib_fonts
 
@@ -38,32 +39,39 @@ PLOT_BAR_3RD = PLOT_THEME.TAB_TEXT
 
 POP_FOUNDERS_PI_TOP_N = int(get_config().report_founders_top_n)
 
-# Czcionki i figury dopasowane do wyższego DPI — czytelność w UI i w pobranym PNG.
-ST_FS_TITLE = 10.0
-ST_FS_AXIS = 8.35
-ST_FS_TICK = 7.35
-ST_FS_DENSE = 6.65
-ST_FS_MISS_HEAD = 10.0
+# Czcionki i figury dopasowane do wyższego DPI — czytelność w UI (st.image „stretch”) i w PNG.
+ST_FS_TITLE = 11.75
+ST_FS_AXIS = 10.25
+ST_FS_TICK = 9.15
+ST_FS_DENSE = 8.35
+ST_FS_MISS_HEAD = 11.25
 ST_XTICK_ROT = 47.0
-ST_DPI_EXPORT = 168
-# Mapa braków (Walidacja): gęsty tekst w komórkach — wyższe DPI niż domyślne wykresy.
-ST_DPI_MISSING_MAP = 240
+# Wyższe DPI = więcej pikseli przy tym samym rozmiarze figury — ostrzejszy tekst po skalowaniu w przeglądarce.
+ST_DPI_EXPORT = 200
+# Mapa braków (Walidacja): bardzo wysokie DPI + większa figura — ostry tekst w komórkach przy powiększaniu w przeglądarce.
+ST_DPI_MISSING_MAP = 420
 # Rodowody i graf planu hodowlanego — wyższe DPI dla czytelnych etykiet po eksporcie.
-ST_DPI_PEDIGREE = 280
+ST_DPI_PEDIGREE = 300
 # Domyślny rozmiar słupków / linii (średnio liczba kategorii na X)
-ST_FIG_W, ST_FIG_H = 8.6, 4.45
-ST_FIG_REPO_W, ST_FIG_REPO_H = 9.75, 5.0
-ST_FIG_HIST_W, ST_FIG_HIST_H = 8.0, 4.1
-ST_FIG_VALIDATION_W, ST_FIG_VALIDATION_H = 11.4, 4.85
-ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H = 10.25, 4.6
-# Panel 2×1 — trendy F/RIA (płeć i linie).
-ST_FIG_TWIN_INBRED_TREND_W, ST_FIG_TWIN_INBRED_TREND_H = 12.5, 9.65
-ST_FIG_F_DIAG_W, ST_FIG_F_DIAG_H = 8.0, 4.15
-ST_FIG_PCL_BAR_W, ST_FIG_PCL_BAR_H = 8.0, 4.0
-ST_FIG_SCATTER_W, ST_FIG_SCATTER_H = 8.65, 5.55
-ST_FIG_EMPTY = (5.85, 2.35)
+ST_FIG_W, ST_FIG_H = 9.45, 4.95
+ST_FIG_REPO_W, ST_FIG_REPO_H = 10.65, 5.45
+ST_FIG_HIST_W, ST_FIG_HIST_H = 8.85, 4.55
+ST_FIG_VALIDATION_W, ST_FIG_VALIDATION_H = 12.2, 5.25
+ST_FIG_FOUNDER_W, ST_FIG_FOUNDER_H = 11.1, 5.05
+# Panel 2×1 — trendy F/RIA (płeć i linie): więcej miejsca na tytuły i podpisane lata.
+ST_FIG_TWIN_INBRED_TREND_W, ST_FIG_TWIN_INBRED_TREND_H = 13.25, 10.35
+ST_FIG_F_DIAG_W, ST_FIG_F_DIAG_H = 8.75, 4.55
+ST_FIG_PCL_BAR_W, ST_FIG_PCL_BAR_H = 8.75, 4.45
+ST_FIG_SCATTER_W, ST_FIG_SCATTER_H = 9.35, 5.95
+ST_FIG_EMPTY = (6.35, 2.65)
 # Opcjonalna stała szerokość podglądu (px), gdy przy wywołaniu podasz width=ST_CHART_DISPLAY_WIDTH_PX
-ST_CHART_DISPLAY_WIDTH_PX = 1100
+ST_CHART_DISPLAY_WIDTH_PX = 1280
+# Linie z markerami (trendy roku / GI): grubsze = lepiej widać po skalowaniu UI.
+ST_LINE_MARKERSIZE = 4.45
+ST_LINE_WIDTH = 2.35
+# Siatka osi — nieco wyższy kontrast na jasnym tle strony / przezroczystym PNG.
+ST_GRID_ALPHA = 0.38
+ST_GRID_AXIS_WIDTH = 0.95
 
 apply_matplotlib_fonts()
 
@@ -78,12 +86,31 @@ def _slant_xlabels(ax: plt.Axes, *, rotation: float | None = None, tick_fs: floa
         t.set_fontsize(fs)
 
 
+def _legend_style(**extra: object) -> dict[str, object]:
+    """Ramka legendy — czytelna na przezroczystym podglądzie w Streamlit."""
+    kw: dict[str, object] = {
+        "fontsize": ST_FS_TICK,
+        "framealpha": 0.94,
+        "fancybox": True,
+        "edgecolor": PLOT_THEME.BORDER_SUBTLE,
+    }
+    kw.update(extra)
+    return kw
+
+
 # Przezroczyste tło figury i osi — podgląd i PNG są spójne z tłem strony (zielonkawy APP_BG).
 mpl.rcParams.update(
     {
         "figure.facecolor": "none",
         "axes.facecolor": "none",
         "savefig.facecolor": "none",
+        "axes.linewidth": ST_GRID_AXIS_WIDTH,
+        "xtick.major.width": ST_GRID_AXIS_WIDTH * 0.88,
+        "ytick.major.width": ST_GRID_AXIS_WIDTH * 0.88,
+        "xtick.major.size": 4.5,
+        "ytick.major.size": 4.5,
+        "lines.antialiased": True,
+        "patch.linewidth": 1.12,
     }
 )
 
@@ -91,16 +118,16 @@ mpl.rcParams.update(
 def _figsize_for_n_x_categories(
     n: int,
     *,
-    min_w: float = 8.6,
-    max_w: float = 16.2,
-    min_h: float = 4.45,
-    max_h: float = 6.85,
+    min_w: float = 9.35,
+    max_w: float = 17.2,
+    min_h: float = 4.85,
+    max_h: float = 7.35,
 ) -> tuple[float, float]:
     """Przy wielu dekadach na osi X: szersza i wyższa figura, żeby etykiety nie były mikroskopijne."""
     if n <= 1:
         return min_w, min_h
-    w = min(max_w, max(min_w, 5.35 + 0.42 * float(n)))
-    h = min(max_h, max(min_h, 3.45 + 0.11 * float(n)))
+    w = min(max_w, max(min_w, 5.85 + 0.44 * float(n)))
+    h = min(max_h, max(min_h, 3.75 + 0.12 * float(n)))
     return w, h
 
 # Kolejność jak w tabeli „Rejestr osobniczy populacji”, potem pozostałe pola schematu alfabetycznie.
@@ -156,6 +183,7 @@ def show_matplotlib_figure_in_streamlit(
     download_key: str,
     width: str | int = "stretch",
     export_dpi: int | None = None,
+    save_pad_inches: float = 0.16,
 ) -> None:
     """
     Wyświetla wykres jako PNG (`st.image`, stabilniej niż `st.pyplot` w części przeglądarek)
@@ -163,6 +191,7 @@ def show_matplotlib_figure_in_streamlit(
     Podgląd: tło przezroczyste (spójne ze stroną). Pobierany plik PNG: **białe tło**.
     `width`: domyślnie `"stretch"`; albo `"content"` albo szerokość w px (np. `ST_CHART_DISPLAY_WIDTH_PX`).
     `export_dpi`: opcjonalnie inne DPI niż `ST_DPI_EXPORT` (np. gęsty wykres dwupanelowy).
+    `save_pad_inches`: margines `bbox_inches='tight'` — większy przy gęstym tekście (mapa braków).
     """
     import io
 
@@ -175,7 +204,7 @@ def show_matplotlib_figure_in_streamlit(
         format="png",
         dpi=_dpi,
         bbox_inches="tight",
-        pad_inches=0.1,
+        pad_inches=float(save_pad_inches),
     )
     try:
         fig.savefig(
@@ -283,24 +312,24 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         return fig
     ncol = len(pct)
     cmap = _forest_missing_segment_cmap(th)
-    # Większa figura + marginesy pod etykiety — więcej pikseli na komórki przy ST_DPI_MISSING_MAP.
-    fig_w = min(26.5, max(8.6, 0.72 * float(ncol) + 2.85))
-    label_band = min(1.14, max(0.58, 0.48 + 0.034 * float(ncol)))
-    fig_h = max(4.65, min(7.45, 2.28 + 0.11 * float(ncol) + 0.52 * label_band))
+    # Większa figura (cale) × wysokie ST_DPI_MISSING_MAP = dużo pikseli — tekst w komórkach nie „pływa” przy zoomie.
+    fig_w = min(28.5, max(11.2, 0.92 * float(ncol) + 3.45))
+    label_band = min(1.35, max(0.68, 0.52 + 0.038 * float(ncol)))
+    fig_h = max(6.05, min(8.85, 2.72 + 0.13 * float(ncol) + 0.58 * label_band))
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-    bottom_margin = max(0.19, min(0.34, 0.145 + 0.007 * float(ncol)))
+    bottom_margin = max(0.21, min(0.38, 0.16 + 0.0085 * float(ncol)))
     fig.subplots_adjust(left=0.03, right=0.97, top=0.805, bottom=bottom_margin)
     ax.set_xlim(0, ncol)
     ax.set_ylim(-label_band, 1)
     ax.axis("off")
 
-    _miss_seg_fs = max(8.2, min(12.6, 150.0 / max(ncol, 1)))
-    _miss_name_fs = max(8.6, min(12.0, 112.0 / max(ncol, 1) + 2.35))
+    _miss_seg_fs = max(10.75, min(16.25, 198.0 / max(ncol, 1)))
+    _miss_name_fs = max(11.0, min(15.25, 142.0 / max(ncol, 1) + 2.95))
     fig.text(
         0.03,
         0.935,
         "Mapa braków danych",
-        fontsize=ST_FS_MISS_HEAD * 1.14,
+        fontsize=ST_FS_MISS_HEAD * 1.28,
         color=th.TEXT,
         ha="left",
         va="top",
@@ -310,7 +339,7 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
         0.03,
         0.855,
         f"n = {n_rows} wierszy  ·  jasny kolor = mniej braków",
-        fontsize=ST_FS_TICK * 1.08,
+        fontsize=ST_FS_TICK * 1.18,
         color=th.MUTED,
         ha="left",
         va="top",
@@ -329,9 +358,9 @@ def fig_column_missing_heatmap(df: pd.DataFrame) -> plt.Figure:
             1.0,
             facecolor=rgba,
             edgecolor=th.EDGE_PLOT,
-            linewidth=0.72,
+            linewidth=0.95,
             alpha=1.0,
-            antialiased=True,
+            antialiased=False,
             zorder=1,
         )
         ax.add_patch(rect)
@@ -454,7 +483,7 @@ def fig_validation_findings(rep: ValidationReport) -> plt.Figure:
                 color=th.TEXT,
                 fontweight="semibold",
             )
-    ax0.grid(True, axis="y", alpha=0.32, linestyle="--", linewidth=0.7)
+    ax0.grid(True, axis="y", alpha=0.42, linestyle="--", linewidth=0.78)
 
     if not top_types:
         ax1.set_xlim(0, 1)
@@ -502,7 +531,7 @@ def fig_validation_findings(rep: ValidationReport) -> plt.Figure:
         ax1.set_xlabel("Liczba wykryć (wiersze eksportu / typ)", fontsize=ST_FS_AXIS)
         ax1.set_title("Najczęstsze typy problemów", fontsize=ST_FS_TITLE, pad=8)
         ax1.tick_params(axis="x", labelsize=ST_FS_TICK)
-        ax1.grid(True, axis="x", alpha=0.32, linestyle="--", linewidth=0.7)
+        ax1.grid(True, axis="x", alpha=0.42, linestyle="--", linewidth=0.78)
 
         xmax = max(1.0, max(counts_f) * 1.22)
         ax1.set_xlim(0, xmax)
@@ -612,7 +641,7 @@ def fig_birth_decades_sex(df: pd.DataFrame) -> plt.Figure:
     ax.set_xticklabels(decade_labels, fontsize=ST_FS_TICK)
     _slant_xlabels(ax)
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
-    ax.legend(fontsize=ST_FS_TICK)
+    ax.legend(**_legend_style())
     fig.tight_layout()
     return fig
 
@@ -673,7 +702,7 @@ def fig_birth_decades_line(df: pd.DataFrame) -> plt.Figure:
     ax.set_xticklabels(decade_labels, fontsize=ST_FS_TICK)
     _slant_xlabels(ax)
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
-    ax.legend(fontsize=ST_FS_TICK)
+    ax.legend(**_legend_style())
     fig.tight_layout()
     return fig
 
@@ -726,8 +755,8 @@ def fig_female_male_ratio(df: pd.DataFrame) -> plt.Figure:
     _fx, _fy = _figsize_for_n_x_categories(len(ratio_decades))
     fig, ax = plt.subplots(figsize=(_fx, _fy))
     xs3 = list(range(len(ratio_decades)))
-    ax.plot(xs3, ratio_vals, marker="o", markersize=3.2, linewidth=1.9, color=MUTED)
-    ax.axhline(1.0, color=ACCENT, linewidth=1, alpha=0.8)
+    ax.plot(xs3, ratio_vals, marker="o", markersize=ST_LINE_MARKERSIZE, linewidth=ST_LINE_WIDTH, color=MUTED)
+    ax.axhline(1.0, color=ACCENT, linewidth=1.15, alpha=0.85)
     ax.set_title("Stosunek samic do samców (F/M) w dekadach od 1900", fontsize=ST_FS_TITLE)
     ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
     ax.set_ylabel("F/M", fontsize=ST_FS_AXIS)
@@ -838,7 +867,7 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
     ax_c.set_xticklabels(cats, fontsize=ST_FS_TICK)
     _slant_xlabels(ax_c)
     ax_c.tick_params(axis="y", labelsize=ST_FS_TICK)
-    ax_c.legend(fontsize=ST_FS_TICK)
+    ax_c.legend(**_legend_style())
     fig_c.tight_layout()
 
     cats2 = ["LB", "LC", "NA"]
@@ -855,7 +884,7 @@ def fig_completeness_sex_line(df: pd.DataFrame, people: dict) -> Tuple[plt.Figur
     ax_l.set_xticklabels(cats2, fontsize=ST_FS_TICK)
     _slant_xlabels(ax_l)
     ax_l.tick_params(axis="y", labelsize=ST_FS_TICK)
-    ax_l.legend(fontsize=ST_FS_TICK)
+    ax_l.legend(**_legend_style())
     fig_l.tight_layout()
     return fig_c, fig_l
 
@@ -891,11 +920,12 @@ def fig_histogram_f(f_values: List[float]) -> plt.Figure:
         ax.text(0.5, 0.5, "Brak danych F", ha="center", va="center", fontsize=ST_FS_AXIS)
         ax.axis("off")
         return fig
-    ax.hist(f_values, bins=30, color=BUTTON_BG2, edgecolor=PLOT_BAR_3RD)
+    ax.hist(f_values, bins=30, color=BUTTON_BG2, edgecolor=PLOT_BAR_3RD, linewidth=1.08)
     ax.set_title("Rozkład F (Wright) w populacji", fontsize=ST_FS_TITLE)
     ax.set_xlabel("F", fontsize=ST_FS_AXIS)
     ax.set_ylabel("liczba osobników", fontsize=ST_FS_AXIS)
     ax.tick_params(axis="both", labelsize=ST_FS_TICK)
+    ax.grid(True, axis="y", alpha=ST_GRID_ALPHA * 0.65, linewidth=0.65)
     _slant_xlabels(ax)
     fig.tight_layout()
     return fig
@@ -961,13 +991,13 @@ def fig_gi_trend_decades(gi_data: Dict[str, Any]) -> plt.Figure:
     for path_key in ("FS", "FD", "MS", "MD"):
         ys = [_dec_mean(path_key, d) for d in all_decades]
         ys_plot = [float(v) if v is not None else float("nan") for v in ys]
-        ax.plot(x, ys_plot, marker="o", markersize=3.15, linewidth=1.85, color=colors[path_key], label=labels_map[path_key])
+        ax.plot(x, ys_plot, marker="o", markersize=ST_LINE_MARKERSIZE, linewidth=ST_LINE_WIDTH, color=colors[path_key], label=labels_map[path_key])
     ax.set_title("GI (trend) — dekady urodzenia potomstwa", fontsize=ST_FS_TITLE)
     ax.set_xlabel("dekada", fontsize=ST_FS_AXIS)
     ax.set_ylabel("średni GI (lata)", fontsize=ST_FS_AXIS)
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
-    ax.grid(True, alpha=0.25)
-    ax.legend(fontsize=ST_FS_TICK)
+    ax.grid(True, alpha=ST_GRID_ALPHA)
+    ax.legend(**_legend_style())
     if len(x) > 15:
         step = 2
         ticks = [i for i in x if i % step == 0]
@@ -1004,6 +1034,7 @@ def fig_family_full_siblings(family_sizes: List[int]) -> plt.Figure:
     ax.set_xlabel("wielkość rodziny (liczba rodzeństwa)", fontsize=ST_FS_AXIS)
     ax.set_ylabel("liczba rodzin", fontsize=ST_FS_AXIS)
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
+    ax.grid(True, axis="y", alpha=ST_GRID_ALPHA * 0.72, linewidth=0.65)
     fig.tight_layout()
     return fig
 
@@ -1134,8 +1165,8 @@ def fig_inbreeding_year_trends_sex(
             years,
             avg_f,
             marker="o",
-            markersize=3.85,
-            linewidth=2.05,
+            markersize=ST_LINE_MARKERSIZE,
+            linewidth=ST_LINE_WIDTH,
             color=colors_sex[cat],
             label=cat,
         )
@@ -1143,25 +1174,25 @@ def fig_inbreeding_year_trends_sex(
             years,
             ria,
             marker="o",
-            markersize=3.85,
-            linewidth=2.05,
+            markersize=ST_LINE_MARKERSIZE,
+            linewidth=ST_LINE_WIDTH,
             color=colors_sex[cat],
             label=cat,
         )
 
-    ax_avg.set_title("Średnie F w populacji — wg płci (rok urodzenia)", fontsize=ST_FS_TITLE)
+    ax_avg.set_title("Średnie F w populacji — wg płci (rok urodzenia)", fontsize=ST_FS_TITLE, pad=10)
     ax_avg.set_xlabel("rok urodzenia", fontsize=ST_FS_AXIS)
     ax_avg.set_ylabel("średnie F", fontsize=ST_FS_AXIS)
-    ax_avg.grid(True, alpha=0.25)
+    ax_avg.grid(True, alpha=ST_GRID_ALPHA)
     ax_avg.tick_params(axis="both", labelsize=ST_FS_TICK)
-    ax_avg.legend(fontsize=ST_FS_TICK)
+    ax_avg.legend(**_legend_style())
 
-    ax_ria.set_title("RIA (%) — odsetek z F>0 — wg płci", fontsize=ST_FS_TITLE)
+    ax_ria.set_title(RIA_CHART_TITLE_BY_SEX, fontsize=ST_FS_TITLE, pad=10)
     ax_ria.set_xlabel("rok urodzenia", fontsize=ST_FS_AXIS)
     ax_ria.set_ylabel("RIA (%)", fontsize=ST_FS_AXIS)
-    ax_ria.grid(True, alpha=0.25)
+    ax_ria.grid(True, alpha=ST_GRID_ALPHA)
     ax_ria.tick_params(axis="both", labelsize=ST_FS_TICK)
-    ax_ria.legend(fontsize=ST_FS_TICK)
+    ax_ria.legend(**_legend_style())
 
     if len(years) > 15:
         step = 5
@@ -1171,7 +1202,7 @@ def fig_inbreeding_year_trends_sex(
     _slant_xlabels(ax_avg)
     _slant_xlabels(ax_ria)
     fig.tight_layout()
-    fig.subplots_adjust(hspace=0.4)
+    fig.subplots_adjust(hspace=0.52)
     return fig, warn
 
 
@@ -1234,8 +1265,8 @@ def fig_inbreeding_year_trends_line(
             years,
             avg_f,
             marker="o",
-            markersize=3.85,
-            linewidth=2.05,
+            markersize=ST_LINE_MARKERSIZE,
+            linewidth=ST_LINE_WIDTH,
             color=colors_line[cat],
             label=cat,
         )
@@ -1243,25 +1274,25 @@ def fig_inbreeding_year_trends_line(
             years,
             ria,
             marker="o",
-            markersize=3.85,
-            linewidth=2.05,
+            markersize=ST_LINE_MARKERSIZE,
+            linewidth=ST_LINE_WIDTH,
             color=colors_line[cat],
             label=cat,
         )
 
-    ax_avg.set_title("Średnie F w populacji — wg linii (LB/LC/NA)", fontsize=ST_FS_TITLE)
+    ax_avg.set_title("Średnie F w populacji — wg linii (LB/LC/NA)", fontsize=ST_FS_TITLE, pad=10)
     ax_avg.set_xlabel("rok urodzenia", fontsize=ST_FS_AXIS)
     ax_avg.set_ylabel("średnie F", fontsize=ST_FS_AXIS)
-    ax_avg.grid(True, alpha=0.25)
+    ax_avg.grid(True, alpha=ST_GRID_ALPHA)
     ax_avg.tick_params(axis="both", labelsize=ST_FS_TICK)
-    ax_avg.legend(fontsize=ST_FS_TICK)
+    ax_avg.legend(**_legend_style())
 
-    ax_ria.set_title("RIA (%) — wg linii", fontsize=ST_FS_TITLE)
+    ax_ria.set_title(RIA_CHART_TITLE_BY_LINE, fontsize=ST_FS_TITLE, pad=10)
     ax_ria.set_xlabel("rok urodzenia", fontsize=ST_FS_AXIS)
     ax_ria.set_ylabel("RIA (%)", fontsize=ST_FS_AXIS)
-    ax_ria.grid(True, alpha=0.25)
+    ax_ria.grid(True, alpha=ST_GRID_ALPHA)
     ax_ria.tick_params(axis="both", labelsize=ST_FS_TICK)
-    ax_ria.legend(fontsize=ST_FS_TICK)
+    ax_ria.legend(**_legend_style())
 
     if len(years) > 15:
         step = 5
@@ -1271,7 +1302,7 @@ def fig_inbreeding_year_trends_line(
     _slant_xlabels(ax_avg)
     _slant_xlabels(ax_ria)
     fig.tight_layout()
-    fig.subplots_adjust(hspace=0.4)
+    fig.subplots_adjust(hspace=0.52)
     return fig, warn
 
 
@@ -1343,14 +1374,9 @@ def fig_reproducers_by_decade(df: pd.DataFrame) -> plt.Figure:
     ax.set_xticks(xi)
     ax.set_xticklabels(labels, fontsize=ST_FS_TICK)
     _slant_xlabels(ax)
-    ax.legend(
-        fontsize=ST_FS_TICK,
-        loc="upper left",
-        framealpha=0.96,
-        edgecolor=PLOT_THEME.BORDER_SUBTLE,
-    )
+    ax.legend(**_legend_style(loc="upper left"))
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
-    ax.grid(True, axis="y", alpha=0.25)
+    ax.grid(True, axis="y", alpha=ST_GRID_ALPHA)
     fig.tight_layout()
     return fig
 
@@ -1419,8 +1445,8 @@ def fig_line_share_percent_stacked(df: pd.DataFrame) -> plt.Figure:
     ax.set_xticks(x)
     ax.set_xticklabels(decade_labels, fontsize=ST_FS_TICK)
     _slant_xlabels(ax)
-    ax.legend(fontsize=ST_FS_TICK, loc="upper right")
+    ax.legend(**_legend_style(loc="upper right"))
     ax.tick_params(axis="y", labelsize=ST_FS_TICK)
-    ax.grid(True, axis="y", alpha=0.25)
+    ax.grid(True, axis="y", alpha=ST_GRID_ALPHA)
     fig.tight_layout()
     return fig

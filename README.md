@@ -1,6 +1,6 @@
 # WisentPedigree Pro+ (RodowodyAPP)
 
-**Wersja aplikacji (pakiet): 0.4.0**
+**Wersja aplikacji (pakiet): 0.5.0**
 
 Aplikacja **webowa (Streamlit)** do wczytywania baz rodowodowych, **walidacji** (w tym eksport CSV, wykresy podsumowań i **automatyczne poprawki** w sesji), analizy **inbredu (F Wright)**, **kompletności rodowodu**, **parametrów populacyjnych** oraz raportów. Interfejs i treści pomocy są po polsku; motyw wizualny jest dopasowany do pracy z dużymi zbiorami.
 
@@ -86,4 +86,4 @@ Zobacz **`zubry_pedigree_app/requirements.txt`**: m.in. Streamlit, pandas, numpy
 
 ## Autorka
 
-**Magdalena Perlińska-Teresiak** — 2026
+**[Magdalena Perlińska-Teresiak](https://github.com/CherryBison84)** — [repozytorium na GitHubie](https://github.com/CherryBison84/RodowodyAPP) · 2026
