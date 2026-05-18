@@ -15,7 +15,7 @@ if str(_pkg_root) not in sys.path:
 def main() -> None:
     """Punkt wejścia CLI: UI Streamlit lub wsadowe uruchomienie z pliku JSON."""
     parser = argparse.ArgumentParser(
-        description="HUBA — Hybrid Unified Batch Analyzer (czyszczenie baz rodowodowych)"
+        description="HUBA-WPB Cleaner — Hybrid Unified Batch Analyzer + Wisent Pedigree Base"
     )
     parser.add_argument(
         "--project-config",

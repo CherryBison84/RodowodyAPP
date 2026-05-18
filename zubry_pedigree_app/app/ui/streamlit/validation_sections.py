@@ -1,15 +1,15 @@
-"""
-Podsekcje Walidacji: nawigacja (kompaktowa lub panel boczny z grupami) i treść kategorii.
-
-Wywoływane z kroku HUBA „Walidacja” oraz ze strony analityki (`pages.section_validation`).
-"""
+"""Podsekcje walidacji HUBA: boczne menu kategorii i treść wybranej kontroli."""
 
 from __future__ import annotations
 
 import csv
 import html
 from io import StringIO
-from typing import Final, FrozenSet, Literal, Sequence
+from collections.abc import Callable
+from typing import Final, FrozenSet, Sequence
+
+from app.ui.streamlit.huba_nav import MANUAL_CLEAN_ENABLED
+from app.ui.streamlit.manual_edit_panel import open_manual_corrections_panel
 
 import pandas as pd
 import streamlit as st
@@ -42,6 +42,7 @@ VALIDATION_TAB_LABELS: Final[dict[str, str]] = {
     "lines": "Linie Z/M",
     "ancestors": "Przodkowie",
     "report": "Raport + CSV",
+    "edit": "Edycja ręczna",
     "autofix": "Auto-poprawki",
 }
 
@@ -55,14 +56,20 @@ VALIDATION_TAB_HEADINGS: Final[dict[str, str]] = {
     "lines": "Linie założycielskie (Z / M)",
     "ancestors": "Braki wskazania rodziców",
     "report": "Pełny raport i eksport",
+    "edit": "Ręczna poprawa pól",
     "autofix": "Automatyczne poprawki",
 }
 
-# Układ grupowy nawigacji (krok Walidacja HUBA i czytelny tryb „grouped”).
-VALIDATION_NAV_GROUPS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
-    ("Jakość danych w pliku", ("excel", "id", "chrono")),
-    ("Rodowód i spójność", ("parents", "ancestors", "graph", "lines")),
-    ("Podsumowanie", ("report",)),
+# Kategorie podmenu kroku Walidacja (HUBA) — płaska lista.
+HUBA_VALIDATION_TAB_KEYS: Final[tuple[str, ...]] = (
+    "excel",
+    "id",
+    "chrono",
+    "parents",
+    "ancestors",
+    "graph",
+    "lines",
+    "report",
 )
 
 _GRAPH_CYCLE_HELP: Final[str] = (
@@ -71,12 +78,6 @@ _GRAPH_CYCLE_HELP: Final[str] = (
     "jest to niemożliwe. Typowe przyczyny: literówka lub duplikat ID, zamiana kolumn ojciec/matka, "
     "błędny merge arkuszy. W CSV: ERROR „Cykl w rodowodzie”, wiersz z `id` = **`_GLOBAL_`** "
     "oraz przykładowe węzły na cyklu."
-)
-
-# Dwa rzędy przycisków nawigacji (krótsze etykiety, szerokość kolumn wg długości tekstu).
-VALIDATION_TAB_ROWS: Final[tuple[tuple[str, ...], tuple[str, ...]]] = (
-    ("excel", "id", "parents", "chrono", "graph"),
-    ("lines", "ancestors", "report", "autofix"),
 )
 
 _SESSION_TAB_KEY: Final[str] = "validation_tab_key"
@@ -92,6 +93,7 @@ VALIDATION_TAB_MENU_LABELS: Final[dict[str, str]] = {
     "lines": "Linie Z / M",
     "ancestors": "Braki rodziców",
     "report": "Raport i eksport CSV",
+    "edit": "Edycja ręczna",
     "autofix": "Auto-poprawki",
 }
 
@@ -137,6 +139,7 @@ _EXPORT_TYPES_BY_TAB: dict[str, FrozenSet[str]] = {
     ),
     "ancestors": frozenset(),
     "report": frozenset(),  # pełny zestaw w samej zakładce
+    "edit": frozenset(),
     "autofix": frozenset(),
 }
 
@@ -158,6 +161,10 @@ _TAB_LEADS: Final[dict[str, str]] = {
         "Rekordy bez pełnej pary `father_id` i `mother_id` — podgląd ułatwia uzupełnienie braków w arkuszu."
     ),
     "report": "Zbiorczy wykres, skrót komunikatów oraz pliki CSV/TXT do poprawy danych w Excelu.",
+    "edit": (
+        "Wyszukaj osobnika po ID, popraw pola i zapisz — walidacja przeliczy się od razu. "
+        "W innych kategoriach skrót „Popraw wybrany wpis” jest pod tabelą problemów."
+    ),
 }
 
 
@@ -324,6 +331,7 @@ def _tab_accent(tab_key: str) -> str:
         "lines": sc.THEME.EDGE_PLOT,
         "ancestors": sc.THEME.LINK,
         "report": sc.THEME.EDGE_PLOT,
+        "edit": "#3d5a4a",
         "autofix": sc.THEME.ACCENT,
     }
     return accents.get(tab_key, sc.THEME.EDGE_PLOT)
@@ -396,17 +404,6 @@ def _count_tab_issues(rep: ValidationReport, tab_key: str) -> tuple[int, int]:
     return n_err, n_warn
 
 
-def _issue_count_suffix(err: int, warn: int) -> str:
-    if err:
-        part = f"{err} bł."
-        if warn:
-            return f" · {part}, {warn} ostrz."
-        return f" · {part}"
-    if warn:
-        return f" · {warn} ostrz."
-    return " · OK"
-
-
 def _tab_has_issues(rep: ValidationReport | None, tab_key: str) -> bool:
     if rep is None:
         return False
@@ -414,190 +411,116 @@ def _tab_has_issues(rep: ValidationReport | None, tab_key: str) -> bool:
     return bool(err or warn)
 
 
-def _category_card_caption(tab_key: str, rep: ValidationReport | None) -> str:
+def _category_select_label(tab_key: str, rep: ValidationReport | None) -> str:
+    """Jedna linia w liście rozwijanej podmenu HUBA."""
+    base = VALIDATION_TAB_MENU_LABELS.get(tab_key, VALIDATION_TAB_LABELS.get(tab_key, tab_key))
     if rep is None:
-        return ""
+        return base
     err, warn = _count_tab_issues(rep, tab_key)
     if err or warn:
-        return _issue_count_suffix(err, warn).strip(" ·")
-    return "brak problemów"
+        return f"{base} ({err} bł., {warn} ostrz.)"
+    return f"{base} (OK)"
 
 
-def _validation_nav_groups(*, show_autofix: bool) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    groups = VALIDATION_NAV_GROUPS
-    if show_autofix:
-        return groups + (("Narzędzia", ("autofix",)),)
-    return groups
-
-
-def _render_validation_overview_table(rep: ValidationReport | None, keys: Sequence[str]) -> None:
-    """Tabela podglądu: wszystkie kategorie i liczba problemów."""
-    rows = []
-    for key in keys:
-        title = VALIDATION_TAB_MENU_LABELS.get(key, VALIDATION_TAB_LABELS.get(key, key))
-        if rep is None:
-            rows.append({"Kategoria": title, "Błędy": "—", "Ostrzeżenia": "—", "Status": "—"})
-            continue
-        err, warn = _count_tab_issues(rep, key)
-        status = "Do poprawy" if err else ("Do weryfikacji" if warn else "OK")
-        rows.append(
-            {
-                "Kategoria": title,
-                "Błędy": err,
-                "Ostrzeżenia": warn,
-                "Status": status,
-            }
+def _validation_charts_compact(df_std: pd.DataFrame, rep: ValidationReport) -> None:
+    """Wykresy w zwijanym panelu — bez dodatkowych metryk."""
+    chart_keys = [k for k in HUBA_VALIDATION_TAB_KEYS]
+    cat_rows = [
+        (
+            VALIDATION_TAB_MENU_LABELS.get(k, k),
+            *_count_tab_issues(rep, k),
         )
-    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True, height=min(320, 48 + 36 * len(rows)))
+        for k in chart_keys
+    ]
+    fig_sum = splt.fig_validation_findings(rep)
+    splt.show_matplotlib_figure_in_streamlit(
+        fig_sum,
+        download_filename="walidacja_podsumowanie.png",
+        download_key="huba_val_summary_png",
+        width="stretch",
+        export_dpi=splt.ST_DPI_EXPORT,
+    )
+    if any(e or w for _lbl, e, w in cat_rows):
+        fig_cat = splt.fig_validation_by_category(cat_rows)
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_cat,
+            download_filename="walidacja_kategorie.png",
+            download_key="huba_val_categories_png",
+            width="stretch",
+            export_dpi=splt.ST_DPI_EXPORT,
+        )
+    if df_std is not None and not df_std.empty:
+        df_miss = dataframe_app_schema_columns(df_std)
+        fig_miss = splt.fig_column_missing_heatmap(df_miss)
+        splt.show_matplotlib_figure_in_streamlit(
+            fig_miss,
+            download_filename="walidacja_mapa_brakow.png",
+            download_key="huba_val_missing_map",
+            width="stretch",
+            export_dpi=splt.ST_DPI_MISSING_MAP,
+            save_pad_inches=0.24,
+        )
 
 
-def _render_category_card_grid(
-    group_keys: tuple[str, ...],
+def _visible_validation_keys(
+    all_keys: list[str],
     rep: ValidationReport | None,
     *,
-    current_tab: str,
     only_issues: bool,
 ) -> list[str]:
-    """Siatka kart wyboru kategorii; zwraca listę widocznych kluczy."""
-    visible = [k for k in group_keys if not only_issues or _tab_has_issues(rep, k)]
-    if not visible:
-        st.caption("W tej grupie nie ma kategorii z wykrytymi problemami.")
-        return []
-
-    th = sc.THEME
-    n_cols = 2 if len(visible) > 1 else 1
-    cols = st.columns(n_cols)
-    for i, key in enumerate(visible):
-        err, warn = _count_tab_issues(rep, key) if rep else (0, 0)
-        if err:
-            accent, bg = "#8b2e2e", "#fdeaea"
-        elif warn:
-            accent, bg = "#7a5c1e", "#faf3e0"
-        else:
-            accent, bg = th.EDGE_PLOT, th.ENTRY_BG
-        title = VALIDATION_TAB_MENU_LABELS.get(key, VALIDATION_TAB_LABELS.get(key, key))
-        caption = _category_card_caption(key, rep)
-        with cols[i % n_cols]:
-            st.markdown(
-                f'<div style="margin:0 0 6px 0;padding:10px 12px;border-radius:8px;'
-                f'background:{bg};border:1px solid {th.BORDER_SUBTLE};border-left:4px solid {accent};">'
-                f'<div style="font-weight:600;font-size:0.92rem;color:{th.TEXT};">'
-                f"{html.escape(title)}</div>"
-                f'<div style="font-size:0.8rem;color:{th.MUTED};margin-top:4px;">'
-                f"{html.escape(caption)}</div></div>",
-                unsafe_allow_html=True,
-            )
-            if st.button(
-                "Otwórz" if key != current_tab else "Wybrano",
-                key=f"val_pick_{key}",
-                use_container_width=True,
-                type="primary" if key == current_tab else "secondary",
-            ):
-                st.session_state[_SESSION_TAB_KEY] = key
-                st.rerun()
-    return visible
+    if not only_issues or rep is None:
+        return list(all_keys)
+    return [k for k in all_keys if _tab_has_issues(rep, k)]
 
 
-def _render_grouped_category_picker(
+def _render_huba_validation_menu(
     rep: ValidationReport | None,
-    *,
-    show_autofix: bool,
     all_keys: list[str],
-) -> None:
-    """Zakładki grup + siatka kart kategorii (nawigacja pozioma, treść poniżej)."""
-    groups = _validation_nav_groups(show_autofix=show_autofix)
-    current_tab = str(st.session_state.get(_SESSION_TAB_KEY, all_keys[0]))
-    if current_tab not in all_keys:
-        current_tab = all_keys[0]
-        st.session_state[_SESSION_TAB_KEY] = current_tab
-
+) -> str:
+    """Lewe podmenu: lista kategorii + filtr + szybki eksport CSV."""
     if _SESSION_ONLY_ISSUES not in st.session_state:
         st.session_state[_SESSION_ONLY_ISSUES] = False
 
-    head_l, head_r = st.columns([2.2, 1])
-    with head_l:
-        st.caption("Wybierz kartę kategorii — szczegóły pojawią się pod spodem.")
-    with head_r:
-        only_issues = st.checkbox(
-            "Tylko z problemami",
-            value=bool(st.session_state[_SESSION_ONLY_ISSUES]),
-            key="val_only_issues_cb",
+    only_issues = st.checkbox(
+        "Tylko kategorie z problemami",
+        value=bool(st.session_state[_SESSION_ONLY_ISSUES]),
+        key="huba_val_only_issues",
+    )
+    st.session_state[_SESSION_ONLY_ISSUES] = only_issues
+
+    visible = _visible_validation_keys(all_keys, rep, only_issues=only_issues)
+    current = str(st.session_state.get(_SESSION_TAB_KEY, all_keys[0]))
+    if current not in all_keys:
+        current = all_keys[0]
+    if current not in visible:
+        current = visible[0] if visible else all_keys[0]
+
+    if not visible:
+        st.warning("Żadna kategoria nie ma problemów — wyłącz filtr powyżej.")
+        visible = list(all_keys)
+        current = all_keys[0]
+
+    picked = st.selectbox(
+        "Kategoria kontroli",
+        visible,
+        index=visible.index(current),
+        format_func=lambda k: _category_select_label(k, rep),
+        key="huba_val_category_select",
+        label_visibility="visible",
+    )
+    st.session_state[_SESSION_TAB_KEY] = picked
+
+    if rep is not None and rep.has_export_rows:
+        st.download_button(
+            "Pobierz pełny CSV problemów",
+            data=rep.to_csv_string().encode("utf-8-sig"),
+            file_name="walidacja_problemy.csv",
+            mime="text/csv",
+            key="huba_val_csv_all",
+            use_container_width=True,
         )
-        st.session_state[_SESSION_ONLY_ISSUES] = only_issues
 
-    if rep is not None:
-        total_err = total_warn = 0
-        for key in all_keys:
-            e, w = _count_tab_issues(rep, key)
-            total_err += e
-            total_warn += w
-        m1, m2, m3 = st.columns(3)
-        th = sc.THEME
-        with m1:
-            sc.population_dashboard_metric(
-                "Kategorie z błędami",
-                str(sum(1 for k in all_keys if _count_tab_issues(rep, k)[0] > 0)),
-                accent="#8b2e2e",
-                panel_bg="#fdeaea" if total_err else th.ENTRY_BG,
-            )
-        with m2:
-            sc.population_dashboard_metric(
-                "Wpisy ERROR (łącznie)",
-                str(total_err),
-                accent="#8b2e2e",
-                panel_bg="#fdeaea" if total_err else th.ENTRY_BG,
-            )
-        with m3:
-            sc.population_dashboard_metric(
-                "Wpisy WARN (łącznie)",
-                str(total_warn),
-                accent="#7a5c1e",
-                panel_bg="#faf3e0" if total_warn else th.ENTRY_BG,
-            )
-
-    with st.expander("Mapa wszystkich kategorii", expanded=False):
-        _render_validation_overview_table(rep, all_keys)
-
-    group_labels = [g[0] for g in groups]
-    group_tabs = st.tabs(group_labels)
-    for gtab, (_gtitle, gkeys) in zip(group_tabs, groups, strict=True):
-        with gtab:
-            visible = _render_category_card_grid(
-                gkeys,
-                rep,
-                current_tab=current_tab,
-                only_issues=only_issues,
-            )
-            if current_tab in gkeys and current_tab not in visible and visible:
-                st.info(
-                    f"Aktywna kategoria **{VALIDATION_TAB_MENU_LABELS.get(current_tab, current_tab)}** "
-                    f"jest ukryta przez filtr — wyłącz „Tylko z problemami” lub wybierz inną kartę."
-                )
-
-
-def _nav_button_label(tab_key: str, *, nav_label_style: Literal["short", "full"]) -> str:
-    if nav_label_style == "full":
-        return VALIDATION_TAB_HEADINGS.get(tab_key, VALIDATION_TAB_LABELS.get(tab_key, tab_key))
-    return VALIDATION_TAB_LABELS.get(tab_key, tab_key)
-
-
-def _render_nav_buttons(
-    row_keys: tuple[str, ...],
-    *,
-    key_prefix: str,
-    nav_label_style: Literal["short", "full"] = "short",
-) -> None:
-    cols = st.columns(_column_weights(row_keys, nav_label_style=nav_label_style))
-    for col, key in zip(cols, row_keys, strict=True):
-        with col:
-            current = st.session_state[_SESSION_TAB_KEY]
-            if st.button(
-                _nav_button_label(key, nav_label_style=nav_label_style),
-                key=f"{key_prefix}_{key}",
-                use_container_width=True,
-                type="primary" if current == key else "secondary",
-            ):
-                st.session_state[_SESSION_TAB_KEY] = key
+    return picked
 
 
 def _render_active_category_header(tab_key: str) -> None:
@@ -619,6 +542,8 @@ def render_validation_tab(
     *,
     missing_data_hint: str = "Brak raportu walidacji — wczytaj bazę ponownie w **Import danych**.",
     show_tab_heading: bool = True,
+    catalog_name: str | None = None,
+    on_dataset_updated: Callable[[pd.DataFrame], None] | None = None,
 ) -> None:
     """Rysuje treść jednej podsekcji Walidacji (wg `tab_key` z `VALIDATION_TAB_KEYS`)."""
     if rep is None:
@@ -736,6 +661,20 @@ def render_validation_tab(
             mime="text/csv",
             key=f"val_csv_tab_{slug}",
         )
+        if MANUAL_CLEAN_ENABLED and on_dataset_updated is not None:
+            c_hint, c_btn = st.columns([3, 1])
+            with c_hint:
+                st.caption("Ręczna korekta pól — w **Kroku 3**.")
+            with c_btn:
+                if st.button(
+                    "Krok 3",
+                    key=f"goto_manual_{slug}",
+                    use_container_width=True,
+                ):
+                    open_manual_corrections_panel()
+                    st.rerun()
+        elif not MANUAL_CLEAN_ENABLED:
+            st.caption("Czyszczenie ręczne (Krok 3) — wkrótce w aplikacji.")
 
     sub_issues = _issues_for_tab(rep.issues, tab_key)
     if sub_issues:
@@ -876,57 +815,22 @@ def render_automatic_corrections_panel(df_std: pd.DataFrame) -> None:
             st.code(log_txt)
 
 
-def _column_weights(
-    keys: tuple[str, ...],
-    *,
-    nav_label_style: Literal["short", "full"] = "short",
-) -> list[int]:
-    """Wagi kolumn `st.columns` proporcjonalne do długości etykiety (szerszy przycisk dla dłuższego tekstu)."""
-    return [
-        max(8, len(_nav_button_label(k, nav_label_style=nav_label_style)) // 4 + 6)
-        for k in keys
-    ]
-
-
-def _tab_rows_for_workspace(*, show_autofix: bool) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    if show_autofix:
-        return VALIDATION_TAB_ROWS
-    row0 = tuple(k for k in VALIDATION_TAB_ROWS[0])
-    row1 = tuple(k for k in VALIDATION_TAB_ROWS[1] if k != "autofix")
-    return row0, row1
-
-
-def _all_tab_keys(*, show_autofix: bool, layout: Literal["compact", "grouped"]) -> list[str]:
-    if layout == "grouped":
-        keys: list[str] = []
-        for _title, group_keys in VALIDATION_NAV_GROUPS:
-            keys.extend(group_keys)
-        if show_autofix:
-            keys.append("autofix")
-        return keys
-    tab_rows = _tab_rows_for_workspace(show_autofix=show_autofix)
-    return [k for row in tab_rows for k in row]
-
-
-def _render_validation_nav(
-    *,
-    show_autofix: bool,
-    layout: Literal["compact", "grouped"],
-    nav_label_style: Literal["short", "full"],
+def render_validation_summary_charts_expander(
+    df_std: pd.DataFrame,
+    rep: ValidationReport | None,
 ) -> None:
-    if layout == "grouped":
+    """Zwijany panel wykresów — wywoływany na dole Kroku 2 (poza głównym układem)."""
+    if rep is None:
         return
+    with st.expander("Wykresy podsumowania", expanded=False):
+        _validation_charts_compact(df_std, rep)
 
-    st.caption(
-        "Wybierz kategorię — pierwszy rząd: arkusz i rekord; drugi: linie, przodkowie, raport"
-        + (", auto-poprawki." if show_autofix else ".")
-    )
-    for ri, row_keys in enumerate(_tab_rows_for_workspace(show_autofix=show_autofix)):
-        _render_nav_buttons(
-            row_keys,
-            key_prefix=f"val_row{ri}",
-            nav_label_style=nav_label_style,
-        )
+
+def _huba_tab_keys(*, show_autofix: bool) -> list[str]:
+    keys = list(HUBA_VALIDATION_TAB_KEYS)
+    if show_autofix:
+        keys.append("autofix")
+    return keys
 
 
 def render_validation_workspace(
@@ -934,50 +838,34 @@ def render_validation_workspace(
     rep: ValidationReport | None,
     *,
     show_autofix: bool = True,
-    layout: Literal["compact", "grouped"] = "compact",
+    catalog_name: str | None = None,
+    on_dataset_updated: Callable[[pd.DataFrame], None] | None = None,
     missing_data_hint: str = "Brak raportu walidacji — wczytaj bazę ponownie w **Import danych**.",
 ) -> None:
-    """
-    Nawigacja podsekcji i treść wybranej kategorii (opcjonalnie **Auto-poprawki**).
-    """
-    nav_label_style: Literal["short", "full"] = "short"
-    show_tab_heading = layout != "grouped"
-
-    all_keys = _all_tab_keys(show_autofix=show_autofix, layout=layout)
+    """Menu kategorii (lewa kolumna) i treść wybranej kontroli."""
+    all_keys = _huba_tab_keys(show_autofix=show_autofix)
     if _SESSION_TAB_KEY not in st.session_state or st.session_state[_SESSION_TAB_KEY] not in all_keys:
+        st.session_state[_SESSION_TAB_KEY] = all_keys[0]
+    elif st.session_state[_SESSION_TAB_KEY] == "edit":
         st.session_state[_SESSION_TAB_KEY] = all_keys[0]
 
     def _render_body(selected: str) -> None:
         if selected == "autofix":
             render_automatic_corrections_panel(df_std)
             return
-        if not show_tab_heading:
-            _render_active_category_header(selected)
+        _render_active_category_header(selected)
         render_validation_tab(
             selected,
             df_std,
             rep,
             missing_data_hint=missing_data_hint,
-            show_tab_heading=show_tab_heading,
+            show_tab_heading=False,
+            catalog_name=catalog_name,
+            on_dataset_updated=on_dataset_updated,
         )
 
-    if layout == "grouped":
-        st.markdown("#### Szczegóły walidacji")
-        _render_grouped_category_picker(
-            rep,
-            show_autofix=show_autofix,
-            all_keys=all_keys,
-        )
-        st.markdown("---")
-        selected = str(st.session_state[_SESSION_TAB_KEY])
+    nav_col, main_col = st.columns([0.27, 0.73], gap="large")
+    with nav_col:
+        selected = _render_huba_validation_menu(rep, all_keys)
+    with main_col:
         _render_body(selected)
-        return
-
-    _render_validation_nav(
-        show_autofix=show_autofix,
-        layout=layout,
-        nav_label_style=nav_label_style,
-    )
-    selected = str(st.session_state[_SESSION_TAB_KEY])
-    st.markdown("---")
-    _render_body(selected)

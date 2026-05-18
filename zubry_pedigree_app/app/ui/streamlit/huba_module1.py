@@ -1,5 +1,5 @@
 """
-HUBA — kroki 1–2: wczytanie danych i przegląd błędów w bazie.
+HUBA — kroki 1–3: wczytanie, walidacja i ręczne czyszczenie bazy.
 """
 
 from __future__ import annotations
@@ -18,7 +18,12 @@ from app.huba.modules.dataset_inspect import (
 from app.huba.modules.merge import merge_standardized_frames
 from app.ui import help_content as hc
 from app.ui.streamlit import common as sc
-from app.ui.streamlit.validation_sections import render_validation_workspace
+from app.ui.streamlit.huba_nav import MANUAL_CLEAN_ENABLED
+from app.ui.streamlit.manual_edit_panel import render_manual_corrections_section
+from app.ui.streamlit.validation_sections import (
+    render_validation_summary_charts_expander,
+    render_validation_workspace,
+)
 
 SESSION_CATALOG = "huba_m1_catalog"
 SESSION_ACTIVE = "huba_m1_active"
@@ -101,11 +106,20 @@ def _register(dataset: InspectedDataset) -> None:
     st.session_state[SESSION_ACTIVE] = dataset.name
 
 
-def _active_dataset() -> InspectedDataset | None:
-    name = st.session_state.get(SESSION_ACTIVE)
-    if not name:
-        return None
-    return _catalog().get(str(name))
+def apply_catalog_edit(catalog_name: str, df_new: pd.DataFrame) -> InspectedDataset:
+    """Zapisuje zmiany w katalogu HUBA i przelicza walidację."""
+    cat = _catalog()
+    if catalog_name not in cat:
+        raise KeyError(f"Brak bazy {catalog_name!r} w katalogu.")
+    old = cat[catalog_name]
+    updated = inspect_dataframe(
+        catalog_name,
+        df_new,
+        old.source_label,
+        merged_from=old.merged_from,
+    )
+    _register(updated)
+    return updated
 
 
 def _page_intro(title: str, description: str) -> None:
@@ -117,17 +131,45 @@ def _page_intro(title: str, description: str) -> None:
     st.caption(description)
 
 
+def _holder_image_path() -> Path:
+    """``app/assets/holder.jpeg`` — grafika placeholdera Kroku 3."""
+    from app.runtime_path import assets_dir
+
+    return assets_dir() / "holder.jpeg"
+
+
+def render_manual_clean_placeholder() -> None:
+    """Krok 3 niedostępny — podgląd z holder.jpeg w stylu reszty HUBA."""
+    th = sc.THEME
+    _page_intro(
+        "Krok 3 — Czyszczenie ręczne",
+        "Sekcja w przygotowaniu. Tymczasowo: popraw dane w arkuszu źródłowym lub użyj "
+        "**Kroku 4 — Czyszczenie automatyczne**.",
+    )
+
+    sc.population_dashboard_group_header(
+        "Wkrótce",
+        "Ręczna edycja pól rekordu w aplikacji — funkcja w budowie.",
+        accent=th.ACCENT,
+        background=th.ENTRY_BG,
+    )
+
+    holder = _holder_image_path()
+    with st.container(border=True):
+        if holder.is_file():
+            sc.show_image_at_scale(holder, scale=3, center=True)
+        else:
+            st.warning(f"Brak pliku podglądu: `{holder}`")
+
 def _summary_table(cat: dict[str, InspectedDataset]) -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "Nazwa w katalogu": d.name,
+                "Nazwa": d.name,
                 "Typ": _entry_kind_label(d),
-                "Źródło": d.source_label,
                 "Wiersze": d.rows,
-                "Błędy (ERROR)": d.error_count,
-                "Ostrzeżenia (WARN)": d.warning_count,
-                "Status": d.status_label,
+                "ERROR": d.error_count,
+                "WARN": d.warning_count,
             }
             for d in cat.values()
         ]
@@ -135,14 +177,13 @@ def _summary_table(cat: dict[str, InspectedDataset]) -> pd.DataFrame:
 
 
 def _dataset_picker_label(name: str, d: InspectedDataset) -> str:
-    """Etykieta listy rozwijanej z liczbami błędów i ostrzeżeń."""
     if d.error_count:
-        flag = "● błędy"
+        mark = "●"
     elif d.warning_count:
-        flag = "○ ostrzeżenia"
+        mark = "○"
     else:
-        flag = "✓ OK"
-    return f"{name} — {flag} · {d.rows} wierszy · {d.error_count} err. / {d.warning_count} warn."
+        mark = "✓"
+    return f"{mark} {name} · {d.rows} wierszy · {d.error_count}/{d.warning_count} err/warn"
 
 
 def _render_merge_panel(cat: dict[str, InspectedDataset]) -> None:
@@ -153,8 +194,7 @@ def _render_merge_panel(cat: dict[str, InspectedDataset]) -> None:
     st.markdown("---")
     st.markdown("#### Łączenie baz z kilku plików")
     st.caption(
-        "Połącz wybrane pozycje z katalogu w jedną bazę. Przydatne, gdy dane są rozdzielone "
-        "na kilka arkuszy lub eksportów. Wynik trafia do katalogu jako osobna pozycja typu **Połączenie**."
+        "Połącz wybrane pozycje z katalogu w jedną bazę. Wynik trafia do katalogu jako **Połączenie**."
     )
 
     names = list(cat.keys())
@@ -163,23 +203,22 @@ def _render_merge_panel(cat: dict[str, InspectedDataset]) -> None:
         names,
         default=names,
         key="huba_merge_pick",
-        help="Kolejność na liście ma znaczenie przy strategii „pierwszy/ostatni wiersz” dla duplikatów ID.",
     )
 
     c1, c2 = st.columns(2)
     with c1:
         merge_name = st.text_input(
-            "Nazwa połączonej bazy w katalogu",
+            "Nazwa połączonej bazy",
             value="baza_polaczona",
             key="huba_merge_name",
         ).strip() or "baza_polaczona"
     with c2:
         dup_policy = st.selectbox(
-            "Duplikaty `id` między plikami",
+            "Duplikaty `id`",
             options=[
-                ("keep_first", "Zostaw pierwszy wiersz (wg kolejności plików)"),
-                ("keep_last", "Zostaw ostatni wiersz"),
-                ("keep_all", "Zostaw wszystkie (walidacja wykryje duplikaty)"),
+                ("keep_first", "Pierwszy wiersz"),
+                ("keep_last", "Ostatni wiersz"),
+                ("keep_all", "Wszystkie (walidacja wykryje)"),
             ],
             format_func=lambda x: x[1],
             key="huba_merge_dup",
@@ -190,10 +229,7 @@ def _render_merge_panel(cat: dict[str, InspectedDataset]) -> None:
         st.info("Zaznacz co najmniej **dwa** wpisy z katalogu.")
         return
 
-    if merge_name in cat and merge_name not in selected:
-        st.warning(f"Nazwa „{merge_name}” jest już w katalogu — wybierz inną lub nadpisz po potwierdzeniu.")
-
-    if st.button("Połącz wybrane bazy", type="primary", width="stretch", key="huba_merge_btn"):
+    if st.button("Połącz wybrane bazy", type="primary", use_container_width=True, key="huba_merge_btn"):
         try:
             parts = [(n, cat[n].df_std) for n in selected]
             merged = merge_standardized_frames(parts, on_duplicate_id=policy_key)  # type: ignore[arg-type]
@@ -206,10 +242,7 @@ def _render_merge_panel(cat: dict[str, InspectedDataset]) -> None:
             )
             _register(inspected)
             st.session_state["huba_merge_last_log"] = "\n".join(merged.log)
-            st.success(
-                f"Utworzono połączoną bazę **{merge_name}** ({inspected.rows} wierszy). "
-                f"Zobacz **Krok 2 — Walidacja**."
-            )
+            st.success(f"Połączono jako **{merge_name}** ({inspected.rows} wierszy).")
             st.rerun()
         except Exception as e:
             st.error(str(e))
@@ -220,19 +253,32 @@ def _render_merge_panel(cat: dict[str, InspectedDataset]) -> None:
             st.code(log_txt)
 
 
-def _status_banner(active: InspectedDataset) -> None:
+def _render_validation_status_strip(active: InspectedDataset) -> None:
+    """Jedna linia statusu zamiast wielu paneli."""
     th = sc.THEME
+    rep = active.validation_report
     if active.error_count:
-        bg, border, label = "#fdeaea", "#8b2e2e", "Wymaga poprawy przed eksportem"
+        bg, border = "#fdeaea", "#8b2e2e"
     elif active.warning_count:
-        bg, border, label = "#faf3e0", "#7a5c1e", "Do weryfikacji w arkuszu"
+        bg, border = "#faf3e0", "#7a5c1e"
     else:
-        bg, border, label = "#e8f5ea", th.EDGE_PLOT, "Krytycznych problemów nie wykryto"
+        bg, border = "#e8f5ea", th.EDGE_PLOT
+
+    merged = getattr(active, "merged_from", ()) or ()
+    source = (
+        f"Połączenie: {', '.join(merged)}"
+        if merged
+        else f"Źródło: {active.source_label}"
+    )
+
     st.markdown(
-        f'<div style="padding:12px 14px;border-radius:10px;background:{bg};'
-        f'border:1px solid {border};border-left:5px solid {border};margin:0.5rem 0 1rem 0;">'
-        f'<div style="font-weight:700;color:{th.TEXT};">{html.escape(active.validation_report.short_status())}</div>'
-        f'<div style="font-size:0.85rem;color:{th.MUTED};margin-top:4px;">{html.escape(label)}</div></div>',
+        f'<div style="padding:12px 16px;border-radius:10px;background:{bg};'
+        f'border:1px solid {border};border-left:5px solid {border};margin:0.25rem 0 1rem 0;">'
+        f'<div style="font-weight:700;font-size:1.02rem;color:{th.TEXT};">'
+        f"{html.escape(rep.short_status())}</div>"
+        f'<div style="font-size:0.85rem;color:{th.MUTED};margin-top:6px;">'
+        f"{html.escape(source)} · {active.rows} wierszy · "
+        f"{active.error_count} ERROR · {active.warning_count} WARN</div></div>",
         unsafe_allow_html=True,
     )
 
@@ -242,8 +288,7 @@ def section_step1_load() -> None:
     _init_catalog()
     _page_intro(
         "Krok 1 — Wczytanie danych",
-        "Wybierz pliki CSV/XLSX. Możesz **połączyć kilka plików w jedną bazę** (sekcja poniżej katalogu). "
-        "Następnie przejdź do **Kroku 2 — Walidacja**, aby przejrzeć wyniki kontroli.",
+        "Dodaj pliki CSV/XLSX. Opcjonalnie połącz kilka plików w jedną bazę. Potem przejdź do **Kroku 2 — Walidacja**.",
     )
 
     uploaded = st.file_uploader(
@@ -251,22 +296,18 @@ def section_step1_load() -> None:
         type=["csv", "xlsx", "xls"],
         accept_multiple_files=True,
         key="huba_m1_uploader",
-        help="Każdy plik trafi do katalogu sesji pod nazwą wziętą ze stem nazwy pliku.",
     )
-    if uploaded:
-        st.caption(
-            f"Zaznaczono: {len(uploaded)} plik(ów) — {', '.join(f.name for f in uploaded[:5])}"
-            + (" …" if len(uploaded) > 5 else "")
-        )
 
-    if uploaded and st.button("Wczytaj i zwaliduj", type="primary", width="stretch"):
+    if uploaded and st.button("Wczytaj i zwaliduj", type="primary", use_container_width=True):
         errors: list[str] = []
         loaded = 0
         for i, f in enumerate(uploaded):
             try:
-                data = f.getvalue()
-                stem = Path(f.name).stem or f"plik_{i+1}"
-                inspected = inspect_dataset_from_bytes(stem, data, f.name)
+                inspected = inspect_dataset_from_bytes(
+                    Path(f.name).stem or f"plik_{i+1}",
+                    f.getvalue(),
+                    f.name,
+                )
                 _register(inspected)
                 loaded += 1
             except Exception as e:
@@ -274,104 +315,112 @@ def section_step1_load() -> None:
         for msg in errors:
             st.error(msg)
         if loaded:
-            st.success(f"Wczytano: {loaded} plik(ów). Przejdź do **Kroku 2 — Walidacja**.")
+            st.success(f"Wczytano {loaded} plik(ów). Otwórz **Krok 2 — Walidacja**.")
             st.rerun()
 
     cat = _catalog()
     if not cat:
-        st.info("Brak wczytanych plików — wybierz pliki i kliknij **Wczytaj i zwaliduj**.")
+        st.info("Brak wczytanych plików.")
         return
 
-    st.markdown("#### Katalog wczytanych plików")
     st.dataframe(_summary_table(cat), width="stretch", hide_index=True)
-
     _render_merge_panel(cat)
 
-    if st.button("Wyczyść katalog", width="stretch"):
+    if st.button("Wyczyść katalog", use_container_width=True):
         st.session_state[SESSION_CATALOG] = {}
         st.session_state.pop(SESSION_ACTIVE, None)
         st.rerun()
 
 
-def section_step2_errors() -> None:
-    """Krok 2 — walidacja wybranej bazy (kategorie problemów i eksport)."""
-    _init_catalog()
-    th = sc.THEME
-    _page_intro(
-        "Krok 2 — Walidacja",
-        "Wybierz bazę z katalogu, sprawdź podsumowanie i przejdź przez **kategorie problemów**. "
-        "Pełną listę do Excela pobierzesz w kategorii **Pełny raport i eksport**. "
-        "Automatyczne czyszczenie — w **Kroku 3**.",
-    )
-
-    cat = _catalog()
-    if not cat:
-        st.warning("Najpierw wczytaj dane w **Kroku 1 — Wczytanie danych**.")
-        return
-
+def _pick_active_dataset(cat: dict[str, InspectedDataset], *, picker_key: str) -> tuple[str, InspectedDataset] | None:
     names = list(cat.keys())
     default_idx = (
         names.index(st.session_state[SESSION_ACTIVE])
         if st.session_state.get(SESSION_ACTIVE) in names
         else 0
     )
+    picked = st.selectbox(
+        "Baza w katalogu",
+        names,
+        index=default_idx,
+        format_func=lambda n: _dataset_picker_label(n, cat[n]),
+        key=picker_key,
+    )
+    st.session_state[SESSION_ACTIVE] = picked
+    return picked, cat[picked]
 
-    with st.container(border=True):
-        st.markdown("#### Wybierz bazę do przeglądu")
-        picked = st.selectbox(
-            "Aktywna baza",
-            names,
-            index=default_idx,
-            format_func=lambda n: _dataset_picker_label(n, cat[n]),
-            key="huba_m1_picker",
-            label_visibility="collapsed",
-        )
-        st.session_state[SESSION_ACTIVE] = picked
-        active = cat[picked]
 
-        merged_from = getattr(active, "merged_from", ()) or ()
-        if merged_from:
-            st.caption(
-                f"**Połączenie** ({', '.join(merged_from)}) · `{active.source_label}`"
-            )
-        else:
-            st.caption(f"Plik: `{active.source_label}`")
+def section_step2_errors() -> None:
+    """Krok 2 — walidacja: lista kategorii + treść."""
+    _init_catalog()
+    _page_intro(
+        "Krok 2 — Walidacja",
+        "Przegląd problemów wg kategorii. Eksport i reguły wsadowe — w **Kroku 4**. "
+        "(Krok 3 — czyszczenie ręczne — w przygotowaniu.)",
+    )
 
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            sc.population_dashboard_metric(
-                "Wiersze w bazie",
-                str(active.rows),
-                accent=th.EDGE_PLOT,
-                panel_bg=th.ENTRY_BG,
-            )
-        with m2:
-            sc.population_dashboard_metric(
-                "Błędy (ERROR)",
-                str(active.error_count),
-                accent="#8b2e2e",
-                panel_bg="#fdeaea" if active.error_count else th.ENTRY_BG,
-            )
-        with m3:
-            sc.population_dashboard_metric(
-                "Ostrzeżenia (WARN)",
-                str(active.warning_count),
-                accent="#7a5c1e",
-                panel_bg="#faf3e0" if active.warning_count else th.ENTRY_BG,
-            )
+    cat = _catalog()
+    if not cat:
+        st.warning("Najpierw wczytaj dane w **Kroku 1**.")
+        return
 
-        _status_banner(active)
+    picked_active = _pick_active_dataset(cat, picker_key="huba_m1_picker")
+    if picked_active is None:
+        return
+    picked, active = picked_active
 
-    with st.expander("Podgląd wszystkich baz w katalogu", expanded=False):
-        st.dataframe(_summary_table(cat), width="stretch", hide_index=True)
+    _render_validation_status_strip(active)
 
-    sc.help_expander("Co sprawdza walidacja?", hc.SECTION_VALIDATION, expanded=False)
+    def _on_dataset_updated(df_new: pd.DataFrame) -> None:
+        apply_catalog_edit(picked, df_new)
 
-    st.markdown("---")
     render_validation_workspace(
         active.df_std,
         active.validation_report,
         show_autofix=False,
-        layout="grouped",
+        catalog_name=picked,
+        on_dataset_updated=_on_dataset_updated,
         missing_data_hint="Brak raportu — wczytaj plik ponownie w **Kroku 1**.",
+    )
+
+    st.divider()
+    with st.expander("Inne bazy w katalogu", expanded=False):
+        st.dataframe(_summary_table(cat), width="stretch", hide_index=True)
+    sc.help_expander("Co sprawdza walidacja?", hc.SECTION_VALIDATION, expanded=False)
+    render_validation_summary_charts_expander(active.df_std, active.validation_report)
+
+
+def section_step3_manual_clean() -> None:
+    """Krok 3 — ręczna korekta pól w katalogu (lub placeholder gdy wyłączone)."""
+    if not MANUAL_CLEAN_ENABLED:
+        render_manual_clean_placeholder()
+        return
+
+    _init_catalog()
+    _page_intro(
+        "Krok 3 — Czyszczenie ręczne",
+        "Popraw pojedyncze pola we wczytanej bazie. Po zapisie walidacja przelicza się od razu. "
+        "Reguły wsadowe i eksport pliku — w **Kroku 4 — Czyszczenie automatyczne**.",
+    )
+
+    cat = _catalog()
+    if not cat:
+        st.warning("Najpierw wczytaj dane w **Kroku 1**.")
+        return
+
+    picked_active = _pick_active_dataset(cat, picker_key="huba_m3_picker")
+    if picked_active is None:
+        return
+    picked, active = picked_active
+
+    _render_validation_status_strip(active)
+
+    def _on_dataset_updated(df_new: pd.DataFrame) -> None:
+        apply_catalog_edit(picked, df_new)
+
+    render_manual_corrections_section(
+        active.df_std,
+        active.validation_report,
+        catalog_name=picked,
+        on_dataset_updated=_on_dataset_updated,
     )

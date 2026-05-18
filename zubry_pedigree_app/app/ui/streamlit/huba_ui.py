@@ -1,15 +1,12 @@
 """
-Interfejs HUBA (Hybrid Unified Batch Analyzer) — kroki wczytania, błędów, czyszczenia i wyników.
+Interfejs HUBA-WPB Cleaner — wczytanie, walidacja, czyszczenie i eksport bazy rodowodu żubra.
 """
 
 from __future__ import annotations
 
-import inspect
 import json
 import tempfile
 from datetime import datetime
-from io import BytesIO
-
 import pandas as pd
 import streamlit as st
 
@@ -17,24 +14,35 @@ from app.data.auto_fix import AutoFixOptions
 from app.huba.archive import zip_directory
 from app.huba.config_io import load_project_config, project_config_to_dict, repo_root
 from app.huba.engine import run_project
-from app.huba.models import HubProjectConfig, HubRunResult, InputSource, OutputSpec, ProcessingRules
-from app.ui.streamlit.huba_module1 import SESSION_ACTIVE, SESSION_CATALOG, section_step1_load, section_step2_errors
+from app.huba.models import ExportFormat, HubProjectConfig, HubRunResult, InputSource, OutputSpec, ProcessingRules
+from app.ui.streamlit.huba_module1 import (
+    SESSION_ACTIVE,
+    SESSION_CATALOG,
+    section_step1_load,
+    section_step2_errors,
+    section_step3_manual_clean,
+)
+from app.ui.streamlit.huba_nav import (
+    NAV_SECTIONS,
+    NAV_STEP1,
+    NAV_STEP2,
+    NAV_STEP3,
+    NAV_STEP4,
+    NAV_STEP5,
+    _NAV_LEGACY,
+)
 
-NAV_STEP1 = "Krok 1 — Wczytanie danych"
-NAV_STEP2 = "Krok 2 — Walidacja"
-NAV_STEP3 = "Krok 3 — Czyszczenie"
-NAV_STEP4 = "Krok 4 — Wyniki"
-
-NAV_SECTIONS = [NAV_STEP1, NAV_STEP2, NAV_STEP3, NAV_STEP4]
-
-_NAV_LEGACY: dict[str, str] = {
-    "Moduł 1 — Błędy w bazie": NAV_STEP2,
-    "Krok 2 — Błędy w bazie": NAV_STEP2,
-    "Konfiguracja": NAV_STEP3,
-    "Przetwarzanie wsadowe": NAV_STEP3,
-    "Krok 3 — Czyszczenie wsadowe": NAV_STEP3,
-    "Wyniki": NAV_STEP4,
-}
+# Re-eksport dla ``streamlit_app`` i innych modułów.
+__all__ = [
+    "NAV_SECTIONS",
+    "NAV_STEP1",
+    "NAV_STEP2",
+    "NAV_STEP3",
+    "NAV_STEP4",
+    "NAV_STEP5",
+    "_NAV_LEGACY",
+    "run_huba_app",
+]
 
 SESSION_LAST_RUN = "huba_last_run"
 
@@ -121,7 +129,6 @@ def _build_project(inputs: tuple[InputSource, ...]) -> HubProjectConfig:
 
 def _render_fix_checklist() -> None:
     st.markdown("#### Lista poprawek")
-    st.caption("Zaznacz reguły, które mają zostać wykonane. Niezaznaczone — pomijane.")
     half = (len(FIX_RULES) + 1) // 2
     c1, c2 = st.columns(2)
     with c1:
@@ -132,22 +139,12 @@ def _render_fix_checklist() -> None:
             st.checkbox(label, key=key)
 
 
-def _catalog_payload_xlsx(name: str, df: pd.DataFrame) -> tuple[bytes, str]:
-    """Tymczasowy plik XLSX do etapu load (zachowuje kolumny id, sex, …)."""
-    buf = BytesIO()
-    df.to_excel(buf, index=False)
-    return buf.getvalue(), f"{name}.xlsx"
-
-
 def _run_project_from_catalog(
     project: HubProjectConfig,
     dataframes: dict[str, pd.DataFrame],
 ) -> HubRunResult:
-    """Uruchamia wsad; obsługuje starszą wersję ``run_project`` bez ``upload_dataframes``."""
-    if "upload_dataframes" in inspect.signature(run_project).parameters:
-        return run_project(project, upload_dataframes=dataframes)
-    payloads = {n: _catalog_payload_xlsx(n, df) for n, df in dataframes.items()}
-    return run_project(project, upload_payloads=payloads)
+    """Uruchamia wsad na ramkach z katalogu UI (bez ponownego mapowania kolumn)."""
+    return run_project(project, upload_dataframes=dataframes)
 
 
 def _apply_json_config(raw: dict) -> None:
@@ -169,11 +166,11 @@ def _apply_json_config(raw: dict) -> None:
     st.session_state["af_old"] = af.cut_parent_too_old
 
 
-def section_step3_clean() -> None:
-    st.markdown("### Krok 3 — Czyszczenie")
+def section_step4_auto_clean() -> None:
+    st.markdown("### Krok 4 — Czyszczenie automatyczne")
     st.caption(
-        "Wybierz bazy z **Kroku 1**, zaznacz poprawki do wykonania i wyeksportuj oczyszczone pliki. "
-        "Wyniki pobierzesz w **Kroku 4**."
+        "Wybierz bazy z katalogu, zaznacz reguły auto-poprawek i wyeksportuj oczyszczone pliki. "
+        "Wyniki pobierzesz w **Kroku 5 — Wyniki**. Ręczne korekty pól — w **Kroku 3**."
     )
 
     catalog: dict = st.session_state.get(SESSION_CATALOG, {})
@@ -229,17 +226,17 @@ def section_step3_clean() -> None:
             try:
                 result = _run_project_from_catalog(_build_project(inputs), dataframes)
                 st.session_state[SESSION_LAST_RUN] = result
-                st.success(f"Zakończono. Wyniki w **Kroku 4 — Wyniki** (`{result.project_dir}`).")
+                st.success(f"Zakończono. Wyniki w **Kroku 5 — Wyniki** (`{result.project_dir}`).")
                 st.rerun()
             except Exception as e:
                 st.error(str(e))
 
 
-def section_step4_results() -> None:
-    st.markdown("### Krok 4 — Wyniki")
+def section_step5_results() -> None:
+    st.markdown("### Krok 5 — Wyniki")
     result: HubRunResult | None = st.session_state.get(SESSION_LAST_RUN)
     if result is None:
-        st.info("Brak wyników — wykonaj czyszczenie w **Kroku 3 — Czyszczenie**.")
+        st.info("Brak wyników — wykonaj czyszczenie automatyczne w **Kroku 4**.")
         return
 
     st.caption(f"Katalog: `{result.project_dir}`")
@@ -291,11 +288,15 @@ def section_step4_results() -> None:
 def run_huba_app() -> None:
     _init_session()
     section = st.session_state.get("huba_nav", NAV_STEP1)
+    if section in _NAV_LEGACY:
+        section = _NAV_LEGACY[str(section)]
     if section == NAV_STEP1:
         section_step1_load()
     elif section == NAV_STEP2:
         section_step2_errors()
     elif section == NAV_STEP3:
-        section_step3_clean()
+        section_step3_manual_clean()
+    elif section == NAV_STEP4:
+        section_step4_auto_clean()
     else:
-        section_step4_results()
+        section_step5_results()

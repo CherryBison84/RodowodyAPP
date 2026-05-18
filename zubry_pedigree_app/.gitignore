@@ -11,3 +11,4 @@ build/
 .mplconfig/
 .mpl_cache/
 .cache/
+outputs/

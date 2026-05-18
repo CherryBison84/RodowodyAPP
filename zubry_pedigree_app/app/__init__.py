@@ -1,2 +1,2 @@
-"""Pakiet aplikacji: logika, dane i interfejsy (Tk / Streamlit)."""
+"""Pakiet aplikacji HUBA-WPB: dane, walidacja, silnik wsadowy i UI Streamlit."""
 

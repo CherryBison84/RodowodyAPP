@@ -1,8 +1,7 @@
 """
-HUBA — Hybrid Unified Batch Analyzer.
+HUBA-WPB Cleaner (Hybrid Unified Batch Analyzer + Wisent Pedigree Base).
 
-Jednolity silnik wsadowy: wiele plików wejściowych → uporządkowane katalogi wyjściowe
-zgodnie z regułami walidacji, transformacji i eksportu.
+Silnik wsadowy: wczytanie, walidacja i czyszczenie bazy rodowodu żubra → eksport do plików wynikowych.
 """
 
 from app.huba.config_io import load_project_config

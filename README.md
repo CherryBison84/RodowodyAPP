@@ -1,15 +1,15 @@
 # WisentPedigree Pro+ (RodowodyAPP)
 
-**Wersja aplikacji (pakiet): 0.5.0**
+**Wersja aplikacji (pakiet): 0.6.0**
 
-Aplikacja **webowa (Streamlit)** do wczytywania baz rodowodowych, **walidacji** (w tym eksport CSV, wykresy podsumowań i **automatyczne poprawki** w sesji), analizy **inbredu (F Wright)**, **kompletności rodowodu**, **parametrów populacyjnych** oraz raportów. Interfejs i treści pomocy są po polsku; motyw wizualny jest dopasowany do pracy z dużymi zbiorami.
+**HUBA-WPB Cleaner** — aplikacja **webowa (Streamlit)** do wczytywania baz rodowodowych żubrów, **walidacji** (wykresy podsumowań, eksport CSV), **automatycznych poprawek** i eksportu oczyszczonych plików. Interfejs i treści pomocy są po polsku.
 
-Kod źródłowy znajduje się w katalogu **`zubry_pedigree_app/`**.
+Kod źródłowy: katalog **`zubry_pedigree_app/`**.
 
 ## Wymagania
 
-- Python **3.10+** (zalecany aktualny 3.11–3.14)
-- System operacyjny: Windows, macOS lub Linux
+- Python **3.10+** (zalecany 3.11–3.14)
+- Windows, macOS lub Linux
 
 ## Instalacja
 
@@ -22,7 +22,7 @@ pip install -r requirements.txt
 
 ## Uruchomienie
 
-**Zalecane** — Streamlit z wyborem portu i próbą otwarcia przeglądarki:
+**Zalecane** — Streamlit z wyborem portu i otwarciem przeglądarki:
 
 ```bash
 cd zubry_pedigree_app
@@ -32,56 +32,50 @@ python3 run_web.py
 Tylko serwer Streamlit:
 
 ```bash
-cd zubry_pedigree_app
 python3 run_streamlit.py
 ```
 
-Z **katalogu głównego repozytorium**:
+Z katalogu głównego repozytorium:
 
 ```bash
 python3 run_streamlit.py
 ```
 
-Bezpośrednio (katalog roboczy: `zubry_pedigree_app/`, żeby moduł `app` był na `PYTHONPATH`):
+Tryb wsadowy (bez UI):
 
 ```bash
 cd zubry_pedigree_app
-python3 -m streamlit run app/ui/streamlit/streamlit_app.py
+python3 app/main.py --project-config config/huba_project.example.json
 ```
 
-Na macOS, przy problemach z obserwatorem plików Streamlit, można ustawić np. `STREAMLIT_SERVER_FILE_WATCHER_TYPE=none`.
+Na macOS, przy problemach z obserwatorem plików: `STREAMLIT_SERVER_FILE_WATCHER_TYPE=none`.
 
-## Nawigacja w aplikacji
+## Nawigacja w aplikacji (HUBA)
 
-Typowy przepływ:
-
-1. **Import danych** — CSV / XLSX / URL, mapowanie kolumn (w tym ręczne przy uploadzie), opcjonalnie baza domyślna (plik **`EBPB_bison_report.xlsx`** obok `run_web.py`, jeśli go dodasz lokalnie).
-2. **Walidacja** — podmenu w dwóch rzędach (m.in. arkusz/ID/rodzice/chronologia/graf/linie/przodkowie/raport), **auto-poprawki** jako osobna podsekcja, eksporty CSV, czytelniejsze wykresy podsumowań.
-3. **Rejestr** — lista osobników.
-4. **Analiza osobnicza** — graf **przodków**, **potomków** lub **łączony** (przodkowie + potomkowie w jednym rysunku), F (Wright), kompletność (EG, PCL, PCI), linie, rozkład wspólnych przodków rodziców.
-5. **Populacja** — dashboard i wykresy (m.in. trendy F, GI, założyciele).
-6. **Pary** — sekcja może być tymczasowo ograniczona (zależnie od wersji kodu).
-7. **Raporty** — podgląd i eksport (TXT / PDF / DOCX).
+1. **Krok 1 — Wczytanie danych** — upload CSV/XLSX, katalog plików, łączenie zbiorów.
+2. **Krok 2 — Walidacja** — kategorie kontroli, wykresy, eksport CSV z problemami.
+3. **Krok 3 — Czyszczenie ręczne** — edycja rekordów (gdy włączone w konfiguracji nawigacji).
+4. **Krok 4 — Czyszczenie automatyczne** — reguły auto-poprawek i uruchomienie projektu wsadowego.
+5. **Krok 5 — Wyniki** — pobranie oczyszczonych plików i archiwum ZIP.
 
 Na dole strony: zwinięta pomoc (**Słownik parametrów**, **Literatura**).
 
-## Dane i dokumentacja metodyczna
+## Dane i dokumentacja
 
-- Opcjonalna lokalna baza przykładowa: **`zubry_pedigree_app/EBPB_bison_report.xlsx`** (ścieżka zgodna z loaderem domyślnej bazy).
-- **`zubry_pedigree_app/metrics_definition.md`** — definicje metryk (F, GI, f_e, RIA itd.), spójne z widokami w aplikacji.
+- Przykładowa baza: **`zubry_pedigree_app/data/EBPB_bison_report.xlsx`**
+- Metryki (F, RIA, GI…): **`zubry_pedigree_app/docs/metrics_definition.md`**
 
-## Główne zależności (Python)
+## Zależności
 
-Zobacz **`zubry_pedigree_app/requirements.txt`**: m.in. Streamlit, pandas, numpy, matplotlib, networkx, openpyxl, python-docx, Pillow.
+Zobacz **`zubry_pedigree_app/requirements.txt`**: Streamlit, pandas, numpy, matplotlib, networkx, openpyxl, Pillow.
 
-## Struktura repozytorium (skrót)
+## Struktura repozytorium
 
 | Element | Opis |
 |--------|------|
-| `zubry_pedigree_app/app/` | Logika: dane, rodowód, analityka, UI Streamlit |
-| `zubry_pedigree_app/app/ui/streamlit/` | Widoki, wykresy, styl |
+| `zubry_pedigree_app/app/huba/` | Silnik wsadowy i etapy przetwarzania |
+| `zubry_pedigree_app/app/ui/streamlit/` | Interfejs HUBA |
 | `zubry_pedigree_app/run_web.py` | Start z przeglądarką |
-| `zubry_pedigree_app/run_streamlit.py` | Start minimalny (`streamlit run`) |
 | `run_streamlit.py` (root) | Start z katalogu głównego repo |
 
 ## Autorka

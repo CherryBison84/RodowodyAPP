@@ -1,7 +1,7 @@
 [project]
 name = "zubry-pedigree-app"
-version = "0.5.0"
-description = "Aplikacja do analizy rodowodowej żubrów (Qt / Tkinter + Streamlit)"
+version = "0.6.0"
+description = "HUBA-WPB Cleaner — walidacja i czyszczenie baz rodowodowych żubrów (Streamlit)"
 requires-python = ">=3.10"
 dependencies = []
 

@@ -112,9 +112,11 @@ def get_config() -> AppConfig:
 
 
 def resolve_app_icon_ico() -> Path | None:
-    """Szuka pliku `ikona.ico` w `app/`, paczce lub katalogu nadrzędnym repozytorium."""
-    app_dir = Path(__file__).resolve().parent
-    for base in (app_dir, app_dir.parent, app_dir.parent.parent):
+    """Szuka pliku `ikona.ico` w ``app/assets/`` lub starszych lokalizacjach."""
+    from app.runtime_path import app_package_dir, assets_dir
+
+    app_dir = app_package_dir()
+    for base in (assets_dir(), app_dir, app_dir.parent, app_dir.parent.parent):
         p = base / "ikona.ico"
         if p.is_file():
             return p

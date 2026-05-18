@@ -6,19 +6,52 @@ oraz skróty do bloków „Pomoc” na stronie.
 from __future__ import annotations
 
 import html
-import re
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from app.analytics.line_membership import compute_all_line_memberships
-from app.data.dataset_loader import dataframe_app_schema_columns, load_default_bison_report
+from app.data.dataset_loader import dataframe_app_schema_columns
 from app.data.validator import validate_loaded_dataset
 from app.ui import help_content as hc
 from app.ui.theme import Theme
 from app.ui.typography import apply_matplotlib_fonts, css_font_family
 
 THEME = Theme()
+
+# Podgląd JPEG/PNG w UI — szerokość ≈ 1/n naturalnej (np. 5 → pięciokrotnie mniejszy).
+IMAGE_DISPLAY_SCALE: int = 5
+
+
+def show_image_at_scale(
+    image_path: str | Path,
+    *,
+    scale: int = IMAGE_DISPLAY_SCALE,
+    center: bool = True,
+) -> None:
+    """Wyświetla obraz zmniejszony co najmniej ``scale``× względem rozmiaru pliku."""
+    from PIL import Image
+
+    path = Path(image_path)
+    if not path.is_file():
+        st.warning(f"Brak obrazu: `{path}`")
+        return
+
+    scale = max(1, int(scale))
+    img = Image.open(path)
+    w, h = img.size
+    new_w, new_h = max(1, w // scale), max(1, h // scale)
+    if (new_w, new_h) != (w, h):
+        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+    if center and scale > 1:
+        pad = (scale - 1) // 2
+        _l, mid, _r = st.columns([pad, 1, pad])
+        with mid:
+            st.image(img, width=new_w)
+    else:
+        st.image(img, width=new_w)
 
 
 def population_dashboard_metric(
@@ -323,13 +356,6 @@ def apply_page_style() -> None:
     )
 
 
-def id_sort_key(s: str) -> tuple[int, str]:
-    m = re.match(r"^(\d+)([A-Za-z]*)$", s)
-    if not m:
-        return (10**30, s)
-    return (int(m.group(1)), m.group(2) or "")
-
-
 def set_dataset(df_std: pd.DataFrame, source: str, *, update_import_snapshot: bool = True) -> None:
     """
     Zapisuje standaryzowany zbiór w sesji Streamlit, buduje `people` i przelicza walidację.
@@ -351,25 +377,6 @@ def set_dataset(df_std: pd.DataFrame, source: str, *, update_import_snapshot: bo
         st.session_state["line_memberships"] = compute_all_line_memberships(people)
     except Exception:
         st.session_state["line_memberships"] = {}
-
-
-def load_default_once() -> None:
-    if "df_std" in st.session_state:
-        return
-    try:
-        df_std, _ = load_default_bison_report()
-        set_dataset(df_std, "Domyślna baza")
-    except Exception:
-        pass
-
-
-def fmt_line_block(mem: object) -> str:
-    if mem is None:
-        return "Sireline: NA\nDamline: NA"
-    return (
-        f"Sireline: {mem.sire_founder_id} ({mem.sire_founder_name or 'NA'}) [steps={mem.sire_steps}]\n"
-        f"Damline: {mem.dam_founder_id} ({mem.dam_founder_name or 'NA'}) [steps={mem.dam_steps}]"
-    )
 
 
 # Ta sama rodzina co w CSS (np. do inline HTML w streamlit_app)

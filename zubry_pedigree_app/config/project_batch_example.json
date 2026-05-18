@@ -5,7 +5,7 @@
   "inputs": [
     {
       "name": "default_ebpb",
-      "path": "EBPB_bison_report.xlsx"
+      "path": "data/EBPB_bison_report.xlsx"
     }
   ],
   "rules": {

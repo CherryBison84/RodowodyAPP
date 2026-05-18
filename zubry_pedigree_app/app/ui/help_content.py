@@ -190,11 +190,11 @@ POPULATION_CONTROL_HELP = {
 
 
 SECTION_REPORTS = """
-## Raporty
+## Wyniki (HUBA)
 
-- **Podgląd tekstowy** oraz zapis **.pdf** (A4, tekst z zawijaniem wierszy), **.docx** i **.txt**.
-- Raport zbiorczy zawiera m.in.: **datę generacji**, **źródło danych**, **parametry liczenia** (np. głębokość F/EG/PCI), **opis zbioru** (kolumny modelu, płeć, lata urodzenia, braki slotów rodzicielskich), **skrót walidacji** (status i liczby — bez listy problemów; szczegóły i CSV w module walidacji), dalej **metryki populacji** (F z min/med/maks, **RIA** — udział zinbredowanych, EG/PCI, f_e/f_a, linie, top założyciele wg p_i), **mean kinship (Φ̄, R)**, **GI** i **rodziny pełnego rodzeństwa**, **miejsca urodzenia** (top N wg konfiguracji).
-- **Wykresy** z modułu Populacja i **PNG rodowodów** dołączasz osobno (pobrania w aplikacji).
+- **Krok 5** — pobranie oczyszczonych plików (**XLSX** lub **CSV**), raportów walidacji i archiwum **ZIP** katalogu wyników.
+- W trybie wsadowym (`--project-config`) artefakty trafiają do `outputs/<projekt>/` (manifest, `comparison.csv`, podfoldery per wejście).
+- Szczegóły problemów i wykresy podsumowań — w **Kroku 2** (walidacja); eksport listy problemów jako **CSV**.
 """
 
 

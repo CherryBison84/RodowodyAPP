@@ -1,2 +1,2 @@
-"""Model rodowodu: osobnicy, poziomy przodków, krawędzie rodzic–dziecko."""
+"""Model rodowodu: osobnicy, mapa rodzic→dzieci, poziomy potomków."""
 

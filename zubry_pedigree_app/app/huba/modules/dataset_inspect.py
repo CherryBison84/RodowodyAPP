@@ -3,22 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
-
 import pandas as pd
 
-from app.data.dataset_loader import load_dataset_from_bytes, load_dataset_from_path
+from app.data.dataset_loader import load_dataset_from_bytes
 from app.data.validator import ValidationReport, validate_loaded_dataset
 from app.huba.validation_utils import count_validation_issues
 from app.pedigree.ancestor_pedigree import build_people_map
 
 __all__ = [
     "InspectedDataset",
-    "ensure_inspected_dataset",
     "entry_kind_label",
     "inspect_dataframe",
     "inspect_dataset_from_bytes",
-    "inspect_dataset_from_path",
 ]
 
 
@@ -43,15 +39,6 @@ def _merged_from_for(d: object) -> tuple[str, ...]:
         if body:
             return tuple(part.strip() for part in body.split("+") if part.strip())
     return ()
-
-
-def _is_dataset_like(d: object) -> bool:
-    return (
-        hasattr(d, "name")
-        and hasattr(d, "df_std")
-        and hasattr(d, "source_label")
-        and hasattr(d, "validation_report")
-    )
 
 
 @dataclass(frozen=True)
@@ -80,25 +67,6 @@ class InspectedDataset:
         return entry_kind_label(self)
 
 
-def ensure_inspected_dataset(d: object) -> InspectedDataset:
-    """
-    Odtwarza wpis katalogu w bieżącej wersji klasy (np. po zmianie pól w trakcie sesji Streamlit).
-    """
-    if not _is_dataset_like(d):
-        raise TypeError(f"Nieprawidłowy wpis katalogu: {type(d)!r}.")
-    name = str(getattr(d, "name"))
-    source_label = str(getattr(d, "source_label"))
-    df_std = getattr(d, "df_std")
-    merged = _merged_from_for(d)
-    if isinstance(d, InspectedDataset) and getattr(d, "merged_from", ()) == merged:
-        try:
-            _ = d.entry_kind
-            return d
-        except AttributeError:
-            pass
-    return inspect_dataframe(name, df_std, source_label, merged_from=merged)
-
-
 def inspect_dataframe(
     name: str,
     df_std: pd.DataFrame,
@@ -120,12 +88,6 @@ def inspect_dataframe(
         warning_count=warn,
         merged_from=merged_from,
     )
-
-
-def inspect_dataset_from_path(name: str, path: Path) -> InspectedDataset:
-    """Wczytuje plik z dysku, standaryzuje i waliduje."""
-    df_std, _info = load_dataset_from_path(path)
-    return inspect_dataframe(name, df_std, path.name)
 
 
 def inspect_dataset_from_bytes(name: str, data: bytes, filename: str) -> InspectedDataset:

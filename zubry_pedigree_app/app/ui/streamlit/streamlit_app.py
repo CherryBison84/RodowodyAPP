@@ -1,7 +1,7 @@
 """
-HUBA — Hybrid Unified Batch Analyzer (interfejs Streamlit).
+HUBA-WPB Cleaner (interfejs Streamlit).
 
-Czyszczenie i standaryzacja wielu plików wejściowych; moduły analityki genetycznej są wyłączone.
+Hybrid Unified Batch Analyzer + Wisent Pedigree Base — czyszczenie i walidacja baz rodowodu.
 """
 
 from __future__ import annotations
@@ -17,20 +17,23 @@ if str(_pkg_root) not in sys.path:
 import streamlit as st
 
 from app.config import app_icon_pil_best
+from app.runtime_path import assets_dir
 from app.ui.streamlit import common as sc
-from app.ui.streamlit.huba_ui import NAV_SECTIONS, NAV_STEP1, _NAV_LEGACY, run_huba_app
+from app.ui.streamlit.huba_nav import NAV_SECTIONS, NAV_STEP1, _NAV_LEGACY
+from app.ui.streamlit.huba_ui import run_huba_app
 
-HUBA_TAGLINE = "Hybrid Unified Batch Analyzer"
+HUBA_APP_NAME = "HUBA-WPB Cleaner"
+HUBA_TAGLINE = "(Hybrid Unified Batch Analyzer + Wisent Pedigree Base)"
 
 
 def _render_sidebar() -> None:
     with st.sidebar:
-        _logo_path = Path(__file__).resolve().parents[2] / "logo_new.png"
+        _logo_path = assets_dir() / "logo.png"
         if _logo_path.exists():
             st.image(str(_logo_path), width="stretch")
         st.markdown(
             f'<p style="margin:0.35rem 0 0.1rem 0;font-size:1.05rem;font-weight:700;color:{sc.THEME.TEXT};">'
-            f"HUBA</p>"
+            f"{HUBA_APP_NAME}</p>"
             f'<p style="margin:0 0 0.5rem 0;font-size:0.72rem;color:{sc.THEME.MUTED};">'
             f"{HUBA_TAGLINE}</p>",
             unsafe_allow_html=True,
@@ -63,7 +66,7 @@ def _render_sidebar() -> None:
 def run_streamlit_direct() -> None:
     _icon_img = app_icon_pil_best()
     st.set_page_config(
-        page_title="HUBA — Hybrid Unified Batch Analyzer",
+        page_title=HUBA_APP_NAME,
         page_icon=_icon_img if _icon_img is not None else "🦬",
         layout="wide",
         initial_sidebar_state="expanded",
