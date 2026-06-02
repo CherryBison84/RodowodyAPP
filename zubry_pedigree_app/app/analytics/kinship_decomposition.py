@@ -19,6 +19,14 @@ from app.pedigree.ancestor_pedigree import Person
 
 @dataclass(frozen=True)
 class PathPairDetail:
+    """
+    Pojedyncza para ścieżek do wspólnego przodka użyta w rozkładzie Φ.
+
+    ``contribution_raw`` przechowuje surowy wyraz ścieżkowy
+    ``(1/2)^(na+nb+1)(1+F_C)``, a ``contribution_to_phi`` jego proporcjonalny
+    udział po skalowaniu do wyniku rekurencji Wrighta.
+    """
+
     ancestor_id: str
     n_edges_a: int
     n_edges_b: int
@@ -26,28 +34,34 @@ class PathPairDetail:
     path_b: Tuple[str, ...]
     f_ancestor: float
     contribution_raw: float
-    """Suma surowych wyrazów ścieżkowych (1/2)^(na+nb+1)(1+F_C); może przekraczać Φ przy nakładających się przepływach genów."""
     contribution_to_phi: float
-    """Przydział proporcjonalny do Φ z rekurencji Wrighta (suma po parach = Φ)."""
 
 
 @dataclass(frozen=True)
 class PairKinshipExplanation:
+    """
+    Pełny opis rozkładu pokrewieństwa pary osobników.
+
+    ``path_scale`` jest ilorazem ``phi_recursive / phi_path_sum_raw`` gdy suma
+    surowa jest dodatnia; ``by_ancestor`` zawiera krotki
+    ``(ancestor_id, wkład_do_Φ, suma_surowa, liczba_par_ścieżek)`` posortowane
+    malejąco po wkładzie do Φ.
+    """
+
     individual_a: str
     individual_b: str
     max_edges: int
     phi_recursive: float
     phi_path_sum_raw: float
     path_scale: float
-    """phi_recursive / phi_path_sum_raw gdy suma surowa > 0; inaczej 1."""
     n_path_pairs: int
     n_distinct_common_ancestors: int
     path_pairs: Tuple[PathPairDetail, ...]
     by_ancestor: Tuple[Tuple[str, float, float, int], ...]
-    """(ancestor_id, wkład_do_Φ, suma_surowa, liczba_par_ścieżek), malejąco po wkładzie do Φ."""
 
     @property
     def path_discrepancy(self) -> float:
+        """Bezwzględna różnica między rekurencyjną Φ a surową sumą ścieżek."""
         return abs(self.phi_recursive - self.phi_path_sum_raw)
 
 

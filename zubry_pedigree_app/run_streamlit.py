@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 def main() -> int:
+    """Uruchamia aplikację Streamlit jako proces modułu ``streamlit``."""
     root = Path(__file__).resolve().parent
     app = root / "app" / "ui" / "streamlit" / "streamlit_app.py"
     if not app.is_file():

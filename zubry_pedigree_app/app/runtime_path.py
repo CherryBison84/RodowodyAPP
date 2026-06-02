@@ -26,6 +26,18 @@ def data_dir() -> Path:
     return project_root() / "data"
 
 
+EBPB_SAMPLE_FILENAMES: tuple[str, ...] = (
+    "EBPB_bison_report.xlsx",
+    "EBPB_register.xlsx",
+)
+
+
+def list_ebpb_sample_paths() -> list[Path]:
+    """Przykładowe bazy EBPB z ``data/`` (raport i rejestr), jeśli pliki istnieją."""
+    root = data_dir()
+    return [root / name for name in EBPB_SAMPLE_FILENAMES if (root / name).is_file()]
+
+
 def ensure_package_root_on_path() -> Path:
     """Dodaje katalog nadrzędny nad `app/` (np. `zubry_pedigree_app/`) na początek sys.path."""
     root = project_root()

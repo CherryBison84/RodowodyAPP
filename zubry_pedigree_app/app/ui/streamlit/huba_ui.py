@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import tempfile
 from datetime import datetime
+
 import pandas as pd
 import streamlit as st
 
@@ -61,6 +62,7 @@ FIX_RULES: tuple[tuple[str, str, bool], ...] = (
 
 
 def _init_session() -> None:
+    """Ustawia domyślne wartości stanu sesji dla kroków HUBA."""
     if "huba_project_name" not in st.session_state:
         st.session_state["huba_project_name"] = f"run_{datetime.now().strftime('%Y%m%d_%H%M')}"
     if "huba_exclude_test" not in st.session_state:
@@ -73,6 +75,7 @@ def _init_session() -> None:
 
 
 def _auto_fix_options_from_ui() -> AutoFixOptions:
+    """Buduje opcje automatycznych poprawek z aktualnych kontrolek UI."""
     return AutoFixOptions(
         dedupe_ids=bool(st.session_state.get("af_dedupe", True)),
         drop_rows_without_id=bool(st.session_state.get("af_drop_no_id", False)),
@@ -87,6 +90,7 @@ def _auto_fix_options_from_ui() -> AutoFixOptions:
 
 
 def _any_fix_selected(opts: AutoFixOptions) -> bool:
+    """Sprawdza, czy zaznaczono przynajmniej jedną regułę automatycznej poprawki."""
     return any(
         (
             opts.dedupe_ids,
@@ -103,6 +107,7 @@ def _any_fix_selected(opts: AutoFixOptions) -> bool:
 
 
 def _rules_from_ui() -> ProcessingRules:
+    """Buduje reguły przetwarzania wsadowego z ustawień formularza."""
     auto_fix = _auto_fix_options_from_ui()
     return ProcessingRules(
         apply_auto_fix=_any_fix_selected(auto_fix),
@@ -112,11 +117,13 @@ def _rules_from_ui() -> ProcessingRules:
 
 
 def _output_from_ui() -> OutputSpec:
+    """Buduje specyfikację eksportu z ustawień formularza."""
     fmt: ExportFormat = "csv" if st.session_state.get("huba_export_format") == "csv" else "xlsx"
     return OutputSpec(export_format=fmt)
 
 
 def _build_project(inputs: tuple[InputSource, ...]) -> HubProjectConfig:
+    """Składa konfigurację projektu HUBA dla wskazanych źródeł wejściowych."""
     name = str(st.session_state.get("huba_project_name", "huba_run")).strip() or "huba_run"
     return HubProjectConfig(
         project_name=name,
@@ -128,6 +135,7 @@ def _build_project(inputs: tuple[InputSource, ...]) -> HubProjectConfig:
 
 
 def _render_fix_checklist() -> None:
+    """Renderuje listę przełączników reguł automatycznego czyszczenia."""
     st.markdown("#### Lista poprawek")
     half = (len(FIX_RULES) + 1) // 2
     c1, c2 = st.columns(2)
@@ -148,6 +156,7 @@ def _run_project_from_catalog(
 
 
 def _apply_json_config(raw: dict) -> None:
+    """Wczytuje konfigurację JSON i przenosi jej ustawienia do stanu sesji."""
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as tmp:
         json.dump(raw, tmp)
         loaded = load_project_config(tmp.name)
@@ -167,6 +176,7 @@ def _apply_json_config(raw: dict) -> None:
 
 
 def section_step4_auto_clean() -> None:
+    """Renderuje krok wyboru reguł automatycznego czyszczenia i eksportu."""
     st.markdown("### Krok 4 — Czyszczenie automatyczne")
     st.caption(
         "Wybierz bazy z katalogu, zaznacz reguły auto-poprawek i wyeksportuj oczyszczone pliki. "
@@ -233,6 +243,7 @@ def section_step4_auto_clean() -> None:
 
 
 def section_step5_results() -> None:
+    """Renderuje tabelę wyników oraz przyciski pobierania plików po czyszczeniu."""
     st.markdown("### Krok 5 — Wyniki")
     result: HubRunResult | None = st.session_state.get(SESSION_LAST_RUN)
     if result is None:
@@ -286,6 +297,7 @@ def section_step5_results() -> None:
 
 
 def run_huba_app() -> None:
+    """Uruchamia aktualnie wybrany krok aplikacji HUBA-WPB Cleaner."""
     _init_session()
     section = st.session_state.get("huba_nav", NAV_STEP1)
     if section in _NAV_LEGACY:

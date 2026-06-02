@@ -13,10 +13,12 @@ from pathlib import Path
 
 
 def _pkg_root() -> Path:
+    """Zwraca katalog paczki aplikacji, z którego uruchamiany jest Streamlit."""
     return Path(__file__).resolve().parents[2]
 
 
 def _pick_port() -> int:
+    """Wybiera wolny port lokalny dla serwera Streamlit."""
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("127.0.0.1", 0))
     port = int(s.getsockname()[1])
@@ -25,6 +27,7 @@ def _pick_port() -> int:
 
 
 def _wait_for_http(url: str, *, attempts: int = 40, delay_s: float = 0.25) -> bool:
+    """Czeka, aż lokalny serwer odpowie pod wskazanym adresem HTTP."""
     for _ in range(attempts):
         try:
             urllib.request.urlopen(url, timeout=1.0)

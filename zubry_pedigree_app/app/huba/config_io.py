@@ -16,11 +16,13 @@ def repo_root() -> Path:
 
 
 def _resolve_path(raw: str, *, base: Path) -> Path:
+    """Rozwiązuje ścieżkę względną względem wskazanego katalogu bazowego."""
     p = Path(raw.strip())
     return p if p.is_absolute() else base / p
 
 
 def _parse_stages(raw: object) -> tuple[str, ...]:
+    """Normalizuje listę etapów projektu, stosując domyślny pipeline przy braku danych."""
     if not isinstance(raw, list) or not raw:
         return ("load", "validate", "transform", "export")
     stages = tuple(str(s).strip() for s in raw if str(s).strip())
@@ -28,6 +30,7 @@ def _parse_stages(raw: object) -> tuple[str, ...]:
 
 
 def _output_from_mapping(raw: dict[str, Any] | None) -> OutputSpec:
+    """Buduje specyfikację eksportu z mapy JSON lub wartości domyślnych."""
     if not raw:
         return OutputSpec()
     fmt = str(raw.get("export_format", "xlsx")).strip().lower()
@@ -48,6 +51,7 @@ def _output_from_mapping(raw: dict[str, Any] | None) -> OutputSpec:
 
 
 def _inputs_from_mapping(raw: object, *, base: Path) -> tuple[InputSource, ...]:
+    """Buduje listę źródeł wejściowych z sekcji ``inputs`` pliku projektu."""
     if not isinstance(raw, list) or not raw:
         raise ValueError("`inputs` musi zawierać co najmniej jeden wpis.")
     out: list[InputSource] = []

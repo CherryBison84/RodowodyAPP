@@ -27,6 +27,7 @@ HUBA_TAGLINE = "(Hybrid Unified Batch Analyzer + Wisent Pedigree Base)"
 
 
 def _render_sidebar() -> None:
+    """Renderuje logo, metadane aplikacji i nawigację po krokach HUBA."""
     with st.sidebar:
         _logo_path = assets_dir() / "logo.png"
         if _logo_path.exists():
@@ -59,11 +60,13 @@ def _render_sidebar() -> None:
         st.session_state["huba_nav"] = section
         st.markdown("---")
         st.caption(
-            "Autor: [Magdalena Perlińska-Teresiak](https://github.com/CherryBison84) · 2026"
+            "Autor: [Magdalena Perlińska-Teresiak](https://github.com/CherryBison84) · "
+            "[SGGW](https://bw.sggw.edu.pl/info/author/WULS3c538856ad724c8ab12824cb5666f3f1?r=author&tab=&title=Profil%2Bosoby%2B%25E2%2580%2593%2BMagdalena%2BPerli%25C5%2584ska-Teresiak%2B%25E2%2580%2593%2BSzko%25C5%2582a%2BG%25C5%2582%25C3%25B3wna%2BGospodarstwa%2BWiejskiego%2Bw%2BWarszawie&lang=pl) · 2026"
         )
 
 
 def run_streamlit_direct() -> None:
+    """Konfiguruje stronę Streamlit i uruchamia główny widok aplikacji."""
     _icon_img = app_icon_pil_best()
     st.set_page_config(
         page_title=HUBA_APP_NAME,

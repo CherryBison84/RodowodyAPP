@@ -322,6 +322,7 @@ def _ancestor_preview_table(df_std: pd.DataFrame, *, limit: int = 300) -> tuple[
 
 
 def _tab_accent(tab_key: str) -> str:
+    """Dobiera kolor akcentu dla podsekcji walidacji."""
     accents = {
         "excel": sc.THEME.COMPLETENESS_ACCENT,
         "id": sc.THEME.EDGE_PLOT,
@@ -338,6 +339,7 @@ def _tab_accent(tab_key: str) -> str:
 
 
 def _render_tab_heading(tab_key: str) -> None:
+    """Renderuje nagłówek aktywnej podsekcji walidacji."""
     title = VALIDATION_TAB_HEADINGS.get(tab_key, VALIDATION_TAB_LABELS.get(tab_key, tab_key))
     lead = _TAB_LEADS.get(tab_key, "")
     sc.population_dashboard_group_header(
@@ -405,6 +407,7 @@ def _count_tab_issues(rep: ValidationReport, tab_key: str) -> tuple[int, int]:
 
 
 def _tab_has_issues(rep: ValidationReport | None, tab_key: str) -> bool:
+    """Czy dana podsekcja walidacji ma błędy lub ostrzeżenia."""
     if rep is None:
         return False
     err, warn = _count_tab_issues(rep, tab_key)
@@ -468,6 +471,7 @@ def _visible_validation_keys(
     *,
     only_issues: bool,
 ) -> list[str]:
+    """Zwraca klucze podsekcji widocznych przy aktualnym filtrze problemów."""
     if not only_issues or rep is None:
         return list(all_keys)
     return [k for k in all_keys if _tab_has_issues(rep, k)]
@@ -827,6 +831,7 @@ def render_validation_summary_charts_expander(
 
 
 def _huba_tab_keys(*, show_autofix: bool) -> list[str]:
+    """Zwraca kolejność podsekcji walidacji dla trybu HUBA."""
     keys = list(HUBA_VALIDATION_TAB_KEYS)
     if show_autofix:
         keys.append("autofix")

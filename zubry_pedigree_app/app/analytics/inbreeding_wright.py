@@ -12,6 +12,8 @@ from app.pedigree.ancestor_pedigree import Person
 
 @dataclass(frozen=True)
 class InbreedingResult:
+    """Wynik obliczenia współczynnika inbredu Wrighta dla jednego osobnika."""
+
     person_id: str
     F: float
     used_generations: int
@@ -22,6 +24,7 @@ class InbreedingResult:
 
 
 def _get_parents(people: Dict[str, Person], person_id: str) -> tuple[Optional[str], Optional[str]]:
+    """Zwraca ID ojca i matki albo puste wartości, gdy rekordu nie ma w mapie."""
     p = people.get(person_id)
     if p is None:
         return None, None
@@ -56,6 +59,7 @@ def _strict_ancestor_ids(person_id: str, people: Dict[str, Person], *, max_nodes
 
 
 def _sanitize_depth(max_generations_back: int | None) -> int | None:
+    """Normalizuje limit pokoleń do wartości nieujemnej lub ``None``."""
     if max_generations_back is None:
         return None
     depth = int(max_generations_back)
@@ -63,6 +67,7 @@ def _sanitize_depth(max_generations_back: int | None) -> int | None:
 
 
 def _resolve_person_depth(*, person_id: str, people: Dict[str, Person], max_generations_back: int | None) -> int:
+    """Wyznacza efektywną głębokość rekurencji dla obliczeń jednego osobnika."""
     depth_or_none = _sanitize_depth(max_generations_back)
     if depth_or_none is not None:
         return depth_or_none
@@ -78,6 +83,7 @@ def _resolve_offspring_depth(
     people: Dict[str, Person],
     max_generations_back: int | None,
 ) -> int:
+    """Wyznacza efektywną głębokość rekurencji dla hipotetycznego potomka pary."""
     depth_or_none = _sanitize_depth(max_generations_back)
     if depth_or_none is not None:
         return depth_or_none
@@ -92,6 +98,7 @@ def _resolve_batch_offspring_depth(
     people: Dict[str, Person],
     max_generations_back: int | None,
 ) -> int:
+    """Wyznacza wspólną głębokość rekurencji dla wsadowej listy par rodziców."""
     depth_or_none = _sanitize_depth(max_generations_back)
     if depth_or_none is not None:
         return depth_or_none
@@ -337,4 +344,3 @@ def batch_offspring_inbreeding_F_from_parent_pairs(
         out.append(float(phi(sire, dam, remaining_for_phi)))
 
     return out
-

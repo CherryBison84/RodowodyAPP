@@ -16,6 +16,7 @@ from app.huba.modules.dataset_inspect import (
     inspect_dataset_from_bytes,
 )
 from app.huba.modules.merge import merge_standardized_frames
+from app.runtime_path import data_dir
 from app.ui import help_content as hc
 from app.ui.streamlit import common as sc
 from app.ui.streamlit.huba_nav import MANUAL_CLEAN_ENABLED
@@ -28,13 +29,23 @@ from app.ui.streamlit.validation_sections import (
 SESSION_CATALOG = "huba_m1_catalog"
 SESSION_ACTIVE = "huba_m1_active"
 
+_EBPB_SAMPLE_FILENAMES = ("EBPB_bison_report.xlsx", "EBPB_register.xlsx")
+
+
+def _ebpb_sample_paths() -> list[Path]:
+    """Przykładowe pliki EBPB w ``data/`` (jeśli istnieją)."""
+    root = data_dir()
+    return [root / name for name in _EBPB_SAMPLE_FILENAMES if (root / name).is_file()]
+
 
 def _init_catalog() -> None:
+    """Inicjalizuje katalog wczytanych baz w stanie sesji Streamlit."""
     if SESSION_CATALOG not in st.session_state:
         st.session_state[SESSION_CATALOG] = {}
 
 
 def _entry_kind_label(d: object) -> str:
+    """Zwraca typ wpisu katalogu: pojedynczy plik albo połączenie baz."""
     merged = getattr(d, "merged_from", None)
     if merged:
         return "Połączenie"
@@ -45,6 +56,7 @@ def _entry_kind_label(d: object) -> str:
 
 
 def _merged_from_for(d: object) -> tuple[str, ...]:
+    """Odczytuje nazwy baz składowych z bieżącego lub starszego wpisu sesji."""
     merged = getattr(d, "merged_from", None)
     if merged:
         return tuple(merged)
@@ -78,6 +90,7 @@ def _upgrade_catalog_item(item: object) -> InspectedDataset | None:
 
 
 def _catalog() -> dict[str, InspectedDataset]:
+    """Zwraca katalog po migracji starszych obiektów sesji do aktualnego modelu."""
     raw: dict[str, InspectedDataset] = st.session_state.get(SESSION_CATALOG, {})
     if not raw:
         return {}
@@ -100,6 +113,7 @@ def _catalog() -> dict[str, InspectedDataset]:
 
 
 def _register(dataset: InspectedDataset) -> None:
+    """Dodaje lub aktualizuje bazę w katalogu i ustawia ją jako aktywną."""
     cat = dict(_catalog())
     cat[dataset.name] = dataset
     st.session_state[SESSION_CATALOG] = cat
@@ -123,6 +137,7 @@ def apply_catalog_edit(catalog_name: str, df_new: pd.DataFrame) -> InspectedData
 
 
 def _page_intro(title: str, description: str) -> None:
+    """Renderuje nagłówek i opis kroku w stylistyce aplikacji."""
     th = sc.THEME
     st.markdown(
         f'<h3 style="margin:0 0 0.35rem 0;color:{th.TEXT};">{html.escape(title)}</h3>',
@@ -161,7 +176,9 @@ def render_manual_clean_placeholder() -> None:
         else:
             st.warning(f"Brak pliku podglądu: `{holder}`")
 
+
 def _summary_table(cat: dict[str, InspectedDataset]) -> pd.DataFrame:
+    """Buduje tabelę podsumowania katalogu baz do wyświetlenia w UI."""
     return pd.DataFrame(
         [
             {
@@ -177,6 +194,7 @@ def _summary_table(cat: dict[str, InspectedDataset]) -> pd.DataFrame:
 
 
 def _dataset_picker_label(name: str, d: InspectedDataset) -> str:
+    """Etykieta wyboru bazy z liczbą wierszy oraz problemów walidacji."""
     if d.error_count:
         mark = "●"
     elif d.warning_count:
@@ -288,8 +306,39 @@ def section_step1_load() -> None:
     _init_catalog()
     _page_intro(
         "Krok 1 — Wczytanie danych",
-        "Dodaj pliki CSV/XLSX. Opcjonalnie połącz kilka plików w jedną bazę. Potem przejdź do **Kroku 2 — Walidacja**.",
+        "Dodaj pliki CSV/XLSX (eksport **raportu** lub **rejestru** EBPB). "
+        "Opcjonalnie połącz kilka plików w jedną bazę. Potem przejdź do **Kroku 2 — Walidacja**.",
     )
+
+    samples = _ebpb_sample_paths()
+    if samples:
+        st.caption(
+            "Obsługiwane szablony: `EBPB_bison_report.xlsx` (raport) i `EBPB_register.xlsx` (rejestr)."
+        )
+        sample_cols = st.columns(len(samples))
+        for col, sample_path in zip(sample_cols, samples):
+            with col:
+                if st.button(
+                    f"Wczytaj {sample_path.name}",
+                    use_container_width=True,
+                    key=f"huba_sample_{sample_path.stem}",
+                ):
+                    try:
+                        from app.data.dataset_loader import load_dataset_from_path
+                        from app.data.ebpb_formats import ebpb_format_label
+
+                        df_std, info = load_dataset_from_path(sample_path)
+                        kind = getattr(info, "ebpb_format", "ebpb_report")
+                        inspected = inspect_dataframe(
+                            sample_path.stem,
+                            df_std,
+                            f"{sample_path.name} ({ebpb_format_label(kind)})",
+                        )
+                        _register(inspected)
+                        st.success(f"Wczytano **{sample_path.name}**.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
 
     uploaded = st.file_uploader(
         "Pliki wejściowe",
@@ -333,6 +382,7 @@ def section_step1_load() -> None:
 
 
 def _pick_active_dataset(cat: dict[str, InspectedDataset], *, picker_key: str) -> tuple[str, InspectedDataset] | None:
+    """Renderuje wybór aktywnej bazy i zapisuje wybór w stanie sesji."""
     names = list(cat.keys())
     default_idx = (
         names.index(st.session_state[SESSION_ACTIVE])

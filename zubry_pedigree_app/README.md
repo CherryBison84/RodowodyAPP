@@ -11,7 +11,7 @@ Aplikacja **Streamlit** do wczytywania baz rodowodowych żubrów, **walidacji**,
 | `app/` | Logika: `data/`, `huba/`, `pedigree/`, `analytics/`, `ui/streamlit/` |
 | `app/assets/` | Logo, ikona, placeholdery UI |
 | `config/` | Przykładowe konfiguracje JSON (`gui.json`, projekty HUBA) |
-| `data/` | Przykładowa baza `EBPB_bison_report.xlsx` |
+| `data/` | Przykładowe bazy: `EBPB_bison_report.xlsx` (raport), `EBPB_register.xlsx` (rejestr) |
 | `docs/` | `metrics_definition.md` — definicje metryk |
 | `outputs/` | Wyniki batch (generowany lokalnie, w `.gitignore`) |
 

@@ -66,6 +66,8 @@ _DEFAULT_EDIT_FIELDS: Final[tuple[str, ...]] = (
 
 @dataclass(frozen=True)
 class FieldPatch:
+    """Opis pojedynczej ręcznej zmiany komórki w rekordzie bazy."""
+
     record_id: str
     column: str
     new_value: object
@@ -73,14 +75,17 @@ class FieldPatch:
 
 
 def suggest_fields_for_problem(problem_type: str) -> tuple[str, ...]:
+    """Podpowiada kolumny formularza przydatne dla danego typu problemu walidacji."""
     return PROBLEM_TYPE_FIELD_HINTS.get(problem_type, _DEFAULT_EDIT_FIELDS)
 
 
 def editable_columns(df: pd.DataFrame) -> list[str]:
+    """Zwraca edytowalne kolumny obecne w przekazanej ramce."""
     return [c for c in STANDARD_BISON_REPORT_COLUMNS if c in df.columns]
 
 
 def find_row_indices(df: pd.DataFrame, record_id: str) -> list[Any]:
+    """Znajduje indeksy wierszy o podanym identyfikatorze rekordu."""
     rid = str(record_id).strip()
     if not rid or rid == "_GLOBAL_":
         return []
@@ -91,6 +96,7 @@ def find_row_indices(df: pd.DataFrame, record_id: str) -> list[Any]:
 
 
 def _norm_sex(v: object) -> Optional[str]:
+    """Normalizuje wartość płci w formularzu ręcznej edycji."""
     if v is None or (isinstance(v, float) and v != v):
         return None
     s = str(v).strip().upper()
@@ -98,6 +104,7 @@ def _norm_sex(v: object) -> Optional[str]:
 
 
 def _norm_line(v: object) -> str:
+    """Normalizuje linię w formularzu ręcznej edycji, domyślnie do ``NA``."""
     if v is None or (isinstance(v, float) and v != v):
         return "NA"
     s = str(v).strip().upper()

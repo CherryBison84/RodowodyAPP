@@ -41,18 +41,22 @@ class AppConfig:
 
 
 def _config_root_dir() -> Path:
+    """Zwraca katalog paczki używany jako baza dla plików konfiguracyjnych."""
     return Path(__file__).resolve().parents[1]
 
 
 def _repo_root_dir() -> Path:
+    """Zwraca katalog główny repozytorium z danymi i konfiguracją."""
     return Path(__file__).resolve().parents[2]
 
 
 def _gui_config_path() -> Path:
+    """Zwraca ścieżkę do opcjonalnego pliku ``config/gui.json``."""
     return _config_root_dir() / "config" / "gui.json"
 
 
 def _load_gui_overrides() -> dict[str, object]:
+    """Wczytuje nadpisania konfiguracji GUI, ignorując brak lub błędny plik."""
     path = _gui_config_path()
     if not path.exists():
         return {}
@@ -154,4 +158,3 @@ def app_icon_pil_best() -> "PILImage | None":
         return _ico_largest_frame_rgba(Image.open(path))
     except Exception:
         return None
-

@@ -60,7 +60,7 @@ GLOSSARY = f"""
 SECTION_LOADING = """
 ## Wczytywanie bazy
 
-1. **Plik CSV lub XLSX** — program próbuje sam rozpoznać kolumny. Jeśli się nie uda, wybierasz odpowiedniki ręcznie.
+1. **Plik CSV lub XLSX** — program rozpoznaje m.in. eksport **raportu** EBPB (`EBPB_bison_report.xlsx`) i **rejestru** (`EBPB_register.xlsx`, arkusz „Data set”) i mapuje je do wspólnego schematu (m.in. `Number` → `id`, `Birth display` → `birth_date`). Jeśli format jest niestandardowy, wybierasz odpowiedniki ręcznie.
 2. **Adres URL** — pobranie pliku z sieci i takie samo mapowanie jak z dysku.
 3. **Rekord testowy** — ID **99999** jest traktowane technicznie i **nie wchodzi** do statystyk populacji.
 

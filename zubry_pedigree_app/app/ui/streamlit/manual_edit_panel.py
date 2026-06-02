@@ -58,17 +58,20 @@ def open_manual_corrections_panel() -> None:
 
 
 def _cell_display(v: object) -> str:
+    """Normalizuje wartość komórki do tekstu formularza."""
     if v is None or (isinstance(v, float) and v != v):
         return ""
     return str(v).strip()
 
 
 def _push_undo(catalog_name: str, df: pd.DataFrame) -> None:
+    """Zapamiętuje migawkę ramki przed ręczną edycją."""
     undo: dict[str, pd.DataFrame] = st.session_state.setdefault(_SESSION_UNDO, {})
     undo[catalog_name] = df.copy(deep=True)
 
 
 def _pop_undo(catalog_name: str) -> pd.DataFrame | None:
+    """Zwraca i usuwa ostatnią migawkę undo dla wskazanej bazy."""
     undo: dict[str, pd.DataFrame] = st.session_state.get(_SESSION_UNDO, {})
     snap = undo.pop(catalog_name, None)
     st.session_state[_SESSION_UNDO] = undo
@@ -76,12 +79,14 @@ def _pop_undo(catalog_name: str) -> pd.DataFrame | None:
 
 
 def _append_log(message: str) -> None:
+    """Dodaje wpis do krótkiego dziennika ręcznych edycji w sesji."""
     log: list[str] = st.session_state.setdefault(_SESSION_LOG, [])
     log.insert(0, message)
     st.session_state[_SESSION_LOG] = log[:12]
 
 
 def _known_ids(df: pd.DataFrame) -> list[str]:
+    """Zwraca posortowane, niepuste identyfikatory rekordów z ramki."""
     if "id" not in df.columns:
         return []
     ids = [id_cell_string(x) for x in df["id"]]
@@ -111,6 +116,7 @@ def _problem_picker_options(rep: ValidationReport) -> tuple[list[str], list[tupl
 
 
 def _render_report_problem_picker(rep: ValidationReport) -> None:
+    """Renderuje wybór rekordu na podstawie eksportu problemów walidacji."""
     options, meta = _problem_picker_options(rep)
     if not options:
         st.caption("Brak pojedynczych wpisów w raporcie — użyj wyszukiwania po ID poniżej.")
@@ -146,6 +152,7 @@ def _render_field_input(
     key_prefix: str,
     known_ids: list[str],
 ) -> object:
+    """Renderuje kontrolkę formularza właściwą dla typu edytowanej kolumny."""
     label = _FIELD_LABELS.get(column, column)
     cur_s = _cell_display(current)
     empty_opt = "(puste)"
@@ -194,6 +201,7 @@ def _render_record_form(
     on_dataset_updated: Callable[[pd.DataFrame], None],
     key_prefix: str,
 ) -> None:
+    """Renderuje formularz edycji jednego rekordu i obsługuje zapis oraz undo."""
     indices = find_row_indices(df_std, record_id)
     if not indices:
         st.error(f"Nie znaleziono wiersza z id **{record_id}**.")
@@ -284,6 +292,7 @@ def _render_record_form(
 
 
 def _render_edit_log() -> None:
+    """Pokazuje ostatnie ręczne edycje wykonane w bieżącej sesji."""
     log: list[str] = st.session_state.get(_SESSION_LOG, [])
     if not log:
         return

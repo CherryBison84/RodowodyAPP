@@ -10,6 +10,8 @@ from app.pedigree.ancestor_pedigree import Person
 
 @dataclass(frozen=True)
 class LineMembership:
+    """Założyciele linii ojcowskiej i matczynej oraz odległości od osobnika."""
+
     person_id: str
     person_name: Optional[str]
 
@@ -149,6 +151,7 @@ def _trace_line(
 
 
 def get_line_membership(person_id: str, people: Dict[str, Person]) -> LineMembership:
+    """Wyznacza przynależność jednego osobnika do linii sire i dam."""
     p = people.get(person_id)
     person_name = p.name if p else None
 
@@ -169,4 +172,3 @@ def get_line_membership(person_id: str, people: Dict[str, Person]) -> LineMember
         dam_founder_name=dam_founder_name,
         dam_steps=dam_steps,
     )
-

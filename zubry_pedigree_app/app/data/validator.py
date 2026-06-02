@@ -34,15 +34,19 @@ class ValidationExportRow:
 
 @dataclass(frozen=True)
 class ValidationReport:
+    """Zbiorczy wynik walidacji wraz z wierszami eksportu do ręcznej korekty."""
+
     total_rows: int
     issues: List[ValidationIssue]
     export_rows: Tuple[ValidationExportRow, ...] = ()
 
     @property
     def ok(self) -> bool:
+        """Czy raport zawiera wyłącznie komunikaty OK."""
         return all(i.severity in {"OK"} for i in self.issues)
 
     def short_status(self) -> str:
+        """Jednolinijkowy status walidacji z liczbą błędów lub ostrzeżeń."""
         n_errors = sum(1 for i in self.issues if i.severity == "ERROR")
         n_warns = sum(1 for i in self.issues if i.severity == "WARN")
         if n_errors > 0:
@@ -93,6 +97,7 @@ class ValidationReport:
 
 
 def _norm_sex(v: object) -> Optional[str]:
+    """Normalizuje płeć do ``M``/``F`` na potrzeby walidacji."""
     if v is None:
         return None
     if isinstance(v, float) and v != v:
@@ -106,6 +111,7 @@ def _norm_sex(v: object) -> Optional[str]:
 
 
 def _norm_line(v: object) -> str:
+    """Normalizuje linię rodowodową do ``LB``/``LC`` albo ``NA``."""
     if v is None:
         return "NA"
     if isinstance(v, float) and v != v:
@@ -115,6 +121,7 @@ def _norm_line(v: object) -> str:
 
 
 def _parse_year(v: object) -> Optional[int]:
+    """Parsuje rok zapisany jako liczba lub tekst, zwracając ``None`` przy braku."""
     if v is None:
         return None
     try:
@@ -144,6 +151,7 @@ def _years_from_date_cell(v: object) -> List[int]:
 
 
 def _is_nonempty_parent(val: object) -> bool:
+    """Czy pole rodzica zawiera rzeczywiste ID, a nie pusty marker arkusza."""
     if val is None:
         return False
     if isinstance(val, float) and val != val:
@@ -776,4 +784,3 @@ def validate_loaded_dataset(
             issues.append(ValidationIssue("WARN", "Nie udało się sprawdzić spójności birth_date/death_date"))
 
     return ValidationReport(total_rows=total_rows, issues=issues, export_rows=tuple(export_rows))
-

@@ -11,14 +11,43 @@ from typing import BinaryIO, Optional
 import numpy as np
 import pandas as pd
 
+from app.data.ebpb_formats import EBPB_FORMAT_LABELS, EbpbInputKind, ebpb_format_label
+
+# Zgodność wsteczna (starsze importy UI / testów).
+ebpb_format_source_suffix = ebpb_format_label
+
+EBPB_SAMPLE_FILENAMES: tuple[str, ...] = (
+    "EBPB_bison_report.xlsx",
+    "EBPB_register.xlsx",
+)
+
+__all__ = [
+    "DatasetInfo",
+    "EBPB_FORMAT_LABELS",
+    "EBPB_SAMPLE_FILENAMES",
+    "EbpbInputKind",
+    "STANDARD_BISON_REPORT_COLUMNS",
+    "dataframe_app_schema_columns",
+    "detect_ebpb_input_kind",
+    "ebpb_format_label",
+    "get_default_bison_report_path",
+    "load_dataset_from_bytes",
+    "load_dataset_from_path",
+    "load_default_bison_report",
+    "standardize_bison_report_dataframe",
+]
+
 
 @dataclass(frozen=True)
 class DatasetInfo:
+    """Metadane wczytanego zbioru po standaryzacji do schematu aplikacji."""
+
     rows: int
     columns: int
+    ebpb_format: EbpbInputKind = "ebpb_report"
 
 
-# Kolumny schematu aplikacji po imporcie (raport EBPB / mapowanie) — bez dodatkowych pól z arkusza.
+# Kolumny schematu aplikacji po imporcie (raport lub rejestr EBPB) — bez dodatkowych pól z arkusza.
 STANDARD_BISON_REPORT_COLUMNS: tuple[str, ...] = (
     "id",
     "name",
@@ -54,12 +83,14 @@ def dataframe_app_schema_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _clean_column_name(col: object) -> object:
+    """Usuwa znaki nowej linii i skrajne spacje z tekstowej nazwy kolumny."""
     if not isinstance(col, str):
         return col
     return col.replace("\n", " ").strip()
 
 
 def _optional_str(v: object) -> Optional[str]:
+    """Konwertuje wartość arkusza na niepusty tekst albo ``None``."""
     if v is None:
         return None
     if isinstance(v, float) and np.isnan(v):
@@ -69,6 +100,7 @@ def _optional_str(v: object) -> Optional[str]:
 
 
 def _norm_sex(v: object) -> Optional[str]:
+    """Normalizuje płeć do ``M``/``F`` albo wartości pustej."""
     s = _optional_str(v)
     if s is None:
         return None
@@ -77,6 +109,7 @@ def _norm_sex(v: object) -> Optional[str]:
 
 
 def _norm_line(v: object) -> Optional[str]:
+    """Normalizuje linię rodowodową do ``LB``/``LC`` albo wartości pustej."""
     s = _optional_str(v)
     if s is None:
         return None
@@ -85,6 +118,7 @@ def _norm_line(v: object) -> Optional[str]:
 
 
 def _drop_test_id_rows(df: pd.DataFrame, *, id_col: str, test_id: str) -> pd.DataFrame:
+    """Usuwa wiersze technicznego rekordu testowego po wskazanej kolumnie ID."""
     try:
         return df[df[id_col].astype(str) != str(test_id)].reset_index(drop=True)
     except Exception:
@@ -102,6 +136,7 @@ def _detect_csv_sep(text: str) -> str:
 
 
 def _read_csv(source: Path | BinaryIO) -> pd.DataFrame:
+    """Wczytuje CSV, wykrywając separator dla źródeł binarnych z uploadu."""
     if isinstance(source, (str, Path)):
         return pd.read_csv(source, sep=None, engine="python")
     raw = source.read()
@@ -110,6 +145,7 @@ def _read_csv(source: Path | BinaryIO) -> pd.DataFrame:
 
 
 def _read_dataframe_from_ext(source: Path | BinaryIO, *, ext: str) -> pd.DataFrame:
+    """Wczytuje ramkę pandas według rozszerzenia pliku wejściowego."""
     ext = ext.lower()
     if ext == ".csv":
         return _read_csv(source)
@@ -129,6 +165,21 @@ def _columns_lower_map(df: pd.DataFrame) -> dict[str, str]:
 
 
 def _pick_source_column(df: pd.DataFrame, logical: str, candidates: tuple[str, ...]) -> str:
+    """Wybiera wymaganą kolumnę źródłową lub zgłasza czytelny błąd importu."""
+    col = _pick_optional_source_column(df, logical, candidates)
+    if col is None:
+        raise ValueError(
+            f"Brak wymaganej kolumny „{logical}” w pliku "
+            f"(szukano jednej z nazw: {list(candidates)}). "
+            f"Kolumny w pliku: {list(df.columns)}"
+        )
+    return col
+
+
+def _pick_optional_source_column(
+    df: pd.DataFrame, logical: str, candidates: tuple[str, ...]
+) -> str | None:
+    """Wybiera opcjonalną kolumnę źródłową po nazwach kandydujących."""
     lower_map = _columns_lower_map(df)
     for c in candidates:
         if c in df.columns:
@@ -139,18 +190,23 @@ def _pick_source_column(df: pd.DataFrame, logical: str, candidates: tuple[str, .
     logical_key = logical.strip().lower()
     if logical_key in lower_map:
         return lower_map[logical_key]
-    raise ValueError(
-        f"Brak wymaganej kolumny „{logical}” w pliku "
-        f"(szukano jednej z nazw: {list(candidates)}). "
-        f"Kolumny w pliku: {list(df.columns)}"
-    )
+    return None
+
+
+def _series_from_optional_column(df: pd.DataFrame, col: str | None) -> pd.Series:
+    """Zwraca serię kolumny lub pustą serię obiektową dla brakującego pola."""
+    if col is None:
+        return pd.Series([None] * len(df), index=df.index, dtype=object)
+    return df[col]
 
 
 def _has_app_schema_headers(df: pd.DataFrame) -> bool:
+    """Sprawdza, czy arkusz wygląda na już zapisany w schemacie aplikacji."""
     return "id" in _columns_lower_map(df)
 
 
 def _rename_columns_to_app_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """Zmienia wielkość liter nazw kolumn na kanoniczne nazwy schematu aplikacji."""
     lower_map = _columns_lower_map(df)
     rename = {
         lower_map[key]: key
@@ -161,6 +217,7 @@ def _rename_columns_to_app_schema(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _finalize_bison_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Czyści typy, usuwa rekord testowy i układa kolumny w standardowej kolejności."""
     df = df.copy()
     for col in ("id", "father_id", "mother_id"):
         if col in df.columns:
@@ -189,23 +246,26 @@ def _finalize_bison_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 def _birth_location_series(df: pd.DataFrame) -> pd.Series:
     """
-    Stary raport: jedna kolumna „Birth location”.
-    Nowy raport EBPB: „birth_loc_name” + „birth_country” (łączone do jednego pola w modelu).
+    Łączy miejsce i kraj urodzenia w jedno pole (raport: birth_loc_name + birth_country;
+    rejestr: Birth location + Birth country; stary eksport: jedna kolumna „Birth location”).
     """
     lower_map = _columns_lower_map(df)
-    if "birth location" in lower_map:
-        return df[lower_map["birth location"]]
-    if "birth_location" in lower_map:
-        return df[lower_map["birth_location"]]
-
-    loc_c = lower_map.get("birth_loc_name")
-    cc_c = lower_map.get("birth_country")
+    loc_c = (
+        lower_map.get("birth_loc_name")
+        or lower_map.get("birth location")
+        or lower_map.get("birth_location")
+    )
+    cc_c = lower_map.get("birth_country") or lower_map.get("birth country")
     if not loc_c and not cc_c:
         return pd.Series([None] * len(df), index=df.index, dtype=object)
+    if loc_c and not cc_c:
+        return df[loc_c]
+    if cc_c and not loc_c:
+        return df[cc_c]
 
     n = len(df)
-    loc_vals = df[loc_c].tolist() if loc_c else [None] * n
-    cc_vals = df[cc_c].tolist() if cc_c else [None] * n
+    loc_vals = df[loc_c].tolist()
+    cc_vals = df[cc_c].tolist()
     merged: list[Optional[str]] = []
     for lv, cv in zip(loc_vals, cc_vals):
         loc = _optional_str(lv)
@@ -242,6 +302,82 @@ def _parse_id(value: object) -> Optional[str]:
     return None
 
 
+def detect_ebpb_input_kind(df: pd.DataFrame) -> EbpbInputKind:
+    """Rozpoznaje typ eksportu EBPB po nagłówkach (przed standaryzacją)."""
+    df = df.copy()
+    df.columns = [_clean_column_name(c) for c in df.columns]
+    if _has_app_schema_headers(df):
+        return "app_schema"
+    if _is_ebpb_register_format(df):
+        return "ebpb_register"
+    return "ebpb_report"
+
+
+def _is_ebpb_register_format(df: pd.DataFrame) -> bool:
+    """Rejestr EBPB — rozpoznanie po charakterystycznych nagłówkach arkusza."""
+    lower_map = _columns_lower_map(df)
+    register_markers = (
+        "ebpb_id",
+        "birth display",
+        "death display",
+        "birth day",
+        "subline",
+        "father_pedigree_line",
+        "mother_pedigree_line",
+    )
+    return any(marker in lower_map for marker in register_markers)
+
+
+def _standardize_ebpb_register_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Mapuje eksport rejestru EBPB (``EBPB_register.xlsx``) do schematu aplikacji."""
+    col_sex = _pick_source_column(df, "Sex", ("Sex", "sex"))
+    col_id = _pick_source_column(df, "Number", ("Number", "number", "id"))
+    col_name = _pick_source_column(df, "Name", ("Name", "name"))
+    col_alt = _pick_optional_source_column(df, "Alt name", ("Alt name", "alt_name"))
+    col_line = _pick_optional_source_column(df, "Line", ("Line", "line"))
+    col_by = _pick_optional_source_column(df, "Birth year", ("Birth year", "birth_year"))
+    col_status = _pick_optional_source_column(df, "Status", ("Status", "status"))
+    col_fid = _pick_source_column(
+        df, "father_number", ("father_number", "Father", "father_id")
+    )
+    col_fname = _pick_optional_source_column(df, "father_name", ("father_name", "Father name"))
+    col_fline = _pick_optional_source_column(df, "father_line", ("father_line", "Father line"))
+    col_mid = _pick_source_column(
+        df, "mother_number", ("mother_number", "Mother", "mother_id")
+    )
+    col_mname = _pick_optional_source_column(df, "mother_name", ("mother_name", "Mother name"))
+    col_mline = _pick_optional_source_column(df, "mother_line", ("mother_line", "Mother line"))
+    col_bdate = _pick_optional_source_column(
+        df, "Birth display", ("Birth display", "Birth date", "birth_date")
+    )
+    col_ddate = _pick_optional_source_column(
+        df, "Death display", ("Death display", "Death date", "death_date")
+    )
+
+    out = pd.DataFrame(
+        {
+            "sex": df[col_sex],
+            "id": df[col_id],
+            "name": df[col_name],
+            "alt_name": _series_from_optional_column(df, col_alt),
+            "line": _series_from_optional_column(df, col_line),
+            "birth_year": _series_from_optional_column(df, col_by),
+            "status": _series_from_optional_column(df, col_status),
+            "father_id": df[col_fid],
+            "father_name": _series_from_optional_column(df, col_fname),
+            "father_line": _series_from_optional_column(df, col_fline),
+            "mother_id": df[col_mid],
+            "mother_name": _series_from_optional_column(df, col_mname),
+            "mother_line": _series_from_optional_column(df, col_mline),
+            "birth_date": _series_from_optional_column(df, col_bdate),
+            "death_date": _series_from_optional_column(df, col_ddate),
+            "birth_location": _birth_location_series(df),
+        },
+        index=df.index,
+    )
+    return _finalize_bison_dataframe(out)
+
+
 def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
     Konwertuje surowy arkusz do wspólnego schematu potrzebnego do rodowodu.
@@ -249,10 +385,15 @@ def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     Obsługiwane są:
     - starszy eksport z nagłówkami scalonymi (pandas: „Father”, „Unnamed: 8”…),
     - aktualny raport EBPB (m.in. „father_number”, „mother_number”, „birth_loc_name”),
+    - rejestr EBPB (``EBPB_register.xlsx``: Birth/Death display, Birth location + country),
     - plik już w schemacie aplikacji (np. cleaned.xlsx z kolumnami id, sex, …).
     """
     df = df.copy()
     df.columns = [_clean_column_name(c) for c in df.columns]
+
+    # Rejestr przed schematem aplikacji (unika mylenia z oczyszczonym eksportem).
+    if _is_ebpb_register_format(df):
+        return _standardize_ebpb_register_dataframe(df)
 
     if _has_app_schema_headers(df):
         df = _rename_columns_to_app_schema(df)
@@ -279,8 +420,16 @@ def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     )
     col_mname = _pick_source_column(df, "Mother name", ("Unnamed: 11", "mother_name"))
     col_mline = _pick_source_column(df, "Mother line", ("Unnamed: 12", "mother_line"))
-    col_bdate = _pick_source_column(df, "Birth date", ("Birth date", "birth_date"))
-    col_ddate = _pick_source_column(df, "Death date", ("Death date", "death_date"))
+    col_bdate = _pick_optional_source_column(
+        df,
+        "Birth date",
+        ("Birth date", "birth_date", "Birth display"),
+    )
+    col_ddate = _pick_optional_source_column(
+        df,
+        "Death date",
+        ("Death date", "death_date", "Death display"),
+    )
 
     out = pd.DataFrame(
         {
@@ -297,8 +446,8 @@ def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             "mother_id": df[col_mid],
             "mother_name": df[col_mname],
             "mother_line": df[col_mline],
-            "birth_date": df[col_bdate],
-            "death_date": df[col_ddate],
+            "birth_date": _series_from_optional_column(df, col_bdate),
+            "death_date": _series_from_optional_column(df, col_ddate),
             "birth_location": _birth_location_series(df),
         },
         index=df.index,
@@ -307,20 +456,48 @@ def standardize_bison_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return _finalize_bison_dataframe(out)
 
 
-def load_dataset_from_path(path: str | Path) -> tuple[pd.DataFrame, DatasetInfo]:
-    path = Path(path)
-    df = _read_dataframe_from_ext(path, ext=path.suffix)
+def _load_raw_dataframe(source: Path | BinaryIO, *, ext: str) -> pd.DataFrame:
+    """Wczytuje surowy arkusz, preferując zakładkę ``Data set`` w plikach Excela."""
+    ext = ext.lower()
+    if ext in {".xlsx", ".xls"}:
+        try:
+            xl = pd.ExcelFile(source)
+            sheet: str | int = "Data set" if "Data set" in xl.sheet_names else 0
+            return pd.read_excel(source, sheet_name=sheet)
+        except Exception:
+            if isinstance(source, BytesIO):
+                source.seek(0)
+    return _read_dataframe_from_ext(source, ext=ext)
 
-    df_std = standardize_bison_report_dataframe(df)
-    return df_std, DatasetInfo(rows=len(df_std), columns=len(df_std.columns))
+
+def _finalize_load(
+    df_raw: pd.DataFrame,
+    *,
+    source_name: str = "",
+) -> tuple[pd.DataFrame, DatasetInfo]:
+    """Standaryzuje surową ramkę i buduje metadane rozpoznanego formatu EBPB."""
+    kind = detect_ebpb_input_kind(df_raw)
+    if kind == "ebpb_report" and source_name and "register" in source_name.lower():
+        df_probe = df_raw.copy()
+        df_probe.columns = [_clean_column_name(c) for c in df_probe.columns]
+        if _is_ebpb_register_format(df_probe):
+            kind = "ebpb_register"
+    df_std = standardize_bison_report_dataframe(df_raw)
+    return df_std, DatasetInfo(rows=len(df_std), columns=len(df_std.columns), ebpb_format=kind)
+
+
+def load_dataset_from_path(path: str | Path) -> tuple[pd.DataFrame, DatasetInfo]:
+    """Wczytuje CSV/XLS/XLSX z dysku i zwraca ramkę w schemacie aplikacji."""
+    path = Path(path)
+    df = _load_raw_dataframe(path, ext=path.suffix)
+    return _finalize_load(df, source_name=path.name)
 
 
 def load_dataset_from_bytes(data: bytes, filename: str) -> tuple[pd.DataFrame, DatasetInfo]:
+    """Wczytuje plik uploadowany z UI na podstawie bajtów i nazwy pliku."""
     bio: BinaryIO = BytesIO(data)
-    df = _read_dataframe_from_ext(bio, ext=Path(filename).suffix)
-
-    df_std = standardize_bison_report_dataframe(df)
-    return df_std, DatasetInfo(rows=len(df_std), columns=len(df_std.columns))
+    df = _load_raw_dataframe(bio, ext=Path(filename).suffix)
+    return _finalize_load(df, source_name=filename)
 
 
 def get_default_bison_report_path() -> Path:
@@ -338,4 +515,3 @@ def load_default_bison_report() -> tuple[pd.DataFrame, DatasetInfo]:
     if not path.exists():
         raise FileNotFoundError(f"Nie znaleziono domyślnej bazy: {path}")
     return load_dataset_from_path(path)
-

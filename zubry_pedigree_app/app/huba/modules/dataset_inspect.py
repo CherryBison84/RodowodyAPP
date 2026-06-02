@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+
 import pandas as pd
 
-from app.data.dataset_loader import load_dataset_from_bytes
 from app.data.validator import ValidationReport, validate_loaded_dataset
 from app.huba.validation_utils import count_validation_issues
 from app.pedigree.ancestor_pedigree import build_people_map
@@ -15,6 +16,7 @@ __all__ = [
     "entry_kind_label",
     "inspect_dataframe",
     "inspect_dataset_from_bytes",
+    "inspect_dataset_from_path",
 ]
 
 
@@ -30,6 +32,7 @@ def entry_kind_label(d: object) -> str:
 
 
 def _merged_from_for(d: object) -> tuple[str, ...]:
+    """Odczytuje listę baz źródłowych dla wpisu będącego połączeniem."""
     merged = getattr(d, "merged_from", None)
     if merged:
         return tuple(merged)
@@ -92,5 +95,22 @@ def inspect_dataframe(
 
 def inspect_dataset_from_bytes(name: str, data: bytes, filename: str) -> InspectedDataset:
     """Wczytuje plik z pamięci (upload UI), standaryzuje i waliduje."""
-    df_std, _info = load_dataset_from_bytes(data, filename)
-    return inspect_dataframe(name, df_std, filename)
+    from app.data.dataset_loader import load_dataset_from_bytes
+    from app.data.ebpb_formats import ebpb_format_label
+
+    df_std, info = load_dataset_from_bytes(data, filename)
+    kind = getattr(info, "ebpb_format", "ebpb_report")
+    source_label = f"{filename} ({ebpb_format_label(kind)})"
+    return inspect_dataframe(name, df_std, source_label)
+
+
+def inspect_dataset_from_path(name: str, path: str | Path) -> InspectedDataset:
+    """Wczytuje plik z dysku (np. przykładowa baza z ``data/``)."""
+    from app.data.dataset_loader import load_dataset_from_path
+    from app.data.ebpb_formats import ebpb_format_label
+
+    path = Path(path)
+    df_std, info = load_dataset_from_path(path)
+    kind = getattr(info, "ebpb_format", "ebpb_report")
+    source_label = f"{path.name} ({ebpb_format_label(kind)})"
+    return inspect_dataframe(name, df_std, source_label)

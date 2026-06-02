@@ -10,6 +10,8 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class Person:
+    """Ujednolicony rekord osobnika używany przez algorytmy rodowodowe."""
+
     id: str
     name: Optional[str]
     sex: Optional[str]
@@ -21,6 +23,7 @@ class Person:
 
 
 def build_people_map(df_std: pd.DataFrame) -> Dict[str, Person]:
+    """Buduje mapę ``id -> Person`` z ramki w standardowym schemacie aplikacji."""
     people: Dict[str, Person] = {}
     for _, row in df_std.iterrows():
         pid = str(row["id"])
@@ -115,4 +118,3 @@ def get_descendant_levels_unbounded(person_id: str, people: Dict[str, Person]) -
                 q.append(child_id)
 
     return levels
-
