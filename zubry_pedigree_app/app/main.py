@@ -1,4 +1,4 @@
-"""CLI HUBA: UI w przeglądarce lub tryb wsadowy z pliku JSON."""
+"""Start aplikacji: GUI albo terminalowy DataCleaner."""
 
 from __future__ import annotations
 
@@ -13,14 +13,21 @@ if str(_pkg_root) not in sys.path:
 
 
 def main() -> None:
-    """Punkt wejścia CLI: UI Streamlit lub wsadowe uruchomienie z pliku JSON."""
+    """Punkt wejścia CLI: UI Streamlit lub tryb terminalowy."""
     parser = argparse.ArgumentParser(
-        description="HUBA-WPB Cleaner — Hybrid Unified Batch Analyzer + Wisent Pedigree Base"
+        description="WisentPedigree DataCleaner - przygotowanie baz do analizy rodowodowej."
+    )
+    parser.add_argument(
+        "mode",
+        nargs="?",
+        choices=["gui", "cli"],
+        default="gui",
+        help="gui - interfejs Streamlit; cli - wersja terminalowa bez GUI.",
     )
     parser.add_argument(
         "--project-config",
         default="",
-        help="Ścieżka do pliku JSON projektu HUBA (tryb wsadowy, bez UI).",
+        help="Ścieżka do pliku JSON projektu DataCleaner (skrót dla trybu terminalowego).",
     )
     parser.add_argument(
         "--ui",
@@ -28,18 +35,17 @@ def main() -> None:
         default="web",
         help="web — Streamlit + przeglądarka (domyślnie); streamlit — ten sam proces",
     )
-    args = parser.parse_args()
+    args, remaining = parser.parse_known_args()
 
     if str(args.project_config).strip():
-        from app.huba.config_io import load_project_config
-        from app.huba.engine import run_project
+        from app.cli import main as cli_main
 
-        cfg = load_project_config(args.project_config)
-        result = run_project(cfg)
-        print(f"[OK] HUBA zakończony. Wyniki: {result.project_dir}")
-        if result.comparison_path:
-            print(f"     Porównanie: {result.comparison_path}")
-        return
+        raise SystemExit(cli_main(["run", "--config", args.project_config]))
+
+    if args.mode == "cli":
+        from app.cli import main as cli_main
+
+        raise SystemExit(cli_main(remaining))
 
     if args.ui == "web":
         from app.ui.web_launcher import run_streamlit_in_browser

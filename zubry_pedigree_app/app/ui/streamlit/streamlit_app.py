@@ -1,7 +1,7 @@
 """
-HUBA-WPB Cleaner (interfejs Streamlit).
+WisentPedigree DataCleaner (interfejs Streamlit).
 
-Hybrid Unified Batch Analyzer + Wisent Pedigree Base — czyszczenie i walidacja baz rodowodu.
+Przygotowanie baz do analizy rodowodowej.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ from app.ui.streamlit import common as sc
 from app.ui.streamlit.huba_nav import NAV_SECTIONS, NAV_STEP1, _NAV_LEGACY
 from app.ui.streamlit.huba_ui import run_huba_app
 
-HUBA_APP_NAME = "HUBA-WPB Cleaner"
-HUBA_TAGLINE = "(Hybrid Unified Batch Analyzer + Wisent Pedigree Base)"
+HUBA_APP_NAME = "WisentPedigree DataCleaner"
+HUBA_TAGLINE = "przygotowanie baz do analizy rodowodowej"
 
 
 def _render_sidebar() -> None:

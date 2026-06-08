@@ -84,5 +84,6 @@ class HubRunResult:
 
     project_dir: Path
     manifest_path: Path
+    final_report_html_path: Path
     comparison_path: Path | None
     datasets: Tuple[DatasetRunResult, ...]

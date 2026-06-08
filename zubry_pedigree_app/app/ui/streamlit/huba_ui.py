@@ -10,6 +10,7 @@ from datetime import datetime
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from app.data.auto_fix import AutoFixOptions
 from app.huba.archive import zip_directory
@@ -46,6 +47,7 @@ __all__ = [
 ]
 
 SESSION_LAST_RUN = "huba_last_run"
+SESSION_SHOW_HTML_REPORT = "huba_show_html_report"
 
 # (klucz session_state, etykieta UI, wartość domyślna)
 FIX_RULES: tuple[tuple[str, str, bool], ...] = (
@@ -153,6 +155,11 @@ def _run_project_from_catalog(
 ) -> HubRunResult:
     """Uruchamia wsad na ramkach z katalogu UI (bez ponownego mapowania kolumn)."""
     return run_project(project, upload_dataframes=dataframes)
+
+
+def _show_html_report_after_download() -> None:
+    """Otwiera podgląd raportu HTML po kliknięciu pobierania."""
+    st.session_state[SESSION_SHOW_HTML_REPORT] = True
 
 
 def _apply_json_config(raw: dict) -> None:
@@ -264,32 +271,92 @@ def section_step5_results() -> None:
     ]
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
+    downloads: list[dict[str, object]] = []
     if result.comparison_path and result.comparison_path.is_file():
-        st.download_button(
-            "Pobierz comparison.csv",
-            data=result.comparison_path.read_bytes(),
-            file_name="comparison.csv",
-            mime="text/csv",
+        downloads.append(
+            {
+                "label": "Pobierz comparison.csv",
+                "data": result.comparison_path.read_bytes(),
+                "file_name": "comparison.csv",
+                "mime": "text/csv",
+                "type": "secondary",
+            }
+        )
+    if result.final_report_html_path.is_file():
+        downloads.append(
+            {
+                "label": "Pobierz raport HTML",
+                "data": result.final_report_html_path.read_bytes(),
+                "file_name": "final_report.html",
+                "mime": "text/html",
+                "type": "primary",
+            }
         )
     if result.manifest_path.is_file():
-        st.download_button(
-            "Pobierz manifest.json",
-            data=result.manifest_path.read_bytes(),
-            file_name="manifest.json",
-            mime="application/json",
+        downloads.append(
+            {
+                "label": "Pobierz manifest.json",
+                "data": result.manifest_path.read_bytes(),
+                "file_name": "manifest.json",
+                "mime": "application/json",
+                "type": "secondary",
+            }
         )
 
     try:
         zip_bytes = zip_directory(result.project_dir)
-        st.download_button(
-            "Pobierz cały katalog wyników (ZIP)",
-            data=zip_bytes,
-            file_name=f"{result.project_dir.name}.zip",
-            mime="application/zip",
-            type="primary",
+        downloads.append(
+            {
+                "label": "Pobierz cały katalog wyników (ZIP)",
+                "data": zip_bytes,
+                "file_name": f"{result.project_dir.name}.zip",
+                "mime": "application/zip",
+                "type": "primary",
+            }
         )
     except Exception as e:
         st.warning(f"Nie udało się spakować wyników: {e}")
+
+    if downloads:
+        cols = st.columns(len(downloads))
+        for col, item in zip(cols, downloads):
+            with col:
+                if str(item["file_name"]) == "final_report.html":
+                    st.download_button(
+                        str(item["label"]),
+                        data=item["data"],
+                        file_name=str(item["file_name"]),
+                        mime=str(item["mime"]),
+                        type=str(item["type"]),  # type: ignore[arg-type]
+                        use_container_width=True,
+                        on_click=_show_html_report_after_download,
+                    )
+                else:
+                    st.download_button(
+                        str(item["label"]),
+                        data=item["data"],
+                        file_name=str(item["file_name"]),
+                        mime=str(item["mime"]),
+                        type=str(item["type"]),  # type: ignore[arg-type]
+                        use_container_width=True,
+                    )
+
+    if result.final_report_html_path.is_file():
+        c_preview, c_hide = st.columns([1, 1])
+        with c_preview:
+            if st.button("Wyświetl raport HTML", use_container_width=True):
+                st.session_state[SESSION_SHOW_HTML_REPORT] = True
+        with c_hide:
+            if st.button("Ukryj raport", use_container_width=True):
+                st.session_state[SESSION_SHOW_HTML_REPORT] = False
+
+        if st.session_state.get(SESSION_SHOW_HTML_REPORT):
+            st.markdown("#### Podgląd raportu HTML")
+            components.html(
+                result.final_report_html_path.read_text(encoding="utf-8"),
+                height=760,
+                scrolling=True,
+            )
 
     with st.expander("Struktura katalogów (podgląd)", expanded=False):
         lines = [str(p.relative_to(result.project_dir)) for p in sorted(result.project_dir.rglob("*")) if p.is_file()]

@@ -48,6 +48,32 @@ cd zubry_pedigree_app
 python3 app/main.py --project-config config/huba_project.example.json
 ```
 
+## Wersja terminalowa bez GUI
+
+DataCleaner może działać całkowicie z terminala, bez uruchamiania Streamlit.
+
+Przetworzenie jednego pliku:
+
+```bash
+cd zubry_pedigree_app
+python3 run_cli.py run --input data/EBPB_bison_report.xlsx --project-name test_terminal
+```
+
+Przetworzenie kilku plików:
+
+```bash
+python3 run_cli.py run --input data/EBPB_bison_report.xlsx data/EBPB_register.xlsx --project-name pakiet_terminal
+```
+
+Praca z konfiguracją JSON:
+
+```bash
+python3 run_cli.py init-config config/datacleaner_cli.example.json
+python3 run_cli.py run --config config/datacleaner_cli.example.json
+```
+
+Wyniki trafiają do `outputs/<nazwa_projektu>/`. W terminalu pojawia się krótkie podsumowanie, a w katalogu wynikowym powstają między innymi `comparison.csv`, `final_report.html`, `manifest.json` i oczyszczone bazy w podkatalogu `datasets/`.
+
 Na macOS, przy problemach z obserwatorem plików: `STREAMLIT_SERVER_FILE_WATCHER_TYPE=none`.
 
 ## Nawigacja w aplikacji (HUBA)

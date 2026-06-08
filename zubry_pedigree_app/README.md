@@ -24,6 +24,27 @@ python run_web.py
 
 Alternatywa: `python run_streamlit.py` (sam serwer) lub `python run_app.py` (CLI: UI albo `--project-config`).
 
+## Wersja terminalowa bez GUI
+
+```bash
+python run_cli.py run --input data/EBPB_bison_report.xlsx --project-name test_terminal
+```
+
+Kilka plików w jednym uruchomieniu:
+
+```bash
+python run_cli.py run --input data/EBPB_bison_report.xlsx data/EBPB_register.xlsx --project-name pakiet_terminal
+```
+
+Konfiguracja JSON:
+
+```bash
+python run_cli.py init-config config/datacleaner_cli.example.json
+python run_cli.py run --config config/datacleaner_cli.example.json
+```
+
+Wyniki: `outputs/<nazwa_projektu>/`, w tym `comparison.csv`, `final_report.html`, `manifest.json` i oczyszczone bazy.
+
 ## Tryb wsadowy (HUBA)
 
 Etapy: `load` → `validate` → `transform` → `export` (`app/huba/stages.py`).
