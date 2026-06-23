@@ -193,6 +193,27 @@ def _summary_table(cat: dict[str, InspectedDataset]) -> pd.DataFrame:
     )
 
 
+def _render_summary_table(cat: dict[str, InspectedDataset]) -> None:
+    """Wyświetla katalog baz z delikatnym wyróżnieniem liczby błędów i ostrzeżeń."""
+    df = _summary_table(cat)
+
+    def _problem_cell(value: object, *, kind: str) -> str:
+        try:
+            n = int(value)
+        except (TypeError, ValueError):
+            n = 0
+        if n <= 0:
+            return "background-color: #eef6ef; color: #355d47; font-weight: 600;"
+        if kind == "error":
+            return "background-color: #f3d8d4; color: #6d2b23; font-weight: 700;"
+        return "background-color: #f1e6c9; color: #5e4718; font-weight: 700;"
+
+    styled = df.style.map(lambda v: _problem_cell(v, kind="error"), subset=["ERROR"]).map(
+        lambda v: _problem_cell(v, kind="warn"), subset=["WARN"]
+    )
+    st.dataframe(styled, width="stretch", hide_index=True)
+
+
 def _dataset_picker_label(name: str, d: InspectedDataset) -> str:
     """Etykieta wyboru bazy z liczbą wierszy oraz problemów walidacji."""
     if d.error_count:
@@ -249,15 +270,16 @@ def _render_merge_panel(cat: dict[str, InspectedDataset]) -> None:
 
     if st.button("Połącz wybrane bazy", type="primary", use_container_width=True, key="huba_merge_btn"):
         try:
-            parts = [(n, cat[n].df_std) for n in selected]
-            merged = merge_standardized_frames(parts, on_duplicate_id=policy_key)  # type: ignore[arg-type]
-            source_label = " + ".join(merged.source_names)
-            inspected = inspect_dataframe(
-                merge_name,
-                merged.df_std,
-                f"Połączenie: {source_label}",
-                merged_from=merged.source_names,
-            )
+            with st.spinner("Łączenie baz i ponowna walidacja..."):
+                parts = [(n, cat[n].df_std) for n in selected]
+                merged = merge_standardized_frames(parts, on_duplicate_id=policy_key)  # type: ignore[arg-type]
+                source_label = " + ".join(merged.source_names)
+                inspected = inspect_dataframe(
+                    merge_name,
+                    merged.df_std,
+                    f"Połączenie: {source_label}",
+                    merged_from=merged.source_names,
+                )
             _register(inspected)
             st.session_state["huba_merge_last_log"] = "\n".join(merged.log)
             st.success(f"Połączono jako **{merge_name}** ({inspected.rows} wierszy).")
@@ -327,13 +349,14 @@ def section_step1_load() -> None:
                         from app.data.dataset_loader import load_dataset_from_path
                         from app.data.ebpb_formats import ebpb_format_label
 
-                        df_std, info = load_dataset_from_path(sample_path)
-                        kind = getattr(info, "ebpb_format", "ebpb_report")
-                        inspected = inspect_dataframe(
-                            sample_path.stem,
-                            df_std,
-                            f"{sample_path.name} ({ebpb_format_label(kind)})",
-                        )
+                        with st.spinner(f"Wczytywanie i walidacja: {sample_path.name}..."):
+                            df_std, info = load_dataset_from_path(sample_path)
+                            kind = getattr(info, "ebpb_format", "ebpb_report")
+                            inspected = inspect_dataframe(
+                                sample_path.stem,
+                                df_std,
+                                f"{sample_path.name} ({ebpb_format_label(kind)})",
+                            )
                         _register(inspected)
                         st.success(f"Wczytano **{sample_path.name}**.")
                         st.rerun()
@@ -350,17 +373,18 @@ def section_step1_load() -> None:
     if uploaded and st.button("Wczytaj i zwaliduj", type="primary", use_container_width=True):
         errors: list[str] = []
         loaded = 0
-        for i, f in enumerate(uploaded):
-            try:
-                inspected = inspect_dataset_from_bytes(
-                    Path(f.name).stem or f"plik_{i+1}",
-                    f.getvalue(),
-                    f.name,
-                )
-                _register(inspected)
-                loaded += 1
-            except Exception as e:
-                errors.append(f"{f.name}: {e}")
+        with st.spinner("Wczytywanie i walidacja plików..."):
+            for i, f in enumerate(uploaded):
+                try:
+                    inspected = inspect_dataset_from_bytes(
+                        Path(f.name).stem or f"plik_{i+1}",
+                        f.getvalue(),
+                        f.name,
+                    )
+                    _register(inspected)
+                    loaded += 1
+                except Exception as e:
+                    errors.append(f"{f.name}: {e}")
         for msg in errors:
             st.error(msg)
         if loaded:
@@ -372,10 +396,10 @@ def section_step1_load() -> None:
         st.info("Brak wczytanych plików.")
         return
 
-    st.dataframe(_summary_table(cat), width="stretch", hide_index=True)
+    _render_summary_table(cat)
     _render_merge_panel(cat)
 
-    if st.button("Wyczyść katalog", use_container_width=True):
+    if st.button("Wyczyść katalog", use_container_width=True, key="huba_clear_catalog_btn"):
         st.session_state[SESSION_CATALOG] = {}
         st.session_state.pop(SESSION_ACTIVE, None)
         st.rerun()
@@ -405,8 +429,8 @@ def section_step2_errors() -> None:
     _init_catalog()
     _page_intro(
         "Krok 2 — Walidacja",
-        "Przegląd problemów wg kategorii. Eksport i reguły wsadowe — w **Kroku 4**. "
-        "(Krok 3 — czyszczenie ręczne — w przygotowaniu.)",
+        "Przegląd problemów wg kategorii. Pojedyncze rekordy poprawisz w **Kroku 3**, "
+        "a reguły wsadowe i eksport uruchomisz w **Kroku 4**.",
     )
 
     cat = _catalog()
@@ -435,7 +459,7 @@ def section_step2_errors() -> None:
 
     st.divider()
     with st.expander("Inne bazy w katalogu", expanded=False):
-        st.dataframe(_summary_table(cat), width="stretch", hide_index=True)
+        _render_summary_table(cat)
     sc.help_expander("Co sprawdza walidacja?", hc.SECTION_VALIDATION, expanded=False)
     render_validation_summary_charts_expander(active.df_std, active.validation_report)
 

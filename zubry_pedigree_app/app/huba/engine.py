@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 
@@ -24,14 +25,17 @@ def _safe_dir_name(s: str) -> str:
 
 def _result_row(ctx: DatasetContext) -> dict[str, object]:
     """Jeden wiersz pliku ``comparison.csv`` dla danego wejścia."""
+    n_err_before, n_warn_before = count_validation_issues(ctx.initial_validation_report)
     n_err, n_warn = count_validation_issues(ctx.validation_report)
     return {
         "input_name": ctx.source.name,
         "source": ctx.source_label,
         "rows_in": ctx.rows_in,
         "rows_out": ctx.rows_out,
-        "validation_errors": n_err,
-        "validation_warnings": n_warn,
+        "validation_errors_before": n_err_before,
+        "validation_errors_after": n_err,
+        "validation_warnings_before": n_warn_before,
+        "validation_warnings_after": n_warn,
         "fix_steps": len(ctx.fix_log),
         "status": dataset_status_from_report(ctx.validation_report),
         "run_dir": str(ctx.run_dir.name),
@@ -72,6 +76,7 @@ def _write_final_report_html(
     summary_rows: list[list[object]] = []
     sections: list[str] = []
     for ctx in contexts:
+        n_err_before, n_warn_before = count_validation_issues(ctx.initial_validation_report)
         n_err, n_warn = count_validation_issues(ctx.validation_report)
         status = dataset_status_from_report(ctx.validation_report)
         export_rows = len(ctx.validation_report.export_rows) if ctx.validation_report else 0
@@ -81,8 +86,8 @@ def _write_final_report_html(
                 ctx.source_label,
                 ctx.rows_in,
                 ctx.rows_out,
-                n_err,
-                n_warn,
+                f"{n_err_before} → {n_err}",
+                f"{n_warn_before} → {n_warn}",
                 export_rows,
                 _status_label(status),
             ]
@@ -97,12 +102,10 @@ def _write_final_report_html(
             for row in ctx.validation_report.export_rows[:300]:
                 export_issue_rows.append([row.record_id, row.severity, row.problem_type, row.details])
 
-        run_dir_rel = ctx.run_dir.relative_to(project_dir)
         artifacts = [
-            ["Oczyszczona baza", f"{run_dir_rel}/{project.output.cleaned_basename}.{project.output.export_format}"],
-            ["Problemy walidacji", f"{run_dir_rel}/{project.output.issues_basename}.csv"],
-            ["Podsumowanie walidacji", f"{run_dir_rel}/{project.output.summary_basename}.json"],
-            ["Log auto-poprawek", f"{run_dir_rel}/{project.output.fix_log_basename}.txt"],
+            [label, str(path.relative_to(project_dir))]
+            for label, path in ctx.artifacts.items()
+            if path.is_file()
         ]
 
         status_badge = (
@@ -119,11 +122,11 @@ def _write_final_report_html(
               <div class="metrics">
                 <div><strong>{ctx.rows_in}</strong><span>wiersze wejściowe</span></div>
                 <div><strong>{ctx.rows_out}</strong><span>wiersze wynikowe</span></div>
-                <div><strong>{n_err}</strong><span>błędy</span></div>
-                <div><strong>{n_warn}</strong><span>ostrzeżenia</span></div>
+                <div><strong>{n_err_before} → {n_err}</strong><span>błędy przed → po</span></div>
+                <div><strong>{n_warn_before} → {n_warn}</strong><span>ostrzeżenia przed → po</span></div>
               </div>
               <h3>Artefakty</h3>
-              {_html_table(["Artefakt", "Ścieżka"], artifacts)}
+              {_html_table(["Artefakt", "Ścieżka"], artifacts) if artifacts else "<p>Brak wygenerowanych artefaktów.</p>"}
               <h3>Komunikaty walidacji</h3>
               {_html_table(["Poziom", "Komunikat", "Szczegóły"], issue_rows) if issue_rows else "<p>Brak komunikatów.</p>"}
               <h3>Rekordy do korekty</h3>
@@ -179,7 +182,7 @@ def _write_final_report_html(
     <p class="muted">Projekt: <strong>{escape(project.project_name)}</strong> · wygenerowano: {escape(generated)}</p>
     <p>Raport podsumowuje jakość danych, status gotowości oraz artefakty wygenerowane przed właściwą analizą rodowodową.</p>
     <div class="summary">
-      {_html_table(["Baza", "Źródło", "Wiersze wejściowe", "Wiersze wynikowe", "Błędy", "Ostrzeżenia", "Wpisy CSV", "Status"], summary_rows)}
+      {_html_table(["Baza", "Źródło", "Wiersze wejściowe", "Wiersze wynikowe", "Błędy przed → po", "Ostrzeżenia przed → po", "Wpisy CSV", "Status"], summary_rows)}
     </div>
   </header>
   {''.join(sections)}
@@ -211,6 +214,12 @@ def run_project(
         raise ValueError("Projekt HUBA wymaga co najmniej jednego wejścia (`inputs`).")
 
     project_dir = project.output_dir / _safe_dir_name(project.project_name)
+    # Nazwa projektu oznacza jeden kompletny przebieg. Usunięcie starego katalogu
+    # zapobiega dołączaniu nieaktualnych baz i formatów do raportu oraz ZIP-a.
+    if project_dir.is_symlink():
+        raise ValueError(f"Katalog projektu nie może być dowiązaniem symbolicznym: {project_dir}")
+    if project_dir.exists():
+        shutil.rmtree(project_dir)
     project_dir.mkdir(parents=True, exist_ok=True)
 
     payloads = upload_payloads or {}
@@ -247,8 +256,10 @@ def run_project(
             df_preloaded=df_preloaded,
         )
         row = _result_row(ctx)
-        n_err = int(row["validation_errors"])
-        n_warn = int(row["validation_warnings"])
+        n_err_before = int(row["validation_errors_before"])
+        n_warn_before = int(row["validation_warnings_before"])
+        n_err = int(row["validation_errors_after"])
+        n_warn = int(row["validation_warnings_after"])
 
         results.append(
             DatasetRunResult(
@@ -256,6 +267,8 @@ def run_project(
                 run_dir=run_dir,
                 rows_in=ctx.rows_in,
                 rows_out=ctx.rows_out,
+                validation_errors_before=n_err_before,
+                validation_warnings_before=n_warn_before,
                 validation_errors=n_err,
                 validation_warnings=n_warn,
                 fix_steps=len(ctx.fix_log),
@@ -272,14 +285,37 @@ def run_project(
 
     final_report_html_path = _write_final_report_html(project, project_dir, contexts)
 
+    generated_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     manifest = {
+        "schema_version": 2,
+        "application_version": _application_version(),
+        "generated_at": generated_at,
         "project_name": project.project_name,
         "project_dir": str(project_dir),
         "final_report_html": str(final_report_html_path),
         "stages": list(project.stages),
+        "configuration": {
+            "rules": asdict(project.rules),
+            "output": asdict(project.output),
+        },
         "datasets": [
-            {**asdict(r), "run_dir": str(r.run_dir)}
-            for r in results
+            {
+                **asdict(r),
+                "run_dir": str(r.run_dir),
+                "artifacts": {
+                    label: str(path)
+                    for label, path in ctx.artifacts.items()
+                    if path.is_file()
+                },
+                "input": {
+                    "name": ctx.source.name,
+                    "source_label": ctx.source_label,
+                    "path": str(ctx.source.path) if ctx.source.path else None,
+                    "sha256": ctx.input_sha256,
+                    "size_bytes": ctx.input_size_bytes,
+                },
+            }
+            for r, ctx in zip(results, contexts)
         ],
     }
     manifest_path = project_dir / "manifest.json"
@@ -292,3 +328,15 @@ def run_project(
         comparison_path=comparison_path,
         datasets=tuple(results),
     )
+
+
+def _application_version() -> str:
+    """Odczytuje wersję pakietu z pyproject bez wymagania instalacji projektu."""
+    try:
+        import tomllib
+
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        return str(data["project"]["version"])
+    except Exception:
+        return "unknown"

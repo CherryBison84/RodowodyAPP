@@ -1,6 +1,6 @@
 # WisentPedigree Pro+ (RodowodyAPP)
 
-**Wersja aplikacji (pakiet): 0.6.0**
+**Wersja aplikacji (pakiet): 1.0.0**
 
 **HUBA-WPB Cleaner** — aplikacja **webowa (Streamlit)** do wczytywania baz rodowodowych żubrów, **walidacji** (wykresy podsumowań, eksport CSV), **automatycznych poprawek** i eksportu oczyszczonych plików. Interfejs i treści pomocy są po polsku.
 
@@ -80,11 +80,11 @@ Na macOS, przy problemach z obserwatorem plików: `STREAMLIT_SERVER_FILE_WATCHER
 
 1. **Krok 1 — Wczytanie danych** — upload CSV/XLSX, katalog plików, łączenie zbiorów.
 2. **Krok 2 — Walidacja** — kategorie kontroli, wykresy, eksport CSV z problemami.
-3. **Krok 3 — Czyszczenie ręczne** — edycja rekordów (gdy włączone w konfiguracji nawigacji).
+3. **Krok 3 — Czyszczenie ręczne** — edycja pojedynczych rekordów z ponowną walidacją i możliwością cofnięcia ostatniej zmiany.
 4. **Krok 4 — Czyszczenie automatyczne** — reguły auto-poprawek i uruchomienie projektu wsadowego.
 5. **Krok 5 — Wyniki** — pobranie oczyszczonych plików i archiwum ZIP.
 
-Na dole strony: zwinięta pomoc (**Słownik parametrów**, **Literatura**).
+W widoku walidacji dostępna jest zwinięta pomoc opisująca wykonywane kontrole.
 
 ## Dane i dokumentacja
 
@@ -103,6 +103,65 @@ Zobacz **`zubry_pedigree_app/requirements.txt`**: Streamlit, pandas, numpy, matp
 | `zubry_pedigree_app/app/ui/streamlit/` | Interfejs HUBA |
 | `zubry_pedigree_app/run_web.py` | Start z przeglądarką |
 | `run_streamlit.py` (root) | Start z katalogu głównego repo |
+
+## Problem i podział projektu
+
+Projekt rozwiązuje konkretny problem jakości baz rodowodowych: różne eksporty EBPB mogą mieć
+odmienny układ kolumn oraz niespójne identyfikatory, relacje rodzic–potomstwo, płeć i daty.
+Niepoprawne dane mogą zniekształcić późniejsze obliczenia rodowodowe.
+
+**Część integracyjna** rozpoznaje format wejścia, mapuje raport i rejestr EBPB do wspólnego
+schematu, opcjonalnie łączy zbiory, waliduje je, stosuje wybrane transformacje i eksportuje
+wynik wraz z raportem oraz manifestem.
+
+**Część główna** to aplikacja Streamlit prowadząca użytkownika przez wczytanie, walidację,
+ręczne lub automatyczne czyszczenie oraz pobranie wyników. Ten sam silnik jest dostępny przez CLI.
+
+## Architektura i przepływ danych
+
+```mermaid
+flowchart LR
+    U["Użytkownik"] --> UI["Streamlit"]
+    U --> CLI["CLI / JSON"]
+    F["CSV / XLS / XLSX"] --> UI
+    F --> CLI
+    UI --> L["Rozpoznanie formatu i loader"]
+    CLI --> L
+    L --> S["Wspólny schemat danych"]
+    S --> M["Katalog i opcjonalne łączenie"]
+    M --> V1["Walidacja wejściowa"]
+    V1 --> P["Ręczna lub automatyczna transformacja"]
+    P --> V2["Walidacja końcowa"]
+    V2 --> E["Eksport"]
+    E --> O["Oczyszczona baza"]
+    E --> R["CSV problemów i raport HTML"]
+    E --> J["Manifest JSON i ZIP"]
+```
+
+Potok wsadowy ma etapy `load → validate → transform → export`. Plik źródłowy nie jest
+nadpisywany. Manifest zapisuje konfigurację, wersję aplikacji, czas, identyfikację wejścia SHA-256
+oraz wynik walidacji przed i po transformacji.
+
+## Testy
+
+```bash
+cd zubry_pedigree_app
+pip install -r requirements-dev.txt
+python -m pytest -v
+```
+
+Testy obejmują import obu formatów EBPB, walidator, reguły auto-poprawek, łączenie zbiorów,
+konfigurację JSON, silnik HUBA, artefakty wynikowe, CLI oraz obliczenia rodowodowe.
+
+## Wykorzystanie sztucznej inteligencji
+
+Narzędzia generatywnej AI, w tym Codex, były wykorzystywane jako wsparcie pracy programistycznej:
+do porządkowania kodu, dokumentacji, przeglądu implementacji i przygotowania testów. Zmiany były
+weryfikowane poprzez analizę kodu, uruchomienie aplikacji i testy.
+
+AI nie jest elementem działania DataCleaner. Dane użytkownika nie są wysyłane do modelu,
+a walidacja i czyszczenie korzystają z jawnych, deterministycznych reguł Pythona. Model nie
+podejmuje decyzji hodowlanych; końcowy wynik wymaga oceny osoby posiadającej wiedzę domenową.
 
 ## Autorka
 

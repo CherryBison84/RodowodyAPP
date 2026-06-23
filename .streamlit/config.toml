@@ -1,0 +1,9 @@
+# Motyw dopasowany do `zubry_pedigree_app/app/ui/theme.py`.
+
+[theme]
+base = "light"
+primaryColor = "#355d47"
+backgroundColor = "#e8f0eb"
+secondaryBackgroundColor = "#dce8df"
+textColor = "#1e2b24"
+font = "sans serif"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Callable
 
 import pandas as pd
@@ -44,12 +45,23 @@ def stage_load(
     if df_preloaded is not None:
         df_raw = df_preloaded.copy()
         ctx.source_label = ctx.source.name
+        hashed = pd.util.hash_pandas_object(df_raw, index=True).values.tobytes()
+        ctx.input_sha256 = hashlib.sha256(hashed).hexdigest()
+        ctx.input_size_bytes = int(df_raw.memory_usage(index=True, deep=True).sum())
     elif file_bytes is not None and filename:
         df_raw, _info = load_dataset_from_bytes(file_bytes, filename)
         ctx.source_label = filename
+        ctx.input_sha256 = hashlib.sha256(file_bytes).hexdigest()
+        ctx.input_size_bytes = len(file_bytes)
     elif ctx.source.path is not None:
         df_raw, _info = load_dataset_from_path(ctx.source.path)
         ctx.source_label = str(ctx.source.path.name)
+        digest = hashlib.sha256()
+        with ctx.source.path.open("rb") as source_file:
+            for chunk in iter(lambda: source_file.read(1024 * 1024), b""):
+                digest.update(chunk)
+        ctx.input_sha256 = digest.hexdigest()
+        ctx.input_size_bytes = ctx.source.path.stat().st_size
     else:
         raise ValueError(f"Brak danych wejściowych dla „{ctx.source.name}”.")
 
@@ -66,6 +78,8 @@ def stage_validate(ctx: DatasetContext) -> DatasetContext:
     people = build_people_map(ctx.df_std)
     ctx.people = people
     ctx.validation_report = validate_loaded_dataset(df_std=ctx.df_std, people=people)
+    if ctx.initial_validation_report is None:
+        ctx.initial_validation_report = ctx.validation_report
     return ctx
 
 
@@ -111,11 +125,18 @@ def stage_export(ctx: DatasetContext) -> DatasetContext:
         raise RuntimeError("stage_export wymaga ramki danych.")
     run_dir = ctx.run_dir
     out = ctx.output
-    out_layout.write_cleaned(ctx.df_std, run_dir, out)
+    cleaned = out_layout.write_cleaned(ctx.df_std, run_dir, out)
+    ctx.artifacts["Oczyszczona baza"] = cleaned
     if ctx.validation_report is not None:
-        out_layout.write_validation_issues(ctx.validation_report, run_dir, out)
-        out_layout.write_validation_summary(ctx, run_dir, out)
-    out_layout.write_fix_log(ctx, run_dir, out)
+        issues = out_layout.write_validation_issues(ctx.validation_report, run_dir, out)
+        if issues is not None:
+            ctx.artifacts["Problemy walidacji"] = issues
+        summary = out_layout.write_validation_summary(ctx, run_dir, out)
+        if summary is not None:
+            ctx.artifacts["Podsumowanie walidacji"] = summary
+    fix_log = out_layout.write_fix_log(ctx, run_dir, out)
+    if fix_log is not None:
+        ctx.artifacts["Log auto-poprawek"] = fix_log
     return ctx
 
 

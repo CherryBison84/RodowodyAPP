@@ -28,7 +28,11 @@ class DatasetContext:
     source_label: str = ""
     df_std: pd.DataFrame | None = None
     people: dict[str, Person] | None = None
+    initial_validation_report: ValidationReport | None = None
     validation_report: ValidationReport | None = None
     fix_log: list[str] = field(default_factory=list)
+    artifacts: dict[str, Path] = field(default_factory=dict)
+    input_sha256: str = ""
+    input_size_bytes: int | None = None
     rows_in: int = 0
     rows_out: int = 0

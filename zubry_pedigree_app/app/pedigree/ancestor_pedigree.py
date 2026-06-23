@@ -23,10 +23,15 @@ class Person:
 
 
 def build_people_map(df_std: pd.DataFrame) -> Dict[str, Person]:
-    """Buduje mapę ``id -> Person`` z ramki w standardowym schemacie aplikacji."""
+    """Buduje mapę ``id -> Person``; wiersze bez ID pozostają tylko w walidacji tabeli."""
     people: Dict[str, Person] = {}
     for _, row in df_std.iterrows():
-        pid = str(row["id"])
+        raw_id = row.get("id")
+        if raw_id is None or pd.isna(raw_id):
+            continue
+        pid = str(raw_id).strip()
+        if not pid or pid.lower() in {"nan", "none"}:
+            continue
         people[pid] = Person(
             id=pid,
             name=row.get("name"),

@@ -72,6 +72,8 @@ class DatasetRunResult:
     run_dir: Path
     rows_in: int
     rows_out: int
+    validation_errors_before: int
+    validation_warnings_before: int
     validation_errors: int
     validation_warnings: int
     fix_steps: int
