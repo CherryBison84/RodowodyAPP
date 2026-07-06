@@ -257,14 +257,13 @@ def section_step5_results() -> None:
         st.info("Brak wyników — wykonaj czyszczenie automatyczne w **Kroku 4**.")
         return
 
-    st.caption(f"Katalog: `{result.project_dir}`")
     rows = [
         {
             "wejście": d.input_name,
             "wiersze_we": d.rows_in,
             "wiersze_wy": d.rows_out,
-            "błędy": d.validation_errors,
-            "ostrzeżenia": d.validation_warnings,
+            "błędy_przed→po": f"{d.validation_errors_before} → {d.validation_errors}",
+            "ostrzeżenia_przed→po": f"{d.validation_warnings_before} → {d.validation_warnings}",
             "status": d.status,
         }
         for d in result.datasets

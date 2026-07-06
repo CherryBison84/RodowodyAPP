@@ -10,8 +10,8 @@ NAV_STEP3: Final[str] = "Krok 3 — Czyszczenie ręczne"
 NAV_STEP4: Final[str] = "Krok 4 — Czyszczenie automatyczne"
 NAV_STEP5: Final[str] = "Krok 5 — Wyniki"
 
-# Gdy False — Krok 3 pokazuje placeholder (holder.jpeg) zamiast formularza edycji.
-MANUAL_CLEAN_ENABLED: Final[bool] = False
+# Ręczna korekta pojedynczych rekordów jest częścią głównego przepływu aplikacji.
+MANUAL_CLEAN_ENABLED: Final[bool] = True
 
 NAV_SECTIONS: Final[tuple[str, ...]] = (
     NAV_STEP1,

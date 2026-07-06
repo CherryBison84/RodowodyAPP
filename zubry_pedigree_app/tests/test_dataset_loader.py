@@ -16,6 +16,8 @@ from app.data.dataset_loader import (  # noqa: E402
     load_dataset_from_path,
     standardize_bison_report_dataframe,
 )
+from app.data.validator import validate_loaded_dataset  # noqa: E402
+from app.pedigree.ancestor_pedigree import build_people_map  # noqa: E402
 from app.runtime_path import data_dir
 
 
@@ -105,3 +107,31 @@ def test_register_birth_location_merge() -> None:
     )
     out = standardize_bison_report_dataframe(raw)
     assert out["birth_location"].iloc[0] == "Pless, DE"
+
+
+def test_import_preserves_rows_and_invalid_codes_for_validation() -> None:
+    import pandas as pd
+
+    raw = pd.DataFrame(
+        {
+            "id": [None, "99999", "1"],
+            "name": ["Bez ID", "Techniczny", "Poprawny"],
+            "sex": ["U", "M", "F"],
+            "father_id": [None, None, None],
+            "mother_id": [None, None, None],
+        }
+    )
+
+    out = standardize_bison_report_dataframe(raw)
+    assert len(out) == 3
+    assert out["id"].isna().sum() == 1
+    assert "99999" in set(out["id"].dropna())
+    assert out.loc[0, "sex"] == "U"
+
+    people = build_people_map(out)
+    assert "None" not in people
+    assert "99999" in people
+    report = validate_loaded_dataset(out, people)
+    problem_types = {row.problem_type for row in report.export_rows}
+    assert "Pusty lub niepoprawny identyfikator" in problem_types
+    assert "Niepoprawna płeć (sex)" in problem_types

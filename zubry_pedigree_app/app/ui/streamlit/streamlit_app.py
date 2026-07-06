@@ -33,7 +33,7 @@ def _render_sidebar() -> None:
         if _logo_path.exists():
             st.image(str(_logo_path), width="stretch")
         st.markdown(
-            f'<p style="margin:0.35rem 0 0.1rem 0;font-size:1.05rem;font-weight:700;color:{sc.THEME.TEXT};">'
+            f'<p style="margin:0.6rem 0 0.1rem 0;font-size:1.05rem;font-weight:700;color:{sc.THEME.TEXT};">'
             f"{HUBA_APP_NAME}</p>"
             f'<p style="margin:0 0 0.5rem 0;font-size:0.72rem;color:{sc.THEME.MUTED};">'
             f"{HUBA_TAGLINE}</p>",

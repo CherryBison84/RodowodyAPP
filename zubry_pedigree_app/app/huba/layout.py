@@ -44,14 +44,19 @@ def write_validation_summary(ctx: DatasetContext, run_dir: Path, output: OutputS
     """Zapisuje skrócony JSON ze statusem walidacji i liczbą wierszy."""
     if not output.write_summary or ctx.validation_report is None:
         return None
+    n_err_before, n_warn_before = count_validation_issues(ctx.initial_validation_report)
     n_err, n_warn = count_validation_issues(ctx.validation_report)
     payload = {
         "input_name": ctx.source.name,
         "source_label": ctx.source_label,
         "rows_in": ctx.rows_in,
         "rows_out": ctx.rows_out,
+        "validation_errors_before": n_err_before,
+        "validation_warnings_before": n_warn_before,
         "validation_errors": n_err,
         "validation_warnings": n_warn,
+        "input_sha256": ctx.input_sha256,
+        "input_size_bytes": ctx.input_size_bytes,
         "export_issue_rows": len(ctx.validation_report.export_rows),
         "status": dataset_status_from_report(ctx.validation_report),
     }

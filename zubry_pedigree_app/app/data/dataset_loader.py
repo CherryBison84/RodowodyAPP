@@ -117,14 +117,6 @@ def _norm_line(v: object) -> Optional[str]:
     return s_up if s_up in {"LB", "LC"} else None
 
 
-def _drop_test_id_rows(df: pd.DataFrame, *, id_col: str, test_id: str) -> pd.DataFrame:
-    """Usuwa wiersze technicznego rekordu testowego po wskazanej kolumnie ID."""
-    try:
-        return df[df[id_col].astype(str) != str(test_id)].reset_index(drop=True)
-    except Exception:
-        return df[df[id_col] != test_id].reset_index(drop=True)
-
-
 def _detect_csv_sep(text: str) -> str:
     """Wybiera separator po pierwszym wierszu (Excel PL często używa „;”)."""
     first = text.split("\n", 1)[0]
@@ -217,14 +209,22 @@ def _rename_columns_to_app_schema(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _finalize_bison_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Czyści typy, usuwa rekord testowy i układa kolumny w standardowej kolejności."""
+    """
+    Czyści techniczny zapis pól i układa kolumny w standardowej kolejności.
+
+    Nie usuwa rekordów ani nie zamienia nieznanych kodów domenowych na braki. Dzięki
+    temu walidator widzi rzeczywisty stan wejścia, a decyzje o usunięciu rekordów są
+    wykonywane dopiero w jawnym etapie transformacji.
+    """
     df = df.copy()
     for col in ("id", "father_id", "mother_id"):
         if col in df.columns:
             df[col] = df[col].apply(_parse_id)
     if "sex" in df.columns:
+        # Zachowaj np. kod `U`, aby walidator mógł go wykazać. Normalizacja do
+        # M/F/None w tym miejscu ukrywałaby błąd danych źródłowych.
         sex = df["sex"].astype(str).str.strip().str.upper()
-        df["sex"] = sex.where(sex.isin(["M", "F"]), other=None)
+        df["sex"] = sex.where(df["sex"].notna() & sex.ne(""), other=None)
     for col in [
         "name",
         "alt_name",
@@ -237,9 +237,6 @@ def _finalize_bison_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].astype(str).where(df[col].notna(), other=None)
             df[col] = df[col].str.strip().replace({"": None})
-    if "id" in df.columns:
-        df = df[df["id"].notna()].reset_index(drop=True)
-        df = _drop_test_id_rows(df, id_col="id", test_id="99999")
     schema = [c for c in STANDARD_BISON_REPORT_COLUMNS if c in df.columns]
     return df.loc[:, schema].reset_index(drop=True)
 

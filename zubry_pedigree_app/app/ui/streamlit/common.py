@@ -149,6 +149,17 @@ def apply_page_style() -> None:
             font-size: 1.1458rem; /* ~+1pt względem 1.0625rem */
             line-height: 1.55;
         }}
+        header[data-testid="stHeader"],
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"],
+        #MainMenu,
+        footer {{
+            display: none !important;
+        }}
+        [data-testid="stAppViewContainer"] {{
+            background-color: {THEME.APP_BG};
+        }}
         .stApp .main .block-container,
         .stApp .main p,
         .stApp .main li,
@@ -168,18 +179,82 @@ def apply_page_style() -> None:
             border-radius: 10px;
             box-shadow: 0 1px 8px rgba(30, 43, 36, 0.08);
         }}
-        /* Nawigacja: zaznaczony punkt jak aktywna karta */
+        /* Nawigacja: pionowy przebieg kroków zamiast surowej listy radio */
+        [data-testid="stSidebar"] div[role="radiogroup"] {{
+            position: relative;
+            gap: 0.26rem;
+        }}
         [data-testid="stSidebar"] div[role="radiogroup"] label {{
-            padding: 0.32rem 0.55rem;
+            position: relative;
+            min-height: 2.62rem;
+            padding: 0.42rem 0.5rem 0.42rem 2.42rem;
             border-radius: 8px;
-            margin-bottom: 2px;
-            transition: background-color 0.15s ease;
+            margin-bottom: 0.1rem;
+            transition: background-color 0.15s ease, box-shadow 0.15s ease;
+        }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {{
+            display: none !important;
+        }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label::before {{
+            position: absolute;
+            left: 0.54rem;
+            top: 0.58rem;
+            z-index: 1;
+            width: 1.22rem;
+            height: 1.22rem;
+            border-radius: 999px;
+            background: {THEME.ENTRY_BG};
+            border: 1px solid {THEME.BORDER_SUBTLE};
+            color: {THEME.MUTED};
+            display: grid;
+            place-items: center;
+            font-size: 0.68rem;
+            font-weight: 700;
+            line-height: 1;
+        }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label::after {{
+            content: "";
+            position: absolute;
+            left: 1.13rem;
+            top: 1.86rem;
+            bottom: -0.5rem;
+            width: 1px;
+            background: {THEME.BORDER_SUBTLE};
+            opacity: 0.55;
+        }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label:last-child::after {{
+            display: none;
+        }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label:nth-child(1)::before {{ content: "1"; }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label:nth-child(2)::before {{ content: "2"; }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label:nth-child(3)::before {{ content: "3"; }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label:nth-child(4)::before {{ content: "4"; }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label:nth-child(5)::before {{ content: "5"; }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label p {{
+            line-height: 1.32;
         }}
         [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {{
             background-color: {THEME.TAB_ACTIVE_BG} !important;
             font-weight: 600;
             color: {THEME.TAB_TEXT} !important;
             box-shadow: inset 0 0 0 1px {THEME.BORDER_SUBTLE};
+        }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked)::before {{
+            background: {THEME.EDGE_PLOT};
+            border-color: {THEME.EDGE_PLOT};
+            color: {THEME.ENTRY_BG};
+            box-shadow: 0 0 0 3px rgba(61, 99, 77, 0.13);
+        }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label:nth-child(3):has(input:checked) {{
+            background-color: #d8dfd9 !important;
+            color: {THEME.MUTED} !important;
+            box-shadow: inset 0 0 0 1px #c4cec6;
+        }}
+        [data-testid="stSidebar"] div[role="radiogroup"] label:nth-child(3):has(input:checked)::before {{
+            background: #9aaa9e;
+            border-color: #9aaa9e;
+            color: #f4f8f4;
+            box-shadow: none;
         }}
         .stApp .main .block-container {{
             padding-top: 1.5rem;
@@ -225,6 +300,15 @@ def apply_page_style() -> None:
         .stMarkdown a {{
             color: {THEME.LINK} !important;
         }}
+        .stMarkdown code {{
+            background-color: #edf5ef !important;
+            color: {THEME.LINK} !important;
+            border: 1px solid rgba(53, 93, 71, 0.18);
+            border-radius: 5px;
+            padding: 0.08rem 0.32rem;
+            font-size: 0.88em;
+            font-weight: 650;
+        }}
         /* Pola formularza i selecty — leśne tła (BaseWeb / domyślne inputy) */
         .stTextInput input, .stNumberInput input, .stDateInput input {{
             background-color: {THEME.ENTRY_BG} !important;
@@ -256,15 +340,28 @@ def apply_page_style() -> None:
             background-color: {THEME.BUTTON_BG} !important;
             color: {THEME.TEXT} !important;
             border: 1px solid {THEME.BORDER_SUBTLE} !important;
+            border-radius: 7px !important;
+            min-height: 2.42rem;
+            box-shadow: 0 1px 3px rgba(30, 43, 36, 0.06);
+            transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
         }}
         .stButton > button:hover {{
             background-color: {THEME.BUTTON_BG2} !important;
             border-color: {THEME.ACCENT} !important;
+            box-shadow: 0 2px 7px rgba(30, 43, 36, 0.12);
+        }}
+        .stButton > button:active,
+        .stDownloadButton > button:active,
+        [data-testid="stFileUploaderDropzone"] button:active {{
+            cursor: progress !important;
+            filter: saturate(0.88) brightness(0.96);
         }}
         .stDownloadButton > button {{
             background-color: {THEME.BUTTON_BG2} !important;
             color: {THEME.TEXT} !important;
             border: 1px solid {THEME.ACCENT} !important;
+            border-radius: 7px !important;
+            min-height: 2.34rem;
         }}
         /* Pobierz wykres (PNG) i inne pobrania w treści — mniejsza czcionka (~2–3 pt) */
         [data-testid="stMain"] .stDownloadButton > button,
@@ -278,11 +375,39 @@ def apply_page_style() -> None:
             background-color: {THEME.EDGE_PLOT} !important;
             color: #f4f8f4 !important;
             border: 1px solid {THEME.EDGE_PLOT} !important;
+            font-weight: 700 !important;
+            box-shadow: 0 2px 10px rgba(61, 99, 77, 0.16);
         }}
         div[data-testid="stBaseButton-primary"] > button:hover,
         button[kind="primary"]:hover {{
             background-color: {THEME.LINK} !important;
             border-color: {THEME.LINK} !important;
+        }}
+        .st-key-huba_clear_catalog_btn button {{
+            background-color: #eadbd2 !important;
+            border-color: #b78b73 !important;
+            color: #4f3024 !important;
+        }}
+        .st-key-huba_clear_catalog_btn button:hover {{
+            background-color: #dfc7ba !important;
+            border-color: {THEME.ACCENT} !important;
+            color: #3d231a !important;
+        }}
+        html:has(button:disabled),
+        html:has([aria-disabled="true"]),
+        html:has(img[alt="Running..."]) {{
+            cursor: progress !important;
+        }}
+        html:has(button:disabled) *,
+        html:has([aria-disabled="true"]) *,
+        html:has(img[alt="Running..."]) * {{
+            cursor: progress !important;
+        }}
+        .stButton > button:disabled,
+        .stDownloadButton > button:disabled,
+        [data-testid="stFileUploaderDropzone"][aria-disabled="true"] {{
+            opacity: 0.66;
+            filter: saturate(0.86);
         }}
         /* Radio / checkbox */
         .stRadio label, .stCheckbox label, .stToggle label {{
@@ -333,9 +458,49 @@ def apply_page_style() -> None:
             background-color: {THEME.ENTRY_BG} !important;
             border: 2px dashed {THEME.BORDER_SUBTLE} !important;
             border-radius: 12px !important;
+            min-height: 4.25rem;
         }}
         [data-testid="stFileUploader"] section:hover {{
             border-color: {THEME.ACCENT} !important;
+            background-color: #f7faf7 !important;
+        }}
+        [data-testid="stFileUploaderDropzoneInstructions"] svg {{
+            color: {THEME.COMPLETENESS_ACCENT} !important;
+            opacity: 0.9;
+        }}
+        [data-testid="stFileUploaderDropzoneInstructions"] span,
+        [data-testid="stFileUploaderDropzoneInstructions"] div {{
+            color: {THEME.TEXT} !important;
+        }}
+        [data-testid="stFileUploaderDropzoneInstructions"] span:last-child {{
+            color: {THEME.MUTED} !important;
+        }}
+        [data-testid="stFileUploaderDropzone"] button {{
+            background-color: {THEME.EDGE_PLOT} !important;
+            color: {THEME.ENTRY_BG} !important;
+            border: 1px solid {THEME.EDGE_PLOT} !important;
+            box-shadow: 0 1px 6px rgba(30, 43, 36, 0.12);
+        }}
+        [data-testid="stFileUploaderDropzone"] button:hover {{
+            background-color: {THEME.LINK} !important;
+            border-color: {THEME.LINK} !important;
+        }}
+        [data-testid="stAlertContainer"] {{
+            border-radius: 10px !important;
+            border: 1px solid {THEME.BORDER_SUBTLE} !important;
+            box-shadow: none !important;
+        }}
+        [data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]) {{
+            background-color: {THEME.TREE_BG} !important;
+        }}
+        [data-testid="stAlertContentInfo"] {{
+            color: {THEME.LINK} !important;
+        }}
+        [data-testid="stAlertContentInfo"] > div {{
+            background-color: {THEME.TREE_BG} !important;
+        }}
+        [data-testid="stAlertContentInfo"] p {{
+            color: {THEME.LINK} !important;
         }}
         /* Delikatny scrollbar (WebKit) */
         .stApp ::-webkit-scrollbar {{
