@@ -6,6 +6,9 @@
 
 Kod źródłowy: katalog **`zubry_pedigree_app/`**.
 
+Jeżeli projekt jest sprawdzany z paczki MS Teams, najkrótsza instrukcja dla prowadzącego znajduje
+się w pliku **`ODDANIE_MS_TEAMS.md`**.
+
 ## Wymagania
 
 - Python **3.10+** (zalecany 3.11–3.14)

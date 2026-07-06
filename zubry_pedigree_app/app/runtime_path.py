@@ -17,7 +17,7 @@ def app_package_dir() -> Path:
 
 
 def assets_dir() -> Path:
-    """Statyczne zasoby UI (logo, ikona, placeholdery)."""
+    """Statyczne zasoby UI, np. logo, ikona i grafiki pomocnicze."""
     return app_package_dir() / "assets"
 
 

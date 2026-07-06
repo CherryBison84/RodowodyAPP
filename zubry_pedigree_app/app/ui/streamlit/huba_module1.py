@@ -146,37 +146,6 @@ def _page_intro(title: str, description: str) -> None:
     st.caption(description)
 
 
-def _holder_image_path() -> Path:
-    """``app/assets/holder.jpeg`` — grafika placeholdera Kroku 3."""
-    from app.runtime_path import assets_dir
-
-    return assets_dir() / "holder.jpeg"
-
-
-def render_manual_clean_placeholder() -> None:
-    """Krok 3 niedostępny — podgląd z holder.jpeg w stylu reszty HUBA."""
-    th = sc.THEME
-    _page_intro(
-        "Krok 3 — Czyszczenie ręczne",
-        "Sekcja w przygotowaniu. Tymczasowo: popraw dane w arkuszu źródłowym lub użyj "
-        "**Kroku 4 — Czyszczenie automatyczne**.",
-    )
-
-    sc.population_dashboard_group_header(
-        "Wkrótce",
-        "Ręczna edycja pól rekordu w aplikacji — funkcja w budowie.",
-        accent=th.ACCENT,
-        background=th.ENTRY_BG,
-    )
-
-    holder = _holder_image_path()
-    with st.container(border=True):
-        if holder.is_file():
-            sc.show_image_at_scale(holder, scale=3, center=True)
-        else:
-            st.warning(f"Brak pliku podglądu: `{holder}`")
-
-
 def _summary_table(cat: dict[str, InspectedDataset]) -> pd.DataFrame:
     """Buduje tabelę podsumowania katalogu baz do wyświetlenia w UI."""
     return pd.DataFrame(
@@ -465,9 +434,16 @@ def section_step2_errors() -> None:
 
 
 def section_step3_manual_clean() -> None:
-    """Krok 3 — ręczna korekta pól w katalogu (lub placeholder gdy wyłączone)."""
+    """Krok 3 — ręczna korekta pól w katalogu."""
     if not MANUAL_CLEAN_ENABLED:
-        render_manual_clean_placeholder()
+        _page_intro(
+            "Krok 3 — Czyszczenie ręczne",
+            "Ręczna korekta jest wyłączona w konfiguracji tej instalacji.",
+        )
+        st.info(
+            "Włącz `MANUAL_CLEAN_ENABLED` w konfiguracji nawigacji, aby udostępnić edycję pól "
+            "bezpośrednio w aplikacji."
+        )
         return
 
     _init_catalog()
