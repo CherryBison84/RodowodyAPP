@@ -11,6 +11,7 @@ Archiwum zawiera kod aplikacji, dane przykładowe, konfigurację, testy oraz dok
 ## Co znajduje się w projekcie
 
 - `README.md` — główna instrukcja uruchomienia i opis architektury.
+- `CHANGELOG.md` — krótka historia zmian wersji projektu.
 - `PRZEWODNIK_EGZAMINACYJNY.md` — materiał do prezentacji projektu.
 - `zubry_pedigree_app/` — właściwa aplikacja DataCleaner.
 - `zubry_pedigree_app/data/` — przykładowe pliki EBPB.
@@ -51,3 +52,10 @@ https://github.com/CherryBison84/RodowodyAPP
 Wersja oddawana: `1.1.0`.
 
 Krótki opis zmian w wersji 1.1: zmieniono kolejność kroków czyszczenia, dopracowano sidebar aplikacji oraz ujednolicono dokumentację.
+
+## Finalna checklista
+
+- Aplikacja pokazuje wersję `1.1.0` w panelu bocznym.
+- Dokumentacja i UI mają tę samą kolejność kroków.
+- Paczka ZIP nie zawiera `.git`, `.venv`, cache ani lokalnych wyników.
+- Testy automatyczne przechodzą: `21 passed`.

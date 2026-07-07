@@ -9,6 +9,8 @@ Kod źródłowy: katalog **`zubry_pedigree_app/`**.
 Jeżeli projekt jest sprawdzany z paczki MS Teams, najkrótsza instrukcja dla prowadzącego znajduje
 się w pliku **`ODDANIE_MS_TEAMS.md`**.
 
+Historia najważniejszych zmian znajduje się w **`CHANGELOG.md`**.
+
 ## Zmiany w wersji 1.1.0
 
 - Zamieniono kolejność kroków: najpierw czyszczenie automatyczne, potem ręczne.

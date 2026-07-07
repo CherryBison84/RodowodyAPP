@@ -24,6 +24,7 @@ from app.ui.streamlit.huba_ui import run_huba_app
 
 HUBA_APP_NAME = "WisentPedigree DataCleaner"
 HUBA_TAGLINE = "przygotowanie baz do analizy rodowodowej"
+HUBA_VERSION = "1.1.0"
 
 
 def _render_sidebar() -> None:
@@ -36,6 +37,7 @@ def _render_sidebar() -> None:
             '<div class="huba-sidebar-title">'
             f"<p>{HUBA_APP_NAME}</p>"
             f"<span>{HUBA_TAGLINE}</span>"
+            f'<strong class="huba-sidebar-version">v{HUBA_VERSION}</strong>'
             "</div>",
             unsafe_allow_html=True,
         )

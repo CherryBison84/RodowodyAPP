@@ -201,6 +201,19 @@ def apply_page_style() -> None:
             font-size: 0.72rem;
             line-height: 1.25;
         }}
+        .huba-sidebar-version {{
+            display: inline-block;
+            margin-top: 0.42rem;
+            padding: 0.12rem 0.5rem;
+            border: 1px solid {THEME.BORDER_SUBTLE};
+            border-radius: 999px;
+            background: {THEME.ENTRY_BG};
+            color: {THEME.MUTED} !important;
+            font-size: 0.68rem;
+            font-weight: 700;
+            line-height: 1.2;
+            letter-spacing: 0.02em;
+        }}
         .huba-sidebar-footer {{
             padding-top: 0.9rem;
             margin-top: 0.9rem;
