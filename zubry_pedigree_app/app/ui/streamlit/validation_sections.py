@@ -668,17 +668,17 @@ def render_validation_tab(
         if MANUAL_CLEAN_ENABLED and on_dataset_updated is not None:
             c_hint, c_btn = st.columns([3, 1])
             with c_hint:
-                st.caption("Ręczna korekta pól — w **Kroku 3**.")
+                st.caption("Ręczna korekta pól — w **Kroku 4**.")
             with c_btn:
                 if st.button(
-                    "Krok 3",
+                    "Krok 4",
                     key=f"goto_manual_{slug}",
                     use_container_width=True,
                 ):
                     open_manual_corrections_panel()
                     st.rerun()
         elif not MANUAL_CLEAN_ENABLED:
-            st.caption("Czyszczenie ręczne (Krok 3) — wkrótce w aplikacji.")
+            st.caption("Czyszczenie ręczne (Krok 4) — wkrótce w aplikacji.")
 
     sub_issues = _issues_for_tab(rep.issues, tab_key)
     if sub_issues:

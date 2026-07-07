@@ -1,5 +1,5 @@
 """
-HUBA — kroki 1–3: wczytanie, walidacja i ręczne czyszczenie bazy.
+HUBA — wczytanie, walidacja i ręczne czyszczenie bazy.
 """
 
 from __future__ import annotations
@@ -433,11 +433,11 @@ def section_step2_errors() -> None:
     render_validation_summary_charts_expander(active.df_std, active.validation_report)
 
 
-def section_step3_manual_clean() -> None:
-    """Krok 3 — ręczna korekta pól w katalogu."""
+def section_step4_manual_clean() -> None:
+    """Krok 4 — ręczna korekta pól w katalogu."""
     if not MANUAL_CLEAN_ENABLED:
         _page_intro(
-            "Krok 3 — Czyszczenie ręczne",
+            "Krok 4 — Czyszczenie ręczne",
             "Ręczna korekta jest wyłączona w konfiguracji tej instalacji.",
         )
         st.info(
@@ -448,9 +448,9 @@ def section_step3_manual_clean() -> None:
 
     _init_catalog()
     _page_intro(
-        "Krok 3 — Czyszczenie ręczne",
+        "Krok 4 — Czyszczenie ręczne",
         "Popraw pojedyncze pola we wczytanej bazie. Po zapisie walidacja przelicza się od razu. "
-        "Reguły wsadowe i eksport pliku — w **Kroku 4 — Czyszczenie automatyczne**.",
+        "Reguły wsadowe i eksport pliku — w **Kroku 3 — Czyszczenie automatyczne**.",
     )
 
     cat = _catalog()

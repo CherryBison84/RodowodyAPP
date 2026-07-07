@@ -1,4 +1,4 @@
-"""Panel ręcznej edycji pól — Krok 3 HUBA (Czyszczenie ręczne)."""
+"""Panel ręcznej edycji pól — Krok 4 HUBA (Czyszczenie ręczne)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from app.data.manual_edit import (
 from app.data.validator import ValidationReport, id_cell_string
 from app.ui.streamlit import common as sc
 
-from app.ui.streamlit.huba_nav import NAV_STEP3
+from app.ui.streamlit.huba_nav import NAV_STEP4
 
 _SESSION_UNDO: Final[str] = "huba_edit_undo"
 _SESSION_LOG: Final[str] = "huba_edit_log"
@@ -53,8 +53,8 @@ _FIELD_LABELS: Final[dict[str, str]] = {
 
 
 def open_manual_corrections_panel() -> None:
-    """Przechodzi do **Kroku 3 — Czyszczenie ręczne** (np. z tabeli problemów w Kroku 2)."""
-    st.session_state["huba_nav"] = NAV_STEP3
+    """Przechodzi do **Kroku 4 — Czyszczenie ręczne** (np. z tabeli problemów w Kroku 2)."""
+    st.session_state["huba_nav"] = NAV_STEP4
 
 
 def _cell_display(v: object) -> str:
@@ -308,7 +308,7 @@ def render_manual_corrections_section(
     catalog_name: str,
     on_dataset_updated: Callable[[pd.DataFrame], None] | None,
 ) -> None:
-    """Sekcja Kroku 3 — czyszczenie ręczne (pojedyncze pola)."""
+    """Sekcja Kroku 4 — czyszczenie ręczne (pojedyncze pola)."""
     sc.population_dashboard_group_header(
         "Czyszczenie ręczne",
         "Edycja pojedynczych pól wczytanej bazy. Zapis przelicza walidację i liczniki z Kroku 2.",

@@ -1,6 +1,6 @@
 # WisentPedigree Pro+ (RodowodyAPP)
 
-**Wersja aplikacji (pakiet): 1.0.0**
+**Wersja aplikacji (pakiet): 1.1.0**
 
 **HUBA-WPB Cleaner** — aplikacja **webowa (Streamlit)** do wczytywania baz rodowodowych żubrów, **walidacji** (wykresy podsumowań, eksport CSV), **automatycznych poprawek** i eksportu oczyszczonych plików. Interfejs i treści pomocy są po polsku.
 
@@ -8,6 +8,12 @@ Kod źródłowy: katalog **`zubry_pedigree_app/`**.
 
 Jeżeli projekt jest sprawdzany z paczki MS Teams, najkrótsza instrukcja dla prowadzącego znajduje
 się w pliku **`ODDANIE_MS_TEAMS.md`**.
+
+## Zmiany w wersji 1.1.0
+
+- Zamieniono kolejność kroków: najpierw czyszczenie automatyczne, potem ręczne.
+- Dopracowano sidebar: wyśrodkowany tytuł aplikacji i stopka autora przy dole panelu.
+- Ujednolicono opisy w dokumentacji i odświeżono paczkę do MS Teams.
 
 ## Wymagania
 
@@ -83,8 +89,8 @@ Na macOS, przy problemach z obserwatorem plików: `STREAMLIT_SERVER_FILE_WATCHER
 
 1. **Krok 1 — Wczytanie danych** — upload CSV/XLSX, katalog plików, łączenie zbiorów.
 2. **Krok 2 — Walidacja** — kategorie kontroli, wykresy, eksport CSV z problemami.
-3. **Krok 3 — Czyszczenie ręczne** — edycja pojedynczych rekordów z ponowną walidacją i możliwością cofnięcia ostatniej zmiany.
-4. **Krok 4 — Czyszczenie automatyczne** — reguły auto-poprawek i uruchomienie projektu wsadowego.
+3. **Krok 3 — Czyszczenie automatyczne** — reguły auto-poprawek i uruchomienie projektu wsadowego.
+4. **Krok 4 — Czyszczenie ręczne** — edycja pojedynczych rekordów z ponowną walidacją i możliwością cofnięcia ostatniej zmiany.
 5. **Krok 5 — Wyniki** — pobranie oczyszczonych plików i archiwum ZIP.
 
 W widoku walidacji dostępna jest zwinięta pomoc opisująca wykonywane kontrole.
@@ -118,7 +124,7 @@ schematu, opcjonalnie łączy zbiory, waliduje je, stosuje wybrane transformacje
 wynik wraz z raportem oraz manifestem.
 
 **Część główna** to aplikacja Streamlit prowadząca użytkownika przez wczytanie, walidację,
-ręczne lub automatyczne czyszczenie oraz pobranie wyników. Ten sam silnik jest dostępny przez CLI.
+automatyczne lub ręczne czyszczenie oraz pobranie wyników. Ten sam silnik jest dostępny przez CLI.
 
 ## Architektura i przepływ danych
 

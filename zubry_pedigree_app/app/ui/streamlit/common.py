@@ -175,9 +175,47 @@ def apply_page_style() -> None:
             border-right: 1px solid {THEME.BORDER_SUBTLE};
             box-shadow: 6px 0 28px rgba(30, 43, 36, 0.06);
         }}
+        [data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {{
+            min-height: calc(100vh - 6.25rem);
+        }}
         [data-testid="stSidebar"] img {{
             border-radius: 10px;
             box-shadow: 0 1px 8px rgba(30, 43, 36, 0.08);
+        }}
+        .huba-sidebar-title {{
+            margin: 0.72rem auto 0.64rem auto;
+            text-align: center;
+            width: 100%;
+        }}
+        .huba-sidebar-title p {{
+            margin: 0;
+            color: {THEME.TEXT} !important;
+            font-size: 1.05rem;
+            font-weight: 750;
+            line-height: 1.18;
+        }}
+        .huba-sidebar-title span {{
+            display: block;
+            margin-top: 0.12rem;
+            color: {THEME.MUTED} !important;
+            font-size: 0.72rem;
+            line-height: 1.25;
+        }}
+        .huba-sidebar-footer {{
+            padding-top: 0.9rem;
+            margin-top: 0.9rem;
+            border-top: 1px solid {THEME.BORDER_SUBTLE};
+            color: {THEME.MUTED} !important;
+            font-size: 0.72rem;
+            line-height: 1.35;
+        }}
+        [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.huba-sidebar-footer) {{
+            margin-top: auto;
+            width: 100%;
+        }}
+        .huba-sidebar-footer span,
+        .huba-sidebar-footer a {{
+            color: {THEME.MUTED} !important;
         }}
         /* Nawigacja: pionowy przebieg kroków zamiast surowej listy radio */
         [data-testid="stSidebar"] div[role="radiogroup"] {{

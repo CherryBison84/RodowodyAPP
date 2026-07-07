@@ -22,7 +22,7 @@ from app.ui.streamlit.huba_module1 import (
     SESSION_CATALOG,
     section_step1_load,
     section_step2_errors,
-    section_step3_manual_clean,
+    section_step4_manual_clean,
 )
 from app.ui.streamlit.huba_nav import (
     NAV_SECTIONS,
@@ -182,12 +182,12 @@ def _apply_json_config(raw: dict) -> None:
     st.session_state["af_old"] = af.cut_parent_too_old
 
 
-def section_step4_auto_clean() -> None:
+def section_step3_auto_clean() -> None:
     """Renderuje krok wyboru reguł automatycznego czyszczenia i eksportu."""
-    st.markdown("### Krok 4 — Czyszczenie automatyczne")
+    st.markdown("### Krok 3 — Czyszczenie automatyczne")
     st.caption(
         "Wybierz bazy z katalogu, zaznacz reguły auto-poprawek i wyeksportuj oczyszczone pliki. "
-        "Wyniki pobierzesz w **Kroku 5 — Wyniki**. Ręczne korekty pól — w **Kroku 3**."
+        "Wyniki pobierzesz w **Kroku 5 — Wyniki**. Ręczne korekty pojedynczych pól — w **Kroku 4**."
     )
 
     catalog: dict = st.session_state.get(SESSION_CATALOG, {})
@@ -254,7 +254,7 @@ def section_step5_results() -> None:
     st.markdown("### Krok 5 — Wyniki")
     result: HubRunResult | None = st.session_state.get(SESSION_LAST_RUN)
     if result is None:
-        st.info("Brak wyników — wykonaj czyszczenie automatyczne w **Kroku 4**.")
+        st.info("Brak wyników — wykonaj czyszczenie automatyczne w **Kroku 3**.")
         return
 
     rows = [
@@ -373,8 +373,8 @@ def run_huba_app() -> None:
     elif section == NAV_STEP2:
         section_step2_errors()
     elif section == NAV_STEP3:
-        section_step3_manual_clean()
+        section_step3_auto_clean()
     elif section == NAV_STEP4:
-        section_step4_auto_clean()
+        section_step4_manual_clean()
     else:
         section_step5_results()

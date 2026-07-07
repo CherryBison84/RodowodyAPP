@@ -62,8 +62,8 @@ Interfejs webowy zbudowano w Streamlit. Użytkownik przechodzi przez pięć krok
 
 1. **Wczytanie danych** — dodanie plików, podgląd katalogu zbiorów i opcjonalne łączenie.
 2. **Walidacja** — kategorie problemów, status jakości, tabele i wykresy podsumowujące.
-3. **Czyszczenie ręczne** — wybór rekordu z raportu, edycja pól, ponowna walidacja i cofnięcie ostatniej zmiany.
-4. **Czyszczenie automatyczne** — wybór baz, reguł, formatu eksportu i opcjonalnej konfiguracji JSON.
+3. **Czyszczenie automatyczne** — wybór baz, reguł, formatu eksportu i opcjonalnej konfiguracji JSON.
+4. **Czyszczenie ręczne** — wybór rekordu z raportu, edycja pól, ponowna walidacja i cofnięcie ostatniej zmiany.
 5. **Wyniki** — tabela rezultatów oraz pobranie raportu HTML, `comparison.csv`, `manifest.json` i całego katalogu ZIP.
 
 Aplikacja ma również tryb terminalowy. Ta sama logika przetwarzania jest dzięki temu dostępna z GUI, CLI oraz konfiguracji JSON.
@@ -211,7 +211,7 @@ Podczas prezentacji pokaż:
 5. **README** — wymagania, instalację, uruchomienie i strukturę;
 6. **brak danych wynikowych w repozytorium** — `outputs/` powstaje lokalnie.
 
-Wersja wydania jest spójnie zapisana jako `1.0.0` w README i `pyproject.toml`.
+Wersja wydania jest spójnie zapisana jako `1.1.0` w README i `pyproject.toml`.
 
 Nie prezentuj repozytorium z niezatwierdzonymi przypadkowymi zmianami. Przed egzaminem sprawdź stan Git, nazwę bieżącej gałęzi oraz czy commit widoczny w MS Teams odpowiada commitowi na GitHubie.
 

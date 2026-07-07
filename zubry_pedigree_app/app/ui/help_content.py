@@ -21,7 +21,7 @@ Program przyjmuje lokalne pliki CSV, XLS lub XLSX. Automatycznie rozpoznaje rapo
 oraz mapuje je do wspólnego schematu. Niestandardowy plik musi już zawierać kolumny schematu
 aplikacji — interfejs nie pobiera danych z URL i nie oferuje ręcznego mapowania kolumn.
 
-Rekord techniczny `99999` pozostaje widoczny podczas walidacji. Użytkownik decyduje w Kroku 4,
+Rekord techniczny `99999` pozostaje widoczny podczas walidacji. Użytkownik decyduje w Kroku 3,
 czy ma zostać pominięty w pliku wynikowym.
 """
 
@@ -41,8 +41,8 @@ Program kontroluje między innymi:
 - kompletność danych o rodzicach;
 - podejrzenie śmierci przed urodzeniem.
 
-Walidacja nie zmienia danych. Problemy można pobrać jako CSV, poprawić ręcznie w Kroku 3 albo
-obsłużyć wybranymi regułami automatycznymi w Kroku 4. Po każdej transformacji walidacja jest
+Walidacja nie zmienia danych. Problemy można pobrać jako CSV, obsłużyć wybranymi regułami
+automatycznymi w Kroku 3 albo poprawić ręcznie w Kroku 4. Po każdej transformacji walidacja jest
 wykonywana ponownie, a wynik pokazuje stan przed i po czyszczeniu.
 """
 

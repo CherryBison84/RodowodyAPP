@@ -33,10 +33,10 @@ def _render_sidebar() -> None:
         if _logo_path.exists():
             st.image(str(_logo_path), width="stretch")
         st.markdown(
-            f'<p style="margin:0.6rem 0 0.1rem 0;font-size:1.05rem;font-weight:700;color:{sc.THEME.TEXT};">'
-            f"{HUBA_APP_NAME}</p>"
-            f'<p style="margin:0 0 0.5rem 0;font-size:0.72rem;color:{sc.THEME.MUTED};">'
-            f"{HUBA_TAGLINE}</p>",
+            '<div class="huba-sidebar-title">'
+            f"<p>{HUBA_APP_NAME}</p>"
+            f"<span>{HUBA_TAGLINE}</span>"
+            "</div>",
             unsafe_allow_html=True,
         )
         st.markdown(
@@ -58,10 +58,15 @@ def _render_sidebar() -> None:
             label_visibility="collapsed",
         )
         st.session_state["huba_nav"] = section
-        st.markdown("---")
-        st.caption(
-            "Autor: [Magdalena Perlińska-Teresiak](https://github.com/CherryBison84) · "
-            "[SGGW](https://bw.sggw.edu.pl/info/author/WULS3c538856ad724c8ab12824cb5666f3f1?r=author&tab=&title=Profil%2Bosoby%2B%25E2%2580%2593%2BMagdalena%2BPerli%25C5%2584ska-Teresiak%2B%25E2%2580%2593%2BSzko%25C5%2582a%2BG%25C5%2582%25C3%25B3wna%2BGospodarstwa%2BWiejskiego%2Bw%2BWarszawie&lang=pl) · 2026"
+        st.markdown(
+            '<div class="huba-sidebar-footer">'
+            '<span>Autor: </span>'
+            '<a href="https://github.com/CherryBison84" target="_blank">Magdalena Perlińska-Teresiak</a>'
+            '<span> · </span>'
+            '<a href="https://bw.sggw.edu.pl/info/author/WULS3c538856ad724c8ab12824cb5666f3f1?r=author&tab=&title=Profil%2Bosoby%2B%25E2%2580%2593%2BMagdalena%2BPerli%25C5%2584ska-Teresiak%2B%25E2%2580%2593%2BSzko%25C5%2582a%2BG%25C5%2582%25C3%25B3wna%2BGospodarstwa%2BWiejskiego%2Bw%2BWarszawie&lang=pl" target="_blank">SGGW</a>'
+            '<span> · 2026</span>'
+            "</div>",
+            unsafe_allow_html=True,
         )
 
 
