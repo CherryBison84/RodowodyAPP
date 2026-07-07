@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+- Dodano w sidebarze uniwersalne polecenie uruchomienia wersji terminalowej bez UI.
+- Przygotowano graficzną ściągę egzaminacyjną PDF pasującą do wyglądu aplikacji.
+- Odświeżono finalną paczkę ZIP do wgrania w system.
+
 ## 1.1.0
 
 - Zamieniono kolejność kroków czyszczenia: najpierw automatyczne, następnie ręczne.

@@ -1,6 +1,6 @@
 # Zubry Pedigree App — HUBA-WPB Cleaner
 
-**Wersja (pyproject): 1.1.0** — pełny opis i instalacja: **[README.md w katalogu nadrzędnym](../README.md)**.
+**Wersja (pyproject): 1.2.0** — pełny opis i instalacja: **[README.md w katalogu nadrzędnym](../README.md)**.
 
 Aplikacja **Streamlit** do wczytywania baz rodowodowych żubrów, **walidacji**, **edycji ręcznej**, **automatycznych poprawek** i eksportu wyników (tryb wsadowy z JSON).
 

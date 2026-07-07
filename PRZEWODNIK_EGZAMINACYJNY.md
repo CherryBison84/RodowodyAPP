@@ -211,7 +211,7 @@ Podczas prezentacji pokaż:
 5. **README** — wymagania, instalację, uruchomienie i strukturę;
 6. **brak danych wynikowych w repozytorium** — `outputs/` powstaje lokalnie.
 
-Wersja wydania jest spójnie zapisana jako `1.1.0` w README i `pyproject.toml`.
+Wersja wydania jest spójnie zapisana jako `1.2.0` w README i `pyproject.toml`.
 
 Nie prezentuj repozytorium z niezatwierdzonymi przypadkowymi zmianami. Przed egzaminem sprawdź stan Git, nazwę bieżącej gałęzi oraz czy commit widoczny w MS Teams odpowiada commitowi na GitHubie.
 

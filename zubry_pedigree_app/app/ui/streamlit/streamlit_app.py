@@ -24,7 +24,7 @@ from app.ui.streamlit.huba_ui import run_huba_app
 
 HUBA_APP_NAME = "WisentPedigree DataCleaner"
 HUBA_TAGLINE = "przygotowanie baz do analizy rodowodowej"
-HUBA_VERSION = "1.1.0"
+HUBA_VERSION = "1.2.0"
 
 
 def _render_sidebar() -> None:
@@ -41,12 +41,6 @@ def _render_sidebar() -> None:
             "</div>",
             unsafe_allow_html=True,
         )
-        st.markdown(
-            f'<p style="margin:0.6rem 0 0.35rem 0;font-size:0.78rem;font-weight:700;'
-            f'letter-spacing:0.04em;text-transform:uppercase;color:{sc.THEME.MUTED};">'
-            f"Kroki</p>",
-            unsafe_allow_html=True,
-        )
         nav = st.session_state.get("huba_nav", NAV_STEP1)
         if nav in _NAV_LEGACY:
             nav = _NAV_LEGACY[str(nav)]
@@ -60,6 +54,14 @@ def _render_sidebar() -> None:
             label_visibility="collapsed",
         )
         st.session_state["huba_nav"] = section
+        st.markdown(
+            '<div class="huba-terminal-card">'
+            '<p class="huba-terminal-title">Wersja terminalowa</p>'
+            '<p>DataCleaner można uruchomić bez UI, bezpośrednio w terminalu:</p>'
+            '<code>cd zubry_pedigree_app &amp;&amp; python run_cli.py run --input data/EBPB_bison_report.xlsx --project-name terminal_demo</code>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
         st.markdown(
             '<div class="huba-sidebar-footer">'
             '<span>Autor: </span>'

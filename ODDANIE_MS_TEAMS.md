@@ -4,7 +4,7 @@
 
 Do zadania w MS Teams należy przesłać archiwum:
 
-`RodowodyAPP_v1.1_MS_Teams.zip`
+`RodowodyAPP_v1.2_DO_WGRANIA.zip`
 
 Archiwum zawiera kod aplikacji, dane przykładowe, konfigurację, testy oraz dokumentację. Nie zawiera środowisk wirtualnych, katalogu `.git`, cache ani lokalnych wyników roboczych.
 
@@ -49,13 +49,13 @@ Repozytorium GitHub:
 
 https://github.com/CherryBison84/RodowodyAPP
 
-Wersja oddawana: `1.1.0`.
+Wersja oddawana: `1.2.0`.
 
-Krótki opis zmian w wersji 1.1: zmieniono kolejność kroków czyszczenia, dopracowano sidebar aplikacji oraz ujednolicono dokumentację.
+Krótki opis zmian w wersji 1.2: dodano uniwersalne polecenie dla wersji terminalowej, przygotowano graficzną ściągę PDF i odświeżono paczkę do wgrania w system.
 
 ## Finalna checklista
 
-- Aplikacja pokazuje wersję `1.1.0` w panelu bocznym.
+- Aplikacja pokazuje wersję `1.2.0` w panelu bocznym.
 - Dokumentacja i UI mają tę samą kolejność kroków.
 - Paczka ZIP nie zawiera `.git`, `.venv`, cache ani lokalnych wyników.
 - Testy automatyczne przechodzą: `21 passed`.

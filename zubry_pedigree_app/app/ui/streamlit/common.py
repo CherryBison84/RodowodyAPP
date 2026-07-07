@@ -234,6 +234,7 @@ def apply_page_style() -> None:
         [data-testid="stSidebar"] div[role="radiogroup"] {{
             position: relative;
             gap: 0.26rem;
+            margin-top: 0.72rem;
         }}
         [data-testid="stSidebar"] div[role="radiogroup"] label {{
             position: relative;
@@ -306,6 +307,41 @@ def apply_page_style() -> None:
             border-color: #9aaa9e;
             color: #f4f8f4;
             box-shadow: none;
+        }}
+        .huba-terminal-card {{
+            margin: 13rem 0 0 0;
+            padding: 0.62rem 0.72rem;
+            border: 1px solid {THEME.BORDER_SUBTLE};
+            border-radius: 10px;
+            background: rgba(244, 248, 244, 0.56);
+            box-shadow: 0 1px 8px rgba(30, 43, 36, 0.05);
+        }}
+        .huba-terminal-card p {{
+            margin: 0;
+            color: {THEME.MUTED} !important;
+            font-size: 0.62rem;
+            line-height: 1.38;
+        }}
+        .huba-terminal-card .huba-terminal-title {{
+            margin-bottom: 0.22rem;
+            color: {THEME.TEXT} !important;
+            font-size: 0.68rem;
+            font-weight: 750;
+        }}
+        .huba-terminal-card code {{
+            display: block;
+            margin-top: 0.36rem;
+            padding: 0.38rem 0.44rem;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            background: #edf5ef !important;
+            color: {THEME.LINK} !important;
+            border: 1px solid rgba(53, 93, 71, 0.18);
+            border-radius: 7px;
+            font-size: 0.58rem;
+            line-height: 1.35;
+            font-weight: 650;
         }}
         .stApp .main .block-container {{
             padding-top: 1.5rem;
