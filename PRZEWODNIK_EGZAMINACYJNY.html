@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc 3.10" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>PRZEWODNIK_EGZAMINACYJNY</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+</head>
+<body>
+<h1
+id="wisentpedigree-datacleaner-przewodnik-do-prezentacji-projektu">WisentPedigree
+DataCleaner — przewodnik do prezentacji projektu</h1>
+<h2 id="wymagania-egzaminacyjne-jak-ten-projekt-na-nie-odpowiada">0.
+Wymagania egzaminacyjne — jak ten projekt na nie odpowiada</h2>
+<p>Egzamin ma formę prezentacji projektu przesłanego przez MS Teams,
+omówienia repozytorium Git oraz przedstawienia architektury rozwiązania.
+Ten przewodnik porządkuje odpowiedź dokładnie pod te elementy.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Wymaganie z wytycznych</th>
+<th>Jak pokazać to w projekcie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Projekt ma rozwiązywać konkretny problem</td>
+<td>Problemem jest jakość, spójność i powtarzalne czyszczenie baz
+rodowodowych EBPB.</td>
+</tr>
+<tr>
+<td>Projekt powinien należeć do jednego z obszarów semestralnych</td>
+<td>Projekt mieści się w obszarze <strong>danych bazodanowych / systemów
+bazodanowych</strong> oraz pracy na uporządkowanych zbiorach danych.
+Dodatkowo wykorzystuje elementy analizy relacji grafowych w
+rodowodzie.</td>
+</tr>
+<tr>
+<td>Projekt ma być dojrzały architektonicznie</td>
+<td>Kod jest rozdzielony na warstwy importu danych, walidacji, potoku
+HUBA, logiki domenowej, interfejsu, CLI, eksportu i testów.</td>
+</tr>
+<tr>
+<td>Repozytorium GitHub ma być prowadzone od początku projektu</td>
+<td>Podczas prezentacji należy pokazać repozytorium, historię commitów,
+strukturę katalogów i aktualny commit zgodny z wersją przesłaną przez MS
+Teams.</td>
+</tr>
+<tr>
+<td>Projekt ma zawierać dostosowaną wersję HUBA</td>
+<td>Moduł HUBA działa jako pipeline
+<code>load → validate → transform → export</code>, dostosowany do danych
+rodowodowych żubrów.</td>
+</tr>
+<tr>
+<td>Rozwiązanie ma obsługiwać wiele plików i uporządkowaną strukturę
+katalogów</td>
+<td>Aplikacja obsługuje wiele plików CSV/XLS/XLSX, katalog zbiorów,
+łączenie danych oraz eksport do katalogów
+<code>outputs/&lt;nazwa_projektu&gt;/</code>.</td>
+</tr>
+<tr>
+<td>Projekt ma mieć część integracyjną i część główną</td>
+<td>Część integracyjna obejmuje import, rozpoznanie, standaryzację,
+łączenie i walidację danych. Część główna to aplikacja Streamlit z
+interfejsem użytkownika.</td>
+</tr>
+<tr>
+<td>Trzeba przygotować diagram komponentów i przepływu danych</td>
+<td>Diagram znajduje się w sekcji 4 i może zostać pokazany podczas
+omawiania architektury.</td>
+</tr>
+<tr>
+<td>Należy dołączyć instrukcję uruchomienia i opis funkcjonalności</td>
+<td>Instrukcja jest w sekcji 8, a funkcjonalności w sekcji 7.</td>
+</tr>
+<tr>
+<td>Należy opisać wykorzystanie narzędzi i modeli AI</td>
+<td>Gotowy, uczciwy opis znajduje się w sekcji 11.</td>
+</tr>
+</tbody>
+</table>
+<p>Najważniejsze zdanie organizacyjne do zapamiętania: <strong>nie
+prezentujemy projektu jako zbioru luźnych funkcji, tylko jako kompletny
+pipeline przygotowania danych, zakończony działającą aplikacją i
+raportowanym eksportem.</strong></p>
+<h2 id="projekt-w-jednym-zdaniu">1. Projekt w jednym zdaniu</h2>
+<p><strong>WisentPedigree DataCleaner rozwiązuje problem niespójnych i
+błędnych baz rodowodowych żubrów EBPB: przyjmuje dane w różnych
+formatach, standaryzuje je, kontroluje jakość, wykonuje wybrane
+bezpieczne poprawki i eksportuje udokumentowany, oczyszczony zbiór
+gotowy do dalszej analizy rodowodowej.</strong></p>
+<p>To zdanie warto powiedzieć na początku prezentacji. Pokazuje problem,
+odbiorcę, dane wejściowe i rezultat bez omawiania zbędnych
+szczegółów.</p>
+<h2 id="problem-i-cel">2. Problem i cel</h2>
+<h3 id="problem">Problem</h3>
+<p>Dane rodowodowe mogą pochodzić z różnych eksportów EBPB, mieć
+odmienne nazwy i układ kolumn oraz zawierać m.in.:</p>
+<ul>
+<li>powtórzone albo puste identyfikatory;</li>
+<li>odwołania do rodziców, których nie ma w bazie;</li>
+<li>osobnika wskazanego jako własny rodzic;</li>
+<li>cykle w rodowodzie;</li>
+<li>ojca oznaczonego jako samica albo matkę oznaczoną jako samiec;</li>
+<li>niespójne daty, lata urodzenia i wiek rodziców;</li>
+<li>niezgodności linii rodowodowych;</li>
+<li>niepełne dane rodziców.</li>
+</ul>
+<p>Takie problemy mogą prowadzić do błędnych analiz pokrewieństwa i
+inbredu. Ręczne sprawdzanie dużych arkuszy jest czasochłonne i trudne do
+powtórzenia.</p>
+<h3 id="cel">Cel</h3>
+<p>Celem projektu jest zautomatyzowanie przygotowania baz EBPB do
+dalszej analizy poprzez:</p>
+<ol type="1">
+<li>wczytanie raportu lub rejestru EBPB z CSV/XLS/XLSX;</li>
+<li>sprowadzenie różnych formatów do jednego schematu danych;</li>
+<li>opcjonalne połączenie kilku baz;</li>
+<li>walidację struktury i relacji rodowodowych;</li>
+<li>wykonanie wybranych reguł czyszczenia;</li>
+<li>ponowną walidację i eksport danych, raportów oraz manifestu
+przebiegu.</li>
+</ol>
+<h3 id="zakres-świadomie-ograniczony">Zakres świadomie ograniczony</h3>
+<p>Głównym zadaniem aplikacji jest <strong>przygotowanie i kontrola
+jakości danych</strong>, a nie kompletna platforma hodowlana. Moduły
+analityczne dotyczące rodowodu są obecne w repozytorium i testach, ale
+bieżący interfejs HUBA skupia się na procesie DataCleaner. Ręczna edycja
+pojedynczych rekordów jest dostępna w Kroku 4, przelicza walidację po
+zapisie i pozwala cofnąć ostatnią zmianę w sesji.</p>
+<h2 id="dwie-wymagane-części-projektu">3. Dwie wymagane części
+projektu</h2>
+<h3 id="a.-część-integracyjna">A. Część integracyjna</h3>
+<p>Odpowiada za pozyskanie, przygotowanie i połączenie danych.</p>
+<p>To jest część, którą warto omówić najpierw, ponieważ odpowiada
+bezpośrednio na wymóg z wytycznych: projekt ma przyjmować jeden lub
+wiele „brudnych” plików wejściowych i generować uporządkowane dane
+wyjściowe zgodnie z regułami, filtrami oraz strukturą katalogów.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Etap</th>
+<th>Działanie</th>
+<th>Główne miejsce w kodzie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pozyskanie</td>
+<td>Pliki lokalne, upload w przeglądarce lub ścieżki z konfiguracji
+JSON</td>
+<td><code>app/data/dataset_loader.py</code></td>
+</tr>
+<tr>
+<td>Rozpoznanie</td>
+<td>Rozpoznanie raportu i rejestru EBPB</td>
+<td><code>app/data/ebpb_formats.py</code>,
+<code>dataset_loader.py</code></td>
+</tr>
+<tr>
+<td>Standaryzacja</td>
+<td>Mapowanie pól do wspólnego, 16-kolumnowego schematu aplikacji;
+normalizacja ID, płci i linii</td>
+<td><code>app/data/dataset_loader.py</code></td>
+</tr>
+<tr>
+<td>Łączenie</td>
+<td>Konkatenacja wielu zbiorów i jawna polityka duplikatów: pierwszy,
+ostatni albo wszystkie</td>
+<td><code>app/huba/modules/merge.py</code></td>
+</tr>
+<tr>
+<td>Walidacja</td>
+<td>Kontrola rekordów, dat i relacji rodzic–potomstwo, w tym grafu
+rodowodu</td>
+<td><code>app/data/validator.py</code></td>
+</tr>
+<tr>
+<td>Transformacja</td>
+<td>Sekwencyjne, konfigurowalne reguły automatycznych poprawek</td>
+<td><code>app/data/auto_fix.py</code></td>
+</tr>
+<tr>
+<td>Eksport</td>
+<td>Oczyszczona baza, lista problemów, podsumowanie, log poprawek,
+raport HTML, porównanie i manifest</td>
+<td><code>app/huba/stages.py</code>, <code>app/huba/engine.py</code>,
+<code>app/huba/layout.py</code></td>
+</tr>
+</tbody>
+</table>
+<p>Wspólny schemat obejmuje: <code>id</code>, nazwy osobnika, płeć,
+linię, rok i datę urodzenia, status, dane ojca i matki, datę śmierci
+oraz miejsce urodzenia. Rekord techniczny o ID <code>99999</code> może
+zostać pominięty.</p>
+<h3 id="b.-część-główna-aplikacja-i-interfejs">B. Część główna —
+aplikacja i interfejs</h3>
+<p>Interfejs webowy zbudowano w Streamlit. Użytkownik przechodzi przez
+pięć kroków:</p>
+<ol type="1">
+<li><strong>Wczytanie danych</strong> — dodanie plików, podgląd katalogu
+zbiorów i opcjonalne łączenie.</li>
+<li><strong>Walidacja</strong> — kategorie problemów, status jakości,
+tabele i wykresy podsumowujące.</li>
+<li><strong>Czyszczenie automatyczne</strong> — wybór baz, reguł,
+formatu eksportu i opcjonalnej konfiguracji JSON.</li>
+<li><strong>Czyszczenie ręczne</strong> — wybór rekordu z raportu,
+edycja pól, ponowna walidacja i cofnięcie ostatniej zmiany.</li>
+<li><strong>Wyniki</strong> — tabela rezultatów oraz pobranie raportu
+HTML, <code>comparison.csv</code>, <code>manifest.json</code> i całego
+katalogu ZIP.</li>
+</ol>
+<p>Aplikacja ma również tryb terminalowy. Ta sama logika przetwarzania
+jest dzięki temu dostępna z GUI, CLI oraz konfiguracji JSON.</p>
+<p>Podczas egzaminu należy wyraźnie powiedzieć, że interfejs nie jest
+osobnym eksperymentem, tylko warstwą użytkownika nad tym samym
+pipeline’em HUBA, który może działać także wsadowo.</p>
+<h2 id="architektura-rozwiązania">4. Architektura rozwiązania</h2>
+<p>Ten diagram spełnia wymaganie egzaminacyjne dotyczące pokazania
+głównych komponentów projektu, przepływu danych oraz zależności między
+elementami.</p>
+<pre class="mermaid"><code>flowchart LR
+    U[&quot;Użytkownik&quot;] --&gt; UI[&quot;Interfejs Streamlit&quot;]
+    U --&gt; CLI[&quot;CLI / konfiguracja JSON&quot;]
+    F[&quot;CSV / XLS / XLSX&lt;br/&gt;raport lub rejestr EBPB&quot;] --&gt; UI
+    F --&gt; CLI
+
+    UI --&gt; L[&quot;Loader i rozpoznanie formatu&quot;]
+    CLI --&gt; L
+    L --&gt; S[&quot;Standaryzacja do wspólnego schematu&quot;]
+    S --&gt; M[&quot;Katalog i opcjonalne łączenie baz&quot;]
+    M --&gt; V1[&quot;Walidacja wejściowa&quot;]
+
+    V1 --&gt; G[&quot;Model osób i graf rodowodu&lt;br/&gt;NetworkX&quot;]
+    V1 --&gt; R[&quot;Raport problemów&quot;]
+    V1 --&gt; T[&quot;Reguły automatycznych poprawek&quot;]
+    T --&gt; V2[&quot;Ponowna walidacja&quot;]
+    V2 --&gt; E[&quot;Eksport i archiwizacja&quot;]
+
+    E --&gt; D[&quot;Oczyszczone CSV/XLSX&quot;]
+    E --&gt; Q[&quot;CSV problemów i log poprawek&quot;]
+    E --&gt; H[&quot;Raport HTML i comparison.csv&quot;]
+    E --&gt; J[&quot;manifest.json i ZIP&quot;]
+    D --&gt; U
+    Q --&gt; U
+    H --&gt; U
+    J --&gt; U</code></pre>
+<h3 id="zależności-między-warstwami">Zależności między warstwami</h3>
+<ul>
+<li><code>app/ui/</code> wywołuje logikę aplikacji, ale nie implementuje
+reguł domenowych.</li>
+<li><code>app/huba/</code> steruje potokiem i przekazuje kontekst
+pomiędzy etapami.</li>
+<li><code>app/data/</code> odpowiada za import, schemat, walidację i
+poprawki.</li>
+<li><code>app/pedigree/</code> buduje model osób i relacji
+rodowodowych.</li>
+<li><code>app/analytics/</code> zawiera algorytmy pokrewieństwa i
+inbredu wykorzystywane oraz testowane niezależnie od UI.</li>
+<li><code>pandas</code> i <code>openpyxl</code> obsługują dane
+tabelaryczne i Excel, <code>NetworkX</code> graf rodowodu,
+<code>Streamlit</code> interfejs, a <code>Matplotlib</code>
+wykresy.</li>
+</ul>
+<h2 id="przepływ-danych-krok-po-kroku">5. Przepływ danych krok po
+kroku</h2>
+<pre class="mermaid"><code>sequenceDiagram
+    actor User as Użytkownik
+    participant UI as Streamlit/CLI
+    participant Loader as Loader
+    participant Hub as Silnik HUBA
+    participant Validator as Walidator
+    participant Export as Eksport
+
+    User-&gt;&gt;UI: Wskazuje pliki i ustawienia
+    UI-&gt;&gt;Loader: Przekazuje bajty lub ścieżki
+    Loader-&gt;&gt;Loader: Rozpoznaje format i mapuje kolumny
+    Loader--&gt;&gt;Hub: Zestandaryzowana ramka pandas
+    Hub-&gt;&gt;Validator: Walidacja przed zmianami
+    Validator--&gt;&gt;Hub: Błędy, ostrzeżenia i rekordy do korekty
+    Hub-&gt;&gt;Hub: Wybrane reguły auto-fix
+    Hub-&gt;&gt;Validator: Ponowna walidacja
+    Validator--&gt;&gt;Hub: Końcowy stan jakości
+    Hub-&gt;&gt;Export: Dane, raport i log działań
+    Export--&gt;&gt;UI: XLSX/CSV, HTML, JSON, ZIP
+    UI--&gt;&gt;User: Podgląd i pobranie wyników</code></pre>
+<p>Istotna cecha: plik źródłowy nie jest nadpisywany. Poprawki
+wykonywane są na kopii ramki danych, a rezultat trafia do osobnego
+katalogu <code>outputs/&lt;nazwa_projektu&gt;/</code>.</p>
+<h2 id="najważniejsze-decyzje-projektowe">6. Najważniejsze decyzje
+projektowe</h2>
+<ul>
+<li><strong>Jeden schemat wewnętrzny</strong> odcina dalszą logikę od
+różnic między eksportami EBPB.</li>
+<li><strong>Etapy
+<code>load → validate → transform → export</code></strong> są jawne i
+rozszerzalne przez rejestr etapów.</li>
+<li><strong>Walidacja przed i po transformacji</strong> pozwala ocenić
+wpływ poprawek.</li>
+<li><strong>Reguły są przełączalne</strong>, ponieważ automatyczne
+usuwanie informacji rodowodowej może być decyzją domenową.</li>
+<li><strong>Log i manifest</strong> zapewniają powtarzalność oraz
+możliwość sprawdzenia, co aplikacja zmieniła.</li>
+<li><strong>GUI i CLI korzystają z tego samego silnika</strong>, więc
+logika nie jest powielona.</li>
+<li><strong>Deterministyczna obsługa duplikatów</strong> pozwala
+świadomie zachować pierwszy, ostatni lub każdy rekord.</li>
+<li><strong>Zakres funkcji jest podporządkowany problemowi</strong>,
+dlatego aplikacja koncentruje się na przygotowaniu danych, a nie na
+dodawaniu pobocznych modułów bez związku z celem.</li>
+</ul>
+<h2 id="podstawowe-funkcjonalności">7. Podstawowe funkcjonalności</h2>
+<ul>
+<li>import wielu plików CSV/XLS/XLSX;</li>
+<li>obsługa raportu i rejestru EBPB;</li>
+<li>automatyczne mapowanie do schematu aplikacji;</li>
+<li>łączenie wielu baz;</li>
+<li>wykrywanie duplikatów i braków ID;</li>
+<li>wykrywanie brakujących rodziców, self-parent, identycznego ojca i
+matki oraz cykli;</li>
+<li>kontrola płci rodziców, zakresu lat, wieku rodziców, dat i linii
+rodowodowych;</li>
+<li>eksport rekordów wymagających korekty do CSV;</li>
+<li>automatyczne, wybieralne poprawki wraz z logiem;</li>
+<li>ponowna walidacja po czyszczeniu;</li>
+<li>eksport oczyszczonego zbioru do XLSX albo CSV;</li>
+<li>raport HTML, porównanie zbiorów, manifest JSON i archiwum ZIP;</li>
+<li>praca przez przeglądarkę albo terminal.</li>
+</ul>
+<h2 id="instrukcja-uruchomienia">8. Instrukcja uruchomienia</h2>
+<h3 id="wymagania">Wymagania</h3>
+<ul>
+<li>Python 3.10 lub nowszy;</li>
+<li>Windows, macOS albo Linux.</li>
+</ul>
+<h3 id="instalacja-i-start-gui">Instalacja i start GUI</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> zubry_pedigree_app</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-m</span> venv .venv</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> .venv/bin/activate</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-r</span> requirements.txt</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> run_web.py</span></code></pre></div>
+<p>W Windows aktywacja środowiska to
+<code>.venv\Scripts\activate</code>.</p>
+<p>Alternatywnie sam serwer Streamlit można uruchomić poleceniem:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> run_streamlit.py</span></code></pre></div>
+<h3 id="tryb-terminalowy">Tryb terminalowy</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> run_cli.py run <span class="at">--input</span> data/EBPB_bison_report.xlsx <span class="at">--project-name</span> egzamin_demo</span></code></pre></div>
+<h3 id="tryb-konfigurowany-plikiem-json">Tryb konfigurowany plikiem
+JSON</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> app/main.py <span class="at">--project-config</span> config/huba_project.example.json</span></code></pre></div>
+<h2 id="repozytorium-git-co-omówić">9. Repozytorium Git — co omówić</h2>
+<p>Repozytorium:
+<code>https://github.com/CherryBison84/RodowodyAPP</code></p>
+<p>Podczas prezentacji pokaż repozytorium jako dowód procesu
+projektowego, a nie tylko miejsce przechowywania plików:</p>
+<ol type="1">
+<li><strong>strukturę katalogów</strong> — osobne warstwy danych,
+potoku, rodowodu, analityki, UI i testów;</li>
+<li><strong>historię rozwoju</strong> — przejście od aplikacji
+rodowodowej do uporządkowanego modułu HUBA/DataCleaner, kolejne wersje i
+dodanie CLI;</li>
+<li><strong>małe, opisowe commity</strong> — przykład: import EBPB,
+walidacja, auto-poprawki, przebudowa HUBA, wersja terminalowa;</li>
+<li><strong>testy</strong> — loader obu formatów, mapowanie pól oraz
+obliczenia pokrewieństwa;</li>
+<li><strong>README</strong> — wymagania, instalację, uruchomienie i
+strukturę;</li>
+<li><strong>brak danych wynikowych w repozytorium</strong> —
+<code>outputs/</code> powstaje lokalnie.</li>
+</ol>
+<p>Wersja wydania jest spójnie zapisana jako <code>1.2.0</code> w README
+i <code>pyproject.toml</code>.</p>
+<p>Nie prezentuj repozytorium z niezatwierdzonymi przypadkowymi
+zmianami. Przed egzaminem sprawdź stan Git, nazwę bieżącej gałęzi oraz
+czy commit widoczny w MS Teams odpowiada commitowi na GitHubie.</p>
+<p>W MS Teams należy przesłać wersję projektu, którą da się
+jednoznacznie powiązać z repozytorium. Najbezpieczniej podać link do
+GitHuba oraz numer commita albo upewnić się, że paczka z kodem odpowiada
+aktualnemu commitowi.</p>
+<h2 id="testowanie-i-weryfikacja">10. Testowanie i weryfikacja</h2>
+<p>Testy są napisane dla <code>pytest</code>. Po zainstalowaniu
+narzędzia uruchamia się je z katalogu
+<code>zubry_pedigree_app</code>:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-m</span> pip install <span class="at">-r</span> requirements-dev.txt</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-m</span> pytest <span class="at">-v</span></span></code></pre></div>
+<p><code>pytest</code> jest zadeklarowany w
+<code>requirements-dev.txt</code> oraz w opcjonalnych zależnościach
+<code>test</code> pliku <code>pyproject.toml</code>.</p>
+<p>Zakres automatycznych testów obejmuje:</p>
+<ul>
+<li>rozpoznawanie raportu i rejestru EBPB;</li>
+<li>mapowanie obu formatów do schematu aplikacji;</li>
+<li>łączenie miejsca i kraju urodzenia;</li>
+<li>współczynnik pokrewieństwa Φ;</li>
+<li>relację <code>R = 2Φ</code>;</li>
+<li>średnie pokrewieństwo i dekompozycję relacji.</li>
+</ul>
+<p>Przed prezentacją wykonaj również krótki test manualny: wczytaj plik
+przykładowy, pokaż walidację, uruchom jedną lub dwie reguły czyszczenia
+i pobierz ZIP z wynikami.</p>
+<h2 id="wykorzystanie-sztucznej-inteligencji">11. Wykorzystanie
+sztucznej inteligencji</h2>
+<h3 id="gotowy-uczciwy-opis">Gotowy, uczciwy opis</h3>
+<blockquote>
+<p>Narzędzia generatywnej sztucznej inteligencji, w tym Codex, były
+używane jako wsparcie w pracy programistycznej: do porządkowania
+struktury projektu, proponowania i przeglądu kodu, dokumentacji oraz
+testów. Każda zmiana była weryfikowana na podstawie kodu, uruchomienia
+aplikacji i testów. AI nie jest elementem działania aplikacji: dane
+rodowodowe nie są wysyłane do modelu, model nie waliduje rekordów i nie
+podejmuje decyzji hodowlanych. Walidacja i czyszczenie są
+deterministycznymi regułami zapisanymi w Pythonie.</p>
+</blockquote>
+<p>Do wersji oddawanej prowadzący może wymagać podania nazw modeli lub
+narzędzi. Wtedy należy wpisać tylko faktycznie użyte pozycje, np. nazwę
+usługi, modelu, IDE i zakres pomocy. Nie należy przypisywać AI autorstwa
+wyników naukowych ani deklarować modelu, którego nie użyto.</p>
+<h3 id="co-było-weryfikowane-przez-człowieka">Co było weryfikowane przez
+człowieka</h3>
+<ul>
+<li>zgodność mapowania pól ze strukturą EBPB;</li>
+<li>sens reguł walidacji i wartości progowych;</li>
+<li>wpływ automatycznych poprawek na dane;</li>
+<li>poprawność uruchomienia aplikacji;</li>
+<li>testy i czytelność raportów;</li>
+<li>zgodność dokumentacji z bieżącym kodem.</li>
+</ul>
+<h3 id="ograniczenia-i-odpowiedzialność">Ograniczenia i
+odpowiedzialność</h3>
+<p>Automatyczna poprawka może usuwać podejrzane powiązanie, ale nie
+potrafi odtworzyć prawdziwej informacji biologicznej. Wynik powinien być
+sprawdzony przez osobę posiadającą wiedzę domenową. Aplikacja wspiera
+kontrolę jakości; nie zastępuje eksperta i nie podejmuje decyzji o
+kojarzeniach.</p>
+<h2 id="proponowany-przebieg-prezentacji-710-minut">12. Proponowany
+przebieg prezentacji — 7–10 minut</h2>
+<ol type="1">
+<li><strong>Problem i odbiorca — 45 s</strong> „Różne eksporty EBPB i
+błędy relacji utrudniają wiarygodną analizę rodowodu.”</li>
+<li><strong>Cel i rezultat — 30 s</strong> „Aplikacja tworzy
+zestandaryzowany, zwalidowany i udokumentowany zbiór.”</li>
+<li><strong>Część integracyjna — 90 s</strong> Pokaż dwa pliki
+wejściowe, wspólny schemat, łączenie i reguły walidacji.</li>
+<li><strong>Architektura — 90 s</strong> Omów diagram od interfejsu
+przez silnik HUBA do eksportu.</li>
+<li><strong>Demo — 2–3 min</strong> Wczytaj przykład → pokaż problemy →
+wybierz auto-fix → pobierz raport/ZIP.</li>
+<li><strong>Git i testy — 60 s</strong> Pokaż strukturę, kilka
+kluczowych commitów oraz wynik testów.</li>
+<li><strong>AI, ograniczenia i rozwój — 45 s</strong> Wyjaśnij rolę AI,
+działanie ręcznej edycji i potrzebę nadzoru eksperta.</li>
+</ol>
+<p>Jeżeli prowadzący poprosi o wskazanie obszaru projektu, powiedz:
+<strong>dane bazodanowe / systemy bazodanowe</strong>, ponieważ główną
+pracą projektu jest integracja, standaryzacja, walidacja, czyszczenie i
+eksport danych.</p>
+<h2 id="pytania-które-mogą-paść-na-egzaminie">13. Pytania, które mogą
+paść na egzaminie</h2>
+<p><strong>Dlaczego nie pracować bezpośrednio w Excelu?</strong>
+Ponieważ kod zapewnia powtarzalne mapowanie, te same kontrole dla
+każdego pliku, ponowną walidację i ślad wykonanych zmian.</p>
+<p><strong>Dlaczego użyto pandas?</strong> Ponieważ dane wejściowe są
+tabelaryczne, a biblioteka dobrze obsługuje import, transformacje,
+deduplikację i eksport.</p>
+<p><strong>Po co NetworkX?</strong> Rodowód jest grafem skierowanym.
+Biblioteka ułatwia wykrywanie cykli i pracę z relacjami
+przodek–potomek.</p>
+<p><strong>Czy aplikacja zmienia plik źródłowy?</strong> Nie. Pracuje na
+kopii danych i zapisuje nowe artefakty w osobnym katalogu wynikowym.</p>
+<p><strong>Co się dzieje z duplikatem ID?</strong> Przy łączeniu
+użytkownik wybiera zachowanie pierwszego, ostatniego lub wszystkich
+rekordów. W auto-fix domyślnie można pozostawić pierwszy rekord.
+Operacja jest odnotowana w logu.</p>
+<p><strong>Czy każda automatyczna poprawka jest bezpieczna?</strong> Nie
+w sensie biologicznym. Dlatego reguły są wybieralne, raportowane i
+wymagają oceny eksperta.</p>
+<p><strong>Dlaczego są dwie walidacje?</strong> Pierwsza opisuje stan
+wejściowy, druga sprawdza rezultat po transformacji i pozwala wykazać
+efekt czyszczenia.</p>
+<p><strong>Czy AI analizuje dane żubrów?</strong> Nie. AI wspierało
+proces tworzenia kodu, ale aplikacja działa lokalnie według jawnych,
+deterministycznych reguł.</p>
+<p><strong>Jak można rozwinąć projekt?</strong> Dodać formalny schemat
+konfiguracji JSON, dalsze testy interfejsu oraz wersjonowanie zestawu
+reguł czyszczenia.</p>
+<h2 id="lista-kontrolna-przed-oddaniem">14. Lista kontrolna przed
+oddaniem</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" />Projekt w MS Teams zawiera aktualny
+kod lub link do właściwego commita.</label></li>
+<li><label><input type="checkbox" />Temat projektu jest zatwierdzony
+przez prowadzącego.</label></li>
+<li><label><input type="checkbox" />Projekt ma jasny związek z jednym z
+wymaganych obszarów: bioinformatyka, bazy danych albo analiza
+sygnałów.</label></li>
+<li><label><input type="checkbox" /><code>README.md</code> ma działającą
+instrukcję instalacji i uruchomienia.</label></li>
+<li><label><input type="checkbox" />Diagram architektury renderuje się
+poprawnie.</label></li>
+<li><label><input type="checkbox" />Podczas prezentacji da się pokazać
+główne komponenty, przepływ danych i zależności między
+modułami.</label></li>
+<li><label><input type="checkbox" />Numer wersji jest spójny w commicie,
+README i <code>pyproject.toml</code>.</label></li>
+<li><label><input type="checkbox" />Nie ma przypadkowych,
+niezatwierdzonych zmian ani danych poufnych.</label></li>
+<li><label><input type="checkbox" />Repozytorium GitHub jest aktualne i
+zawiera commit odpowiadający wersji przesłanej przez MS
+Teams.</label></li>
+<li><label><input type="checkbox" />Testy automatyczne
+przechodzą.</label></li>
+<li><label><input type="checkbox" />Zależność <code>pytest</code> jest
+opisana i możliwa do zainstalowania na czystym środowisku.</label></li>
+<li><label><input type="checkbox" />Aplikacja uruchamia się na czystym
+środowisku.</label></li>
+<li><label><input type="checkbox" />Pliki przykładowe działają w
+demonstracji.</label></li>
+<li><label><input type="checkbox" />Można pobrać oczyszczoną bazę,
+raport HTML, manifest i ZIP.</label></li>
+<li><label><input type="checkbox" />Prezentacja jasno rozdziela część
+integracyjną od aplikacji.</label></li>
+<li><label><input type="checkbox" />W prezentacji pada informacja, że
+HUBA jest dostosowanym modułem pipeline’u dla danych
+rodowodowych.</label></li>
+<li><label><input type="checkbox" />Opis AI zawiera tylko faktycznie
+użyte narzędzia i modele.</label></li>
+<li><label><input type="checkbox" />Ograniczenia są nazwane wprost, w
+tym konieczność kontroli eksperckiej po automatycznych
+poprawkach.</label></li>
+</ul>
+<h2 id="najkrótsze-podsumowanie-końcowe">15. Najkrótsze podsumowanie
+końcowe</h2>
+<blockquote>
+<p>Projekt dostarcza kompletny, powtarzalny proces przygotowania danych
+rodowodowych: od importu różnych plików EBPB, przez standaryzację,
+łączenie, walidację i kontrolowane czyszczenie, aż po raportowany
+eksport. Rozdzielenie interfejsu, potoku integracyjnego i logiki
+domenowej ułatwia testowanie i dalszy rozwój. Najważniejszą wartością
+nie jest liczba funkcji, lecz wiarygodny i możliwy do prześledzenia
+wynik.</p>
+</blockquote>
+</body>
+</html>

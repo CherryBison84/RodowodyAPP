@@ -1,6 +1,6 @@
 # WisentPedigree Pro+ (RodowodyAPP)
 
-**Wersja aplikacji (pakiet): 1.2.0**
+**Wersja aplikacji (pakiet): 1.2.1**
 
 **HUBA-WPB Cleaner** — aplikacja **webowa (Streamlit)** do wczytywania baz rodowodowych żubrów, **walidacji** (wykresy podsumowań, eksport CSV), **automatycznych poprawek** i eksportu oczyszczonych plików. Interfejs i treści pomocy są po polsku.
 
@@ -10,6 +10,12 @@ Jeżeli projekt jest sprawdzany z paczki MS Teams, najkrótsza instrukcja dla pr
 się w pliku **`ODDANIE_MS_TEAMS.md`**.
 
 Historia najważniejszych zmian znajduje się w **`CHANGELOG.md`**.
+
+## Zmiany w wersji 1.2.1
+
+- Poprawiono stabilność i wygląd nawigacji kroków w sidebarze.
+- Dodano podsumowanie projektu nad kartą wersji terminalowej.
+- Zaktualizowano przewodnik egzaminacyjny pod wymagania prezentacji, MS Teams, GitHub, HUBA i opis AI.
 
 ## Zmiany w wersji 1.2.0
 

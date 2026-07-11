@@ -1,5 +1,24 @@
 # WisentPedigree DataCleaner — przewodnik do prezentacji projektu
 
+## 0. Wymagania egzaminacyjne — jak ten projekt na nie odpowiada
+
+Egzamin ma formę prezentacji projektu przesłanego przez MS Teams, omówienia repozytorium Git oraz przedstawienia architektury rozwiązania. Ten przewodnik porządkuje odpowiedź dokładnie pod te elementy.
+
+| Wymaganie z wytycznych | Jak pokazać to w projekcie |
+|---|---|
+| Projekt ma rozwiązywać konkretny problem | Problemem jest jakość, spójność i powtarzalne czyszczenie baz rodowodowych EBPB. |
+| Projekt powinien należeć do jednego z obszarów semestralnych | Projekt mieści się w obszarze **danych bazodanowych / systemów bazodanowych** oraz pracy na uporządkowanych zbiorach danych. Dodatkowo wykorzystuje elementy analizy relacji grafowych w rodowodzie. |
+| Projekt ma być dojrzały architektonicznie | Kod jest rozdzielony na warstwy importu danych, walidacji, potoku HUBA, logiki domenowej, interfejsu, CLI, eksportu i testów. |
+| Repozytorium GitHub ma być prowadzone od początku projektu | Podczas prezentacji należy pokazać repozytorium, historię commitów, strukturę katalogów i aktualny commit zgodny z wersją przesłaną przez MS Teams. |
+| Projekt ma zawierać dostosowaną wersję HUBA | Moduł HUBA działa jako pipeline `load → validate → transform → export`, dostosowany do danych rodowodowych żubrów. |
+| Rozwiązanie ma obsługiwać wiele plików i uporządkowaną strukturę katalogów | Aplikacja obsługuje wiele plików CSV/XLS/XLSX, katalog zbiorów, łączenie danych oraz eksport do katalogów `outputs/<nazwa_projektu>/`. |
+| Projekt ma mieć część integracyjną i część główną | Część integracyjna obejmuje import, rozpoznanie, standaryzację, łączenie i walidację danych. Część główna to aplikacja Streamlit z interfejsem użytkownika. |
+| Trzeba przygotować diagram komponentów i przepływu danych | Diagram znajduje się w sekcji 4 i może zostać pokazany podczas omawiania architektury. |
+| Należy dołączyć instrukcję uruchomienia i opis funkcjonalności | Instrukcja jest w sekcji 8, a funkcjonalności w sekcji 7. |
+| Należy opisać wykorzystanie narzędzi i modeli AI | Gotowy, uczciwy opis znajduje się w sekcji 11. |
+
+Najważniejsze zdanie organizacyjne do zapamiętania: **nie prezentujemy projektu jako zbioru luźnych funkcji, tylko jako kompletny pipeline przygotowania danych, zakończony działającą aplikacją i raportowanym eksportem.**
+
 ## 1. Projekt w jednym zdaniu
 
 **WisentPedigree DataCleaner rozwiązuje problem niespójnych i błędnych baz rodowodowych żubrów EBPB: przyjmuje dane w różnych formatach, standaryzuje je, kontroluje jakość, wykonuje wybrane bezpieczne poprawki i eksportuje udokumentowany, oczyszczony zbiór gotowy do dalszej analizy rodowodowej.**
@@ -36,13 +55,15 @@ Celem projektu jest zautomatyzowanie przygotowania baz EBPB do dalszej analizy p
 
 ### Zakres świadomie ograniczony
 
-Głównym zadaniem aplikacji jest **przygotowanie i kontrola jakości danych**, a nie kompletna platforma hodowlana. Moduły analityczne dotyczące rodowodu są obecne w repozytorium i testach, ale bieżący interfejs HUBA skupia się na procesie DataCleaner. Ręczna edycja pojedynczych rekordów jest dostępna w Kroku 3, przelicza walidację po zapisie i pozwala cofnąć ostatnią zmianę w sesji.
+Głównym zadaniem aplikacji jest **przygotowanie i kontrola jakości danych**, a nie kompletna platforma hodowlana. Moduły analityczne dotyczące rodowodu są obecne w repozytorium i testach, ale bieżący interfejs HUBA skupia się na procesie DataCleaner. Ręczna edycja pojedynczych rekordów jest dostępna w Kroku 4, przelicza walidację po zapisie i pozwala cofnąć ostatnią zmianę w sesji.
 
 ## 3. Dwie wymagane części projektu
 
 ### A. Część integracyjna
 
 Odpowiada za pozyskanie, przygotowanie i połączenie danych.
+
+To jest część, którą warto omówić najpierw, ponieważ odpowiada bezpośrednio na wymóg z wytycznych: projekt ma przyjmować jeden lub wiele „brudnych” plików wejściowych i generować uporządkowane dane wyjściowe zgodnie z regułami, filtrami oraz strukturą katalogów.
 
 | Etap | Działanie | Główne miejsce w kodzie |
 |---|---|---|
@@ -68,7 +89,11 @@ Interfejs webowy zbudowano w Streamlit. Użytkownik przechodzi przez pięć krok
 
 Aplikacja ma również tryb terminalowy. Ta sama logika przetwarzania jest dzięki temu dostępna z GUI, CLI oraz konfiguracji JSON.
 
+Podczas egzaminu należy wyraźnie powiedzieć, że interfejs nie jest osobnym eksperymentem, tylko warstwą użytkownika nad tym samym pipeline’em HUBA, który może działać także wsadowo.
+
 ## 4. Architektura rozwiązania
+
+Ten diagram spełnia wymaganie egzaminacyjne dotyczące pokazania głównych komponentów projektu, przepływu danych oraz zależności między elementami.
 
 ```mermaid
 flowchart LR
@@ -144,6 +169,7 @@ Istotna cecha: plik źródłowy nie jest nadpisywany. Poprawki wykonywane są na
 - **Log i manifest** zapewniają powtarzalność oraz możliwość sprawdzenia, co aplikacja zmieniła.
 - **GUI i CLI korzystają z tego samego silnika**, więc logika nie jest powielona.
 - **Deterministyczna obsługa duplikatów** pozwala świadomie zachować pierwszy, ostatni lub każdy rekord.
+- **Zakres funkcji jest podporządkowany problemowi**, dlatego aplikacja koncentruje się na przygotowaniu danych, a nie na dodawaniu pobocznych modułów bez związku z celem.
 
 ## 7. Podstawowe funkcjonalności
 
@@ -202,7 +228,7 @@ python3 app/main.py --project-config config/huba_project.example.json
 
 Repozytorium: `https://github.com/CherryBison84/RodowodyAPP`
 
-Podczas prezentacji pokaż:
+Podczas prezentacji pokaż repozytorium jako dowód procesu projektowego, a nie tylko miejsce przechowywania plików:
 
 1. **strukturę katalogów** — osobne warstwy danych, potoku, rodowodu, analityki, UI i testów;
 2. **historię rozwoju** — przejście od aplikacji rodowodowej do uporządkowanego modułu HUBA/DataCleaner, kolejne wersje i dodanie CLI;
@@ -214,6 +240,8 @@ Podczas prezentacji pokaż:
 Wersja wydania jest spójnie zapisana jako `1.2.0` w README i `pyproject.toml`.
 
 Nie prezentuj repozytorium z niezatwierdzonymi przypadkowymi zmianami. Przed egzaminem sprawdź stan Git, nazwę bieżącej gałęzi oraz czy commit widoczny w MS Teams odpowiada commitowi na GitHubie.
+
+W MS Teams należy przesłać wersję projektu, którą da się jednoznacznie powiązać z repozytorium. Najbezpieczniej podać link do GitHuba oraz numer commita albo upewnić się, że paczka z kodem odpowiada aktualnemu commitowi.
 
 ## 10. Testowanie i weryfikacja
 
@@ -275,6 +303,8 @@ Automatyczna poprawka może usuwać podejrzane powiązanie, ale nie potrafi odtw
 7. **AI, ograniczenia i rozwój — 45 s**
    Wyjaśnij rolę AI, działanie ręcznej edycji i potrzebę nadzoru eksperta.
 
+Jeżeli prowadzący poprosi o wskazanie obszaru projektu, powiedz: **dane bazodanowe / systemy bazodanowe**, ponieważ główną pracą projektu jest integracja, standaryzacja, walidacja, czyszczenie i eksport danych.
+
 ## 13. Pytania, które mogą paść na egzaminie
 
 **Dlaczego nie pracować bezpośrednio w Excelu?**
@@ -307,16 +337,21 @@ Dodać formalny schemat konfiguracji JSON, dalsze testy interfejsu oraz wersjono
 ## 14. Lista kontrolna przed oddaniem
 
 - [ ] Projekt w MS Teams zawiera aktualny kod lub link do właściwego commita.
+- [ ] Temat projektu jest zatwierdzony przez prowadzącego.
+- [ ] Projekt ma jasny związek z jednym z wymaganych obszarów: bioinformatyka, bazy danych albo analiza sygnałów.
 - [ ] `README.md` ma działającą instrukcję instalacji i uruchomienia.
 - [ ] Diagram architektury renderuje się poprawnie.
+- [ ] Podczas prezentacji da się pokazać główne komponenty, przepływ danych i zależności między modułami.
 - [ ] Numer wersji jest spójny w commicie, README i `pyproject.toml`.
 - [ ] Nie ma przypadkowych, niezatwierdzonych zmian ani danych poufnych.
+- [ ] Repozytorium GitHub jest aktualne i zawiera commit odpowiadający wersji przesłanej przez MS Teams.
 - [ ] Testy automatyczne przechodzą.
 - [ ] Zależność `pytest` jest opisana i możliwa do zainstalowania na czystym środowisku.
 - [ ] Aplikacja uruchamia się na czystym środowisku.
 - [ ] Pliki przykładowe działają w demonstracji.
 - [ ] Można pobrać oczyszczoną bazę, raport HTML, manifest i ZIP.
 - [ ] Prezentacja jasno rozdziela część integracyjną od aplikacji.
+- [ ] W prezentacji pada informacja, że HUBA jest dostosowanym modułem pipeline’u dla danych rodowodowych.
 - [ ] Opis AI zawiera tylko faktycznie użyte narzędzia i modele.
 - [ ] Ograniczenia są nazwane wprost, w tym konieczność kontroli eksperckiej po automatycznych poprawkach.
 

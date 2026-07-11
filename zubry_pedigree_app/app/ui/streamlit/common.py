@@ -465,8 +465,25 @@ def apply_page_style() -> None:
             color: {THEME.ENTRY_BG};
             box-shadow: 0 0 0 3px rgba(61, 99, 77, 0.13);
         }}
+        .huba-project-summary-card {{
+            margin: 9.5rem 0 0 0;
+            padding: 0.62rem 0.72rem;
+            border: 1px solid {THEME.BORDER_SUBTLE};
+            border-radius: 10px;
+            background: rgba(244, 248, 244, 0.42);
+            box-shadow: 0 1px 8px rgba(30, 43, 36, 0.04);
+        }}
+        .huba-project-summary-card p {{
+            margin: 0;
+            color: {THEME.MUTED} !important;
+            font-size: 0.8075rem;
+            font-weight: 500;
+            line-height: 1.42;
+            text-align: justify;
+            text-justify: inter-word;
+        }}
         .huba-terminal-card {{
-            margin: 13rem 0 0 0;
+            margin: 0.48rem 0 0 0;
             padding: 0.62rem 0.72rem;
             border: 1px solid {THEME.BORDER_SUBTLE};
             border-radius: 10px;

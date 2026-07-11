@@ -24,7 +24,7 @@ from app.ui.streamlit.huba_ui import run_huba_app
 
 HUBA_APP_NAME = "WisentPedigree DataCleaner"
 HUBA_TAGLINE = "przygotowanie baz do analizy rodowodowej"
-HUBA_VERSION = "1.2.0"
+HUBA_VERSION = "1.2.1"
 
 
 def _set_huba_nav(section: str) -> None:
@@ -60,6 +60,19 @@ def _render_sidebar() -> None:
                 on_click=_set_huba_nav,
                 args=(section,),
             )
+        st.markdown(
+            '<div class="huba-project-summary-card">'
+            "<p>"
+            "Projekt dostarcza kompletny, powtarzalny proces przygotowania danych rodowodowych: "
+            "od importu różnych plików EBPB, przez standaryzację, łączenie, walidację "
+            "i kontrolowane czyszczenie, aż po raportowany eksport. Rozdzielenie interfejsu, "
+            "potoku integracyjnego i logiki domenowej ułatwia testowanie i dalszy rozwój. "
+            "Najważniejszą wartością nie jest liczba funkcji, lecz wiarygodny i możliwy "
+            "do prześledzenia wynik."
+            "</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
         st.markdown(
             '<div class="huba-terminal-card">'
             '<p class="huba-terminal-title">Wersja terminalowa</p>'

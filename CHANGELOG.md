@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+- Poprawiono stabilność i wygląd nawigacji kroków w panelu bocznym.
+- Dodano widoczne podsumowanie wartości projektu nad kartą wersji terminalowej.
+- Zaktualizowano przewodnik egzaminacyjny pod wymagania prezentacji projektu.
+
 ## 1.2.0
 
 - Dodano w sidebarze uniwersalne polecenie uruchomienia wersji terminalowej bez UI.
