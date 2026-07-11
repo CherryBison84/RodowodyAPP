@@ -149,13 +149,54 @@ def apply_page_style() -> None:
             font-size: 1.1458rem; /* ~+1pt względem 1.0625rem */
             line-height: 1.55;
         }}
-        header[data-testid="stHeader"],
         [data-testid="stToolbar"],
         [data-testid="stDecoration"],
         [data-testid="stStatusWidget"],
         #MainMenu,
         footer {{
             display: none !important;
+        }}
+        header[data-testid="stHeader"] {{
+            background: transparent !important;
+            box-shadow: none !important;
+        }}
+        [data-testid="stExpandSidebarButton"] {{
+            position: fixed !important;
+            top: 0.75rem !important;
+            left: 0.75rem !important;
+            z-index: 100000 !important;
+            width: 2.5rem !important;
+            min-width: 2.5rem !important;
+            height: 2.5rem !important;
+            min-height: 2.5rem !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            border: 1px solid {THEME.BORDER_SUBTLE} !important;
+            border-radius: 8px !important;
+            background: {THEME.PANEL_BG} !important;
+            color: {THEME.TEXT} !important;
+            box-shadow: 0 2px 10px rgba(30, 43, 36, 0.12) !important;
+        }}
+        div:has(> [data-testid="stExpandSidebarButton"]) {{
+            position: fixed !important;
+            top: 0.75rem !important;
+            left: 0.75rem !important;
+            z-index: 99999 !important;
+            width: 2.5rem !important;
+            height: 2.5rem !important;
+            min-width: 2.5rem !important;
+            min-height: 2.5rem !important;
+            overflow: visible !important;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }}
+        [data-testid="stExpandSidebarButton"] * {{
+            visibility: visible !important;
+            opacity: 1 !important;
         }}
         [data-testid="stAppViewContainer"] {{
             background-color: {THEME.APP_BG};
@@ -174,6 +215,16 @@ def apply_page_style() -> None:
             color: {THEME.TEXT};
             border-right: 1px solid {THEME.BORDER_SUBTLE};
             box-shadow: 6px 0 28px rgba(30, 43, 36, 0.06);
+        }}
+        [data-testid="stSidebar"][aria-expanded="false"] {{
+            transform: translateX(100%) !important;
+            min-width: 22rem !important;
+            width: 22rem !important;
+        }}
+        [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+        [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarUserContent"] {{
+            min-width: 22rem !important;
+            width: 22rem !important;
         }}
         [data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {{
             min-height: calc(100vh - 6.25rem);
@@ -307,6 +358,112 @@ def apply_page_style() -> None:
             border-color: #9aaa9e;
             color: #f4f8f4;
             box-shadow: none;
+        }}
+        /* Nawigacja kroków: stabilne przyciski stylowane jak poprzedni pionowy przebieg */
+        [data-testid="stSidebar"] .st-key-huba_nav_step_1,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_2,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_3,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_4,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_5 {{
+            position: relative;
+            margin-bottom: 0.1rem;
+        }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_1 button,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_2 button,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_3 button,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_4 button,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_5 button {{
+            position: relative;
+            justify-content: center !important;
+            min-height: 2.62rem !important;
+            padding: 0.42rem 0.5rem 0.42rem 2.42rem !important;
+            border: 1px solid transparent !important;
+            border-radius: 8px !important;
+            background: transparent !important;
+            color: {THEME.TEXT} !important;
+            box-shadow: none !important;
+            font-weight: 500 !important;
+            text-align: center !important;
+            line-height: 1.32 !important;
+            transition: background-color 0.15s ease, box-shadow 0.15s ease;
+        }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_1 button p,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_2 button p,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_3 button p,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_4 button p,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_5 button p {{
+            width: 100%;
+            margin: 0;
+            text-align: center !important;
+            line-height: 1.32 !important;
+        }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_1 button::before,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_2 button::before,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_3 button::before,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_4 button::before,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_5 button::before {{
+            position: absolute;
+            left: 0.54rem;
+            top: 0.58rem;
+            z-index: 1;
+            width: 1.22rem;
+            height: 1.22rem;
+            border-radius: 999px;
+            background: {THEME.ENTRY_BG};
+            border: 1px solid {THEME.BORDER_SUBTLE};
+            color: {THEME.MUTED};
+            display: grid;
+            place-items: center;
+            font-size: 0.68rem;
+            font-weight: 700;
+            line-height: 1;
+        }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_1 button::before {{ content: "1"; }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_2 button::before {{ content: "2"; }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_3 button::before {{ content: "3"; }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_4 button::before {{ content: "4"; }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_5 button::before {{ content: "5"; }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_1 button::after,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_2 button::after,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_3 button::after,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_4 button::after {{
+            content: "";
+            position: absolute;
+            left: 1.13rem;
+            top: 1.86rem;
+            bottom: -0.5rem;
+            width: 1px;
+            background: {THEME.BORDER_SUBTLE};
+            opacity: 0.55;
+        }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_1 button:hover,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_2 button:hover,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_3 button:hover,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_4 button:hover,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_5 button:hover {{
+            background-color: rgba(184, 202, 184, 0.45) !important;
+            border-color: {THEME.BORDER_SUBTLE} !important;
+        }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_1 button[kind="primary"],
+        [data-testid="stSidebar"] .st-key-huba_nav_step_2 button[kind="primary"],
+        [data-testid="stSidebar"] .st-key-huba_nav_step_3 button[kind="primary"],
+        [data-testid="stSidebar"] .st-key-huba_nav_step_4 button[kind="primary"],
+        [data-testid="stSidebar"] .st-key-huba_nav_step_5 button[kind="primary"] {{
+            background-color: {THEME.TAB_ACTIVE_BG} !important;
+            border-color: {THEME.BORDER_SUBTLE} !important;
+            color: {THEME.TAB_TEXT} !important;
+            font-weight: 600 !important;
+            box-shadow: inset 0 0 0 1px {THEME.BORDER_SUBTLE} !important;
+        }}
+        [data-testid="stSidebar"] .st-key-huba_nav_step_1 button[kind="primary"]::before,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_2 button[kind="primary"]::before,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_3 button[kind="primary"]::before,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_4 button[kind="primary"]::before,
+        [data-testid="stSidebar"] .st-key-huba_nav_step_5 button[kind="primary"]::before {{
+            background: {THEME.EDGE_PLOT};
+            border-color: {THEME.EDGE_PLOT};
+            color: {THEME.ENTRY_BG};
+            box-shadow: 0 0 0 3px rgba(61, 99, 77, 0.13);
         }}
         .huba-terminal-card {{
             margin: 13rem 0 0 0;

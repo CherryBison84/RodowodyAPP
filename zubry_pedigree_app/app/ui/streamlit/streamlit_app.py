@@ -27,6 +27,10 @@ HUBA_TAGLINE = "przygotowanie baz do analizy rodowodowej"
 HUBA_VERSION = "1.2.0"
 
 
+def _set_huba_nav(section: str) -> None:
+    st.session_state["huba_nav"] = section
+
+
 def _render_sidebar() -> None:
     """Renderuje logo, metadane aplikacji i nawigację po krokach HUBA."""
     with st.sidebar:
@@ -46,14 +50,16 @@ def _render_sidebar() -> None:
             nav = _NAV_LEGACY[str(nav)]
         if nav not in NAV_SECTIONS:
             nav = NAV_STEP1
-        idx = NAV_SECTIONS.index(nav)
-        section = st.radio(
-            "Kroki",
-            NAV_SECTIONS,
-            index=idx,
-            label_visibility="collapsed",
-        )
-        st.session_state["huba_nav"] = section
+        for step_no, section in enumerate(NAV_SECTIONS, start=1):
+            active = section == nav
+            st.button(
+                section,
+                key=f"huba_nav_step_{step_no}",
+                type="primary" if active else "secondary",
+                use_container_width=True,
+                on_click=_set_huba_nav,
+                args=(section,),
+            )
         st.markdown(
             '<div class="huba-terminal-card">'
             '<p class="huba-terminal-title">Wersja terminalowa</p>'
